@@ -502,57 +502,49 @@ export default function RacePhaseDetailPage() {
               </div>
             </div>
 
-            {/* Contrôles globaux (optionnels) */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-3 p-3 bg-gray-50 rounded-lg border">
-              <label className="flex flex-col gap-1 text-sm">
-                <span className="text-gray-700">Heure de la 1ʳᵉ course</span>
-                <input
-                  type="datetime-local"
-                  value={firstStartLocal}
-                  onChange={(e) => {
-                    setFirstStartLocal(e.target.value);
-                    const next = recomputeTimesFrom(races, 0, parseLocalInput(e.target.value));
-                    setRaces(next);
-                  }}
-                  className="px-2 py-1 border rounded"
-                />
-              </label>
-              <label className="flex flex-col gap-1 text-sm">
-                <span className="text-gray-700">Intervalle par défaut (min)</span>
-                <input
-                  type="number"
-                  min={1}
-                  value={slotMinutes}
-                  onChange={(e) => {
-                    const m = Math.max(1, Number(e.target.value) || 1);
-                    setSlotMinutes(m);
-                  }}
-                  onBlur={() => {
-                    const applied: Record<string, number> = { ...gapsByRaceId };
-                    races.forEach(r => { if (!applied[r.id]) applied[r.id] = slotMinutes; });
-                    setGapsByRaceId(applied);
-                    const next = recomputeTimesFrom(races, 0, parseLocalInput(firstStartLocal));
-                    setRaces(next);
-                  }}
-                  className="px-2 py-1 border rounded"
-                />
-              </label>
-              <div className="flex items-end gap-2">
-                <button className="px-3 py-2 text-sm border rounded bg-white" onClick={applySchedule} title="Enregistrer les horaires recalculés">
-                  Enregistrer
-                </button>
+            <div className="space-y-3 p-4 bg-gradient-to-r from-blue-50 to-indigo-50 rounded-lg border border-blue-200">
+              <div className="flex items-center justify-between">
+                <h3 className="text-sm font-semibold text-gray-700">Configuration des horaires</h3>
                 <button
-                  className="px-3 py-2 text-sm border rounded bg-white"
-                  onClick={() => {
-                    const reset: Record<string, number> = {};
-                    races.forEach(r => { reset[r.id] = slotMinutes; });
-                    setGapsByRaceId(reset);
-                    const next = recomputeTimesFrom(races, 0, parseLocalInput(firstStartLocal));
-                    setRaces(next);
-                  }}
+                  className="px-4 py-2 text-sm font-medium rounded-md bg-blue-600 text-white hover:bg-blue-700 transition-colors shadow-sm"
+                  onClick={applySchedule}
+                  title="Enregistrer les horaires recalculés"
                 >
-                  Réinitialiser intervalles
+                  Enregistrer les horaires
                 </button>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                <label className="flex flex-col gap-1.5 text-sm">
+                  <span className="text-gray-700 font-medium">Heure de la 1ʳᵉ course</span>
+                  <input
+                    type="datetime-local"
+                    value={firstStartLocal}
+                    onChange={(e) => {
+                      setFirstStartLocal(e.target.value);
+                      const next = recomputeTimesFrom(races, 0, parseLocalInput(e.target.value));
+                      setRaces(next);
+                    }}
+                    className="px-3 py-2 border border-gray-300 rounded-md bg-white shadow-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  />
+                </label>
+                <label className="flex flex-col gap-1.5 text-sm">
+                  <span className="text-gray-700 font-medium">Intervalle par défaut (minutes)</span>
+                  <input
+                    type="number"
+                    min={1}
+                    value={slotMinutes}
+                    onChange={(e) => {
+                      const m = Math.max(1, Number(e.target.value) || 1);
+                      setSlotMinutes(m);
+                      const applied: Record<string, number> = { ...gapsByRaceId };
+                      races.forEach(r => { applied[r.id] = m; });
+                      setGapsByRaceId(applied);
+                      const next = recomputeTimesFrom(races, 0, parseLocalInput(firstStartLocal));
+                      setRaces(next);
+                    }}
+                    className="px-3 py-2 border border-gray-300 rounded-md bg-white shadow-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  />
+                </label>
               </div>
             </div>
           </CardHeader>
@@ -722,44 +714,36 @@ function TimelineRace({
   })();
 
   return (
-    <div ref={setNodeRef} style={style} className={clsx("relative border rounded p-2 space-y-2 bg-gray-50", isDragging ? "opacity-70 ring-2 ring-gray-400" : "")}>      
-      {/* Pastille sur l’axe */}
-      <div className="absolute -left-[9px] top-3 w-3 h-3 rounded-full bg-gray-400 border-2 border-white" />
+    <div ref={setNodeRef} style={style} className={clsx("relative border-2 rounded-lg p-3 space-y-3 bg-white shadow-sm", isDragging ? "opacity-70 ring-2 ring-blue-400 shadow-lg" : "hover:border-gray-300")}>
+      <div className="absolute -left-[11px] top-4 w-4 h-4 rounded-full bg-blue-500 border-3 border-white shadow-md" />
 
       <div className="flex items-center justify-between gap-2">
-        <div className="font-medium text-sm flex items-center gap-2">
-          <span className="inline-flex items-center text-[10px] px-1.5 py-0.5 rounded bg-white border text-gray-700">{timeLabel}</span>
-          <span>{race.name}</span>
+        <div className="font-semibold text-sm flex items-center gap-2">
+          <span className="inline-flex items-center text-xs px-2 py-1 rounded-md bg-blue-100 text-blue-700 font-mono font-bold">{timeLabel}</span>
+          <span className="text-gray-900">{race.name}</span>
         </div>
-        <button {...attributes} {...listeners} className="text-xs px-2 py-1 border rounded bg-white" title="Glisser pour réordonner" aria-label="Glisser pour réordonner">☰</button>
+        <button {...attributes} {...listeners} className="text-sm px-3 py-1.5 border-2 border-dashed border-gray-300 rounded-md bg-gray-50 hover:bg-gray-100 hover:border-gray-400 transition-colors cursor-grab active:cursor-grabbing" title="Glisser pour réordonner" aria-label="Glisser pour réordonner">
+          ⋮⋮
+        </button>
       </div>
 
-      {/* Ligne d’édition : heure + intervalle vers la suivante */}
-      <div className="flex flex-wrap items-end gap-3 text-xs">
-        <label className="flex flex-col gap-1">
-          <span className="text-gray-600">Heure de cette course</span>
+      {gapMinutes !== undefined && (
+        <div className="flex items-center gap-2 text-xs bg-gray-50 px-3 py-2 rounded-md">
+          <span className="text-gray-600">Intervalle :</span>
           <input
-            type="datetime-local"
-            value={datetimeForInput}
-            onChange={(e) => onTimeChange(e.target.value)}
-            className="px-2 py-1 border rounded bg-white"
+            type="number"
+            min={1}
+            value={gapMinutes}
+            onChange={(e) => onGapChange(Math.max(1, Number(e.target.value) || 1))}
+            className="w-16 px-2 py-1 border border-gray-300 rounded bg-white text-center font-mono focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
           />
-        </label>
-        {gapMinutes !== undefined && (
-          <label className="flex flex-col gap-1">
-            <span className="text-gray-600">Intervalle jusqu’à la suivante (min)</span>
-            <input
-              type="number"
-              min={1}
-              value={gapMinutes}
-              onChange={(e) => onGapChange(Math.max(1, Number(e.target.value) || 1))}
-              className="px-2 py-1 border rounded bg-white w-28"
-            />
-          </label>
-        )}
-      </div>
+          <span className="text-gray-600">min</span>
+        </div>
+      )}
 
-      {children}
+      <div className="space-y-1">
+        {children}
+      </div>
     </div>
   );
 }
