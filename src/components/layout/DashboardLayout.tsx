@@ -13,7 +13,7 @@ export default function DashboardLayout() {
     { to: "/dashboard/profile", label: "Profil", icon: User },
   ];
 
-  const NavItem = ({ to, label, icon: Icon }) => (
+  const NavItem = ({ to, label, icon: Icon }: { to: string; label: string; icon: any }) => (
     <NavLink
       to={to}
       className={({ isActive }) =>

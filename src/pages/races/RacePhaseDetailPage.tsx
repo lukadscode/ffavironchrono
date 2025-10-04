@@ -18,6 +18,7 @@ import {
 import { CSS } from "@dnd-kit/utilities";
 import clsx from "clsx";
 import RaceFormDialog from "@/components/races/RaceFormDialog";
+import PhaseResultsPanel from "@/components/races/PhaseResultsPanel";
 
 // === Config par défaut ===
 const DEFAULT_SLOT_MINUTES = 8;
@@ -116,6 +117,12 @@ async function downloadPdfSafely(opts: {
 }
 /** ===================================================================== */
 
+interface RacePhase {
+  id: string;
+  name: string;
+  order_index: number;
+}
+
 export default function RacePhaseDetailPage() {
   const { eventId, phaseId } = useParams();
   const { toast } = useToast();
@@ -124,12 +131,26 @@ export default function RacePhaseDetailPage() {
   const [races, setRaces] = useState<Race[]>([]);
   const [dragPreview, setDragPreview] = useState<DragPreview>(null);
   const [exporting, setExporting] = useState<{ start?: boolean; weigh?: boolean }>({});
+  const [phases, setPhases] = useState<RacePhase[]>([]);
+  const [currentPhase, setCurrentPhase] = useState<RacePhase | null>(null);
 
   // === Nouveaux états pour la timeline + gaps dynamiques ===
   const [slotMinutes, setSlotMinutes] = useState<number>(DEFAULT_SLOT_MINUTES);
   const [firstStartLocal, setFirstStartLocal] = useState<string>(""); // "YYYY-MM-DDTHH:mm"
   // minutes entre une course et la suivante: key = race.id
   const [gapsByRaceId, setGapsByRaceId] = useState<Record<string, number>>({});
+
+  const fetchPhases = async () => {
+    try {
+      const res = await api.get(`/race-phases/${eventId}`);
+      const allPhases = res.data.data.sort((a: RacePhase, b: RacePhase) => a.order_index - b.order_index);
+      setPhases(allPhases);
+      const current = allPhases.find((p: RacePhase) => p.id === phaseId);
+      setCurrentPhase(current || null);
+    } catch {
+      toast({ title: "Erreur chargement phases", variant: "destructive" });
+    }
+  };
 
   const fetchCrews = async () => {
     try {
@@ -368,11 +389,19 @@ export default function RacePhaseDetailPage() {
 
   useEffect(() => {
     if (eventId && phaseId) {
+      fetchPhases();
       fetchCrews();
       fetchRaces();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [eventId, phaseId]);
+
+  const previousPhase = useMemo(() => {
+    if (!currentPhase || phases.length === 0) return null;
+    const currentIndex = phases.findIndex((p) => p.id === phaseId);
+    if (currentIndex <= 0) return null;
+    return phases[currentIndex - 1];
+  }, [phases, currentPhase, phaseId]);
 
   const isDraggingRaceCrew = dragPreview?.type === "raceCrew";
 
@@ -405,16 +434,21 @@ export default function RacePhaseDetailPage() {
     <DndContext onDragStart={onDragStart} onDragEnd={onDragEnd}>
       <div className="p-4 flex gap-6">
         {/* Colonne gauche */}
-        <Card className="w-1/3">
-          <CardHeader className="bg-red-50">
-            <CardTitle>Équipages non affectés</CardTitle>
-          </CardHeader>
-          <UnassignedDroppable isActiveHint={isDraggingRaceCrew}>
-            {unassignedCrews.map((crew) => (
-              <DraggableCrew key={crew.id} crew={crew} />
-            ))}
-          </UnassignedDroppable>
-        </Card>
+        <div className="w-1/3 space-y-4">
+          {previousPhase && (
+            <PhaseResultsPanel phaseId={previousPhase.id} phaseName={previousPhase.name} />
+          )}
+          <Card>
+            <CardHeader className="bg-red-50">
+              <CardTitle>Équipages non affectés</CardTitle>
+            </CardHeader>
+            <UnassignedDroppable isActiveHint={isDraggingRaceCrew}>
+              {unassignedCrews.map((crew) => (
+                <DraggableCrew key={crew.id} crew={crew} />
+              ))}
+            </UnassignedDroppable>
+          </Card>
+        </div>
 
         {/* Colonne droite */}
         <Card className="flex-1">
