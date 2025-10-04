@@ -236,13 +236,13 @@ export default function TimingPage() {
     const map: Record<string, string> = {};
     races.forEach((race) => {
       race.RaceCrews.forEach((rc) => {
-        map[rc.Crew.id] = race.name;
+        if (rc.Crew?.id) map[rc.Crew.id] = race.name;
       });
     });
     Object.values(assignments).flat().forEach(({ crew_id }) => {
       if (!map[crew_id]) {
         for (const race of races) {
-          if (race.RaceCrews.some((rc) => rc.Crew.id === crew_id)) {
+          if (race.RaceCrews.some((rc) => rc.Crew?.id === crew_id)) {
             map[crew_id] = race.name;
             break;
           }
@@ -257,7 +257,7 @@ export default function TimingPage() {
   }, [races, selectedRaceId]);
 
   const crewIdsInSelectedRace = useMemo(() => {
-    return selectedRace?.RaceCrews.map((rc) => rc.Crew.id) ?? [];
+    return selectedRace?.RaceCrews.map((rc) => rc.Crew?.id).filter(Boolean) ?? [];
   }, [selectedRace]);
 
   const visibleTimings = useMemo(() => {

@@ -20,7 +20,7 @@ const getCategoryColor = (label: string) => {
 interface CrewEntry {
   id: string;
   lane: number;
-  Crew: {
+  crew: {
     club_name: string;
     club_code: string;
     category_id: string;
@@ -51,7 +51,7 @@ export default function RaceListItem({ race, onDelete, refresh, enableCrewDrag =
     setCrews(race.crews || []);
   }, [race]);
 
-  const categoryLabel = race.crews[0]?.Crew?.category_label ?? "Catégorie";
+  const categoryLabel = race.crews[0]?.crew?.category_label ?? "Catégorie";
 
   useDndMonitor({
     async onDragEnd(event) {
@@ -148,7 +148,7 @@ export default function RaceListItem({ race, onDelete, refresh, enableCrewDrag =
           )}
         >
           <span className="font-semibold">L{laneNum}</span>
-          <span className="truncate max-w-[160px] text-right">{entry?.Crew?.club_name || "(vide)"}</span>
+          <span className="truncate max-w-[160px] text-right">{entry?.crew?.club_name || "(vide)"}</span>
         </div>
       );
     })}

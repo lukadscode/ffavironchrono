@@ -82,7 +82,7 @@ export default function RacePhaseCard({
 
   // Grouper par catégorie
   const groupedByCategory = races.reduce((acc: Record<string, any[]>, race) => {
-    const label = race.crews[0]?.Crew?.category_label || "Sans catégorie";
+    const label = race.crews[0]?.crew?.category_label || "Sans catégorie";
     if (!acc[label]) acc[label] = [];
     acc[label].push(race);
     return acc;

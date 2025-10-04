@@ -34,7 +34,7 @@ interface Crew {
 interface RaceCrew {
   id: string; // race_crews.id (affectation)
   lane: number;
-  Crew: Crew;
+  crew: Crew;
 }
 
 interface Race {
@@ -197,7 +197,7 @@ export default function RacePhaseDetailPage() {
     }
   };
 
-  const getAllCrewIdsInRaces = () => races.flatMap((race) => (race.crews ?? []).map((c) => c.Crew.id));
+  const getAllCrewIdsInRaces = () => races.flatMap((race) => (race.crews ?? []).map((c) => c.crew?.id)).filter(Boolean);
 
   const unassignedCrews = useMemo(() => crews.filter((c) => !getAllCrewIdsInRaces().includes(c.id)), [crews, races]);
 
@@ -336,7 +336,7 @@ export default function RacePhaseDetailPage() {
             await api.delete(`/race-crews/${a.raceCrewId}`);
             await api.delete(`/race-crews/${occupant.id}`);
             await api.post(`/race-crews`, { race_id: targetRaceId, crew_id: a.crewId, lane: targetLane });
-            await api.post(`/race-crews`, { race_id: a.fromRaceId, crew_id: occupant.Crew.id, lane: a.fromLane });
+            await api.post(`/race-crews`, { race_id: a.fromRaceId, crew_id: occupant.crew?.id, lane: a.fromLane });
           }
           toast({ title: "Équipages réorganisés." });
         }
@@ -658,7 +658,7 @@ function DroppableLane({ lane, raceId, entry }: { lane: number; raceId: string; 
   const { setNodeRef: setDragRef, attributes, listeners, transform, isDragging } = useDraggable({
     id: entry ? `entry-${entry.id}` : `lane-${raceId}-${lane}-empty`,
     data: entry
-      ? { type: "raceCrew", raceCrewId: entry.id, crewId: entry.Crew.id, fromRaceId: raceId, fromLane: lane }
+      ? { type: "raceCrew", raceCrewId: entry.id, crewId: entry.crew?.id, fromRaceId: raceId, fromLane: lane }
       : { type: "emptyLane", raceId, lane },
     disabled: !entry,
   });
@@ -677,11 +677,11 @@ function DroppableLane({ lane, raceId, entry }: { lane: number; raceId: string; 
         entry ? "bg-gray-200 text-gray-900" : "bg-gray-100 italic text-gray-500",
         isDragging ? "opacity-70" : ""
       )}
-      title={entry ? entry.Crew.club_name : undefined}
+      title={entry ? entry.crew?.club_name : undefined}
     >
       <span className="font-semibold">L{lane}</span>
       <span className={clsx("truncate max-w-[200px] text-right", entry ? "px-2 py-0.5 rounded" : "")}>
-        {entry ? entry.Crew.club_name : "(vide)"}
+        {entry ? entry.crew?.club_name : "(vide)"}
       </span>
     </div>
   );

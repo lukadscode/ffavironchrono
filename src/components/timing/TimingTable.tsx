@@ -52,7 +52,7 @@ export default function TimingTable({
                 Couloir {rc.lane}
                 <br />
                 <span className="text-xs text-muted-foreground">
-                  {rc.Crew.club_name}
+                  {rc.Crew?.club_name}
                 </span>
               </th>
             ))}
@@ -77,8 +77,8 @@ export default function TimingTable({
                 </td>
 
                 {race.RaceCrews.map((rc) => {
-                  const isChecked = assigned.some((a) => a.crew_id === rc.Crew.id);
-                  const assignmentId = assigned.find((a) => a.crew_id === rc.Crew.id)?.id;
+                  const isChecked = assigned.some((a) => a.crew_id === rc.Crew?.id);
+                  const assignmentId = assigned.find((a) => a.crew_id === rc.Crew?.id)?.id;
 
                   return (
                     <td key={rc.id} className="p-2 text-center">
@@ -90,12 +90,12 @@ export default function TimingTable({
                             if (checked) {
                               const res = await api.post("/timing-assignments", {
                                 timing_id: timing.id,
-                                crew_id: rc.Crew.id,
+                                crew_id: rc.Crew?.id,
                               });
 
                               const newAssignments = [
                                 ...(assignments[timing.id] || []),
-                                { id: res.data.data.id, crew_id: rc.Crew.id },
+                                { id: res.data.data.id, crew_id: rc.Crew?.id },
                               ];
 
                               setAssignments((prev) => ({
@@ -116,14 +116,14 @@ export default function TimingTable({
                               getSocket().emit("assignTiming", {
                                 race_id: selectedRaceId,
                                 timing_id: timing.id,
-                                crew_id: rc.Crew.id,
+                                crew_id: rc.Crew?.id,
                               });
                             } else {
                               if (!assignmentId) return;
 
                               await api.delete(`/timing-assignments/${assignmentId}`);
 
-                              const remaining = assigned.filter((a) => a.crew_id !== rc.Crew.id);
+                              const remaining = assigned.filter((a) => a.crew_id !== rc.Crew?.id);
 
                               setAssignments((prev) => ({
                                 ...prev,
@@ -162,9 +162,9 @@ export default function TimingTable({
                           race.RaceCrews.map(async (rc) => {
                             const result = await api.post("/timing-assignments", {
                               timing_id: timing.id,
-                              crew_id: rc.Crew.id,
+                              crew_id: rc.Crew?.id,
                             });
-                            return { id: result.data.data.id, crew_id: rc.Crew.id };
+                            return { id: result.data.data.id, crew_id: rc.Crew?.id };
                           })
                         );
 
