@@ -102,7 +102,7 @@ export default function ParticipantDetailsPage() {
         <div className="space-y-4">
           {participant.CrewParticipants.map((cp: any) => {
             const crew = cp.Crew;
-            const category = crew?.Category;
+            const category = crew?.category;
             return (
               <Card
                 key={cp.id}
