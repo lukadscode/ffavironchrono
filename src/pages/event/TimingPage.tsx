@@ -30,6 +30,14 @@ type Race = {
   }[];
 };
 
+type TimingPoint = {
+  id: string;
+  label: string;
+  order_index: number;
+  distance_m: number;
+  event_id: string;
+};
+
 type Timing = {
   id: string;
   timestamp: string;
@@ -55,6 +63,8 @@ export default function TimingPage() {
   const [liveTime, setLiveTime] = useState<string>("");
   const [debugMode, setDebugMode] = useState(false);
   const [viewerCount, setViewerCount] = useState(0);
+  const [timingPoints, setTimingPoints] = useState<TimingPoint[]>([]);
+  const [currentTimingPoint, setCurrentTimingPoint] = useState<TimingPoint | null>(null);
 
   const socketRef = useRef<any>(null);
 
@@ -134,6 +144,7 @@ export default function TimingPage() {
   useEffect(() => {
     fetchRaces();
     syncServerTime();
+    fetchTimingPoints();
   }, []);
 
   useEffect(() => {
@@ -143,6 +154,24 @@ export default function TimingPage() {
     }, 50);
     return () => clearInterval(interval);
   }, [serverTimeOffset]);
+
+  const fetchTimingPoints = async () => {
+    try {
+      const res = await api.get(`/timing-points/event/${eventId}`);
+      const sorted = res.data.data.sort(
+        (a: TimingPoint, b: TimingPoint) => a.order_index - b.order_index
+      );
+      setTimingPoints(sorted);
+      const current = sorted.find((tp: TimingPoint) => tp.id === timingPointId);
+      setCurrentTimingPoint(current || null);
+    } catch {
+      toast({
+        title: "Erreur",
+        description: "Impossible de charger les points de chronométrage",
+        variant: "destructive",
+      });
+    }
+  };
 
   const fetchRaces = async () => {
     try {
@@ -278,7 +307,24 @@ export default function TimingPage() {
       <Card className="shadow-md border">
         <CardHeader>
           <CardTitle className="flex items-center gap-2 text-lg md:text-xl">
-            🎯 Chronométrage – Point {timingPointId}
+            🎯 Chronométrage {currentTimingPoint && (
+              <>
+                – <span className="text-blue-600">{currentTimingPoint.label}</span>
+                <span className="text-sm font-normal text-muted-foreground">
+                  ({currentTimingPoint.distance_m}m)
+                </span>
+                {currentTimingPoint.order_index === 1 && (
+                  <span className="ml-2 px-2 py-1 bg-green-100 text-green-800 text-xs font-semibold rounded">
+                    DÉPART
+                  </span>
+                )}
+                {timingPoints.length > 0 && currentTimingPoint.order_index === timingPoints.length && (
+                  <span className="ml-2 px-2 py-1 bg-red-100 text-red-800 text-xs font-semibold rounded">
+                    ARRIVÉE
+                  </span>
+                )}
+              </>
+            )}
             <span className="ml-auto text-sm font-mono text-muted-foreground">
               🧍 {viewerCount} poste{viewerCount > 1 ? "s" : ""}
             </span>
@@ -324,6 +370,9 @@ export default function TimingPage() {
           selectedRaceId={selectedRaceId}
           timingPointId={timingPointId}
           crewIdToRaceName={crewIdToRaceName}
+          currentTimingPoint={currentTimingPoint}
+          timingPoints={timingPoints}
+          eventId={eventId!}
         />
       )}
 

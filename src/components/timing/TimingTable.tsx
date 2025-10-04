@@ -1,9 +1,18 @@
+import React from "react";
 import { Button } from "@/components/ui/button";
 import { EyeOff } from "lucide-react";
 import dayjs from "dayjs";
 import api from "@/lib/axios";
 import { getSocket } from "@/lib/socket";
 import { Checkbox } from "@/components/ui/checkbox";
+
+type TimingPoint = {
+  id: string;
+  label: string;
+  order_index: number;
+  distance_m: number;
+  event_id: string;
+};
 
 type Props = {
   race: {
@@ -28,6 +37,9 @@ type Props = {
   selectedRaceId: string;
   timingPointId: string;
   crewIdToRaceName: Record<string, string>;
+  currentTimingPoint: TimingPoint | null;
+  timingPoints: TimingPoint[];
+  eventId: string;
 };
 
 export default function TimingTable({
@@ -40,13 +52,81 @@ export default function TimingTable({
   selectedRaceId,
   timingPointId,
   crewIdToRaceName,
+  currentTimingPoint,
+  timingPoints,
+  eventId,
 }: Props) {
+  const [startTimings, setStartTimings] = React.useState<Record<string, Record<string, string>>>({});
+
+  const isStartPoint = currentTimingPoint?.order_index === 1;
+  const isFinishPoint = timingPoints.length > 0 && currentTimingPoint?.order_index === timingPoints.length;
+  const startPoint = timingPoints.find(tp => tp.order_index === 1);
+
+  React.useEffect(() => {
+    if (isStartPoint || !startPoint) return;
+
+    const fetchStartTimings = async () => {
+      try {
+        const res = await api.get(`/timings/event/${eventId}`);
+        const allTimings = res.data.data;
+
+        const startTimingsMap: Record<string, Record<string, string>> = {};
+
+        for (const crewId of crewIdsInSelectedRace) {
+          const assignmentsRes = await api.get(`/timing-assignments/crew/${crewId}`);
+          const crewAssignments = assignmentsRes.data.data;
+
+          const startAssignment = crewAssignments.find(
+            (a: any) => allTimings.some(
+              (t: any) => t.id === a.timing_id && t.timing_point_id === startPoint.id
+            )
+          );
+
+          if (startAssignment) {
+            const startTiming = allTimings.find((t: any) => t.id === startAssignment.timing_id);
+            if (startTiming) {
+              if (!startTimingsMap[race.id]) startTimingsMap[race.id] = {};
+              startTimingsMap[race.id][crewId] = startTiming.timestamp;
+            }
+          }
+        }
+
+        setStartTimings(startTimingsMap);
+      } catch (err) {
+        console.error('Erreur chargement timings de départ:', err);
+      }
+    };
+
+    fetchStartTimings();
+  }, [race.id, crewIdsInSelectedRace, isStartPoint, startPoint, eventId]);
+
+  const calculateSplitTime = (currentTimestamp: string, crewId: string): string | null => {
+    if (isStartPoint) return null;
+
+    const startTimestamp = startTimings[race.id]?.[crewId];
+    if (!startTimestamp) return null;
+
+    const start = new Date(startTimestamp).getTime();
+    const current = new Date(currentTimestamp).getTime();
+    const diffMs = current - start;
+
+    if (diffMs < 0) return null;
+
+    const totalSeconds = Math.floor(diffMs / 1000);
+    const minutes = Math.floor(totalSeconds / 60);
+    const seconds = totalSeconds % 60;
+    const ms = diffMs % 1000;
+
+    return `${minutes}:${seconds.toString().padStart(2, '0')}.${ms.toString().padStart(3, '0')}`;
+  };
   return (
     <div className="overflow-x-auto border rounded-xl shadow-sm">
       <table className="min-w-full text-sm text-left table-fixed">
         <thead className="bg-muted text-muted-foreground">
           <tr>
-            <th className="p-3 w-40 font-semibold">Heure</th>
+            <th className="p-3 w-40 font-semibold">
+              {isStartPoint ? 'Heure de départ' : isFinishPoint ? 'Temps final' : `Temps intermédiaire (${currentTimingPoint?.distance_m}m)`}
+            </th>
             {race.RaceCrews.map((rc) => (
               <th key={rc.id} className="p-3 text-center font-semibold">
                 Couloir {rc.lane}
@@ -73,7 +153,20 @@ export default function TimingTable({
                 className={`border-t hover:bg-accent transition ${isLocked ? "bg-green-50" : ""}`}
               >
                 <td className="p-2 font-mono whitespace-nowrap">
-                  {dayjs(timing.timestamp).format("HH:mm:ss.SSS")}
+                  <div className="flex flex-col gap-1">
+                    <span className="text-xs text-muted-foreground">
+                      {dayjs(timing.timestamp).format("HH:mm:ss.SSS")}
+                    </span>
+                    {!isStartPoint && assigned.length > 0 && assigned.map((a) => {
+                      const splitTime = calculateSplitTime(timing.timestamp, a.crew_id);
+                      if (!splitTime) return null;
+                      return (
+                        <span key={a.crew_id} className={`text-sm font-bold ${isFinishPoint ? 'text-red-600' : 'text-blue-600'}`}>
+                          {splitTime}
+                        </span>
+                      );
+                    })}
+                  </div>
                 </td>
 
                 {race.RaceCrews.map((rc) => {
