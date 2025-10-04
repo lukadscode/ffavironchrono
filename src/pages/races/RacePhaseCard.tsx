@@ -99,7 +99,7 @@ export default function RacePhaseCard({
           <Button
             size="sm"
             variant="outline"
-            onClick={() => navigate(`/dashboard/events/${eventId}/races/phases/${phase.id}`)}
+            onClick={() => navigate(`/event/${eventId}/racePhases/${phase.id}`)}
           >
             <Settings className="w-4 h-4" />
           </Button>
