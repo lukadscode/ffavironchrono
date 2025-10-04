@@ -87,10 +87,12 @@ export default function TimingPage() {
         if (timing_point_id === timingPointId) {
           setViewerCount((prev) => {
             if (count > prev) {
-              toast({
-                title: "Nouvelle connexion",
-                description: `Un autre poste s'est connecté à ce point de chronométrage`,
-              });
+              setTimeout(() => {
+                toast({
+                  title: "Nouvelle connexion",
+                  description: `Un autre poste s'est connecté à ce point de chronométrage`,
+                });
+              }, 0);
             }
             return count;
           });
@@ -264,14 +266,16 @@ export default function TimingPage() {
   const crewIdToRaceName = useMemo(() => {
     const map: Record<string, string> = {};
     races.forEach((race) => {
-      race.RaceCrews.forEach((rc) => {
-        if (rc.Crew?.id) map[rc.Crew.id] = race.name;
-      });
+      if (race.RaceCrews) {
+        race.RaceCrews.forEach((rc) => {
+          if (rc.Crew?.id) map[rc.Crew.id] = race.name;
+        });
+      }
     });
     Object.values(assignments).flat().forEach(({ crew_id }) => {
       if (!map[crew_id]) {
         for (const race of races) {
-          if (race.RaceCrews.some((rc) => rc.Crew?.id === crew_id)) {
+          if (race.RaceCrews?.some((rc) => rc.Crew?.id === crew_id)) {
             map[crew_id] = race.name;
             break;
           }
@@ -286,7 +290,7 @@ export default function TimingPage() {
   }, [races, selectedRaceId]);
 
   const crewIdsInSelectedRace = useMemo(() => {
-    return selectedRace?.RaceCrews.map((rc) => rc.Crew?.id).filter(Boolean) ?? [];
+    return selectedRace?.RaceCrews?.map((rc) => rc.Crew?.id).filter(Boolean) ?? [];
   }, [selectedRace]);
 
   const visibleTimings = useMemo(() => {
