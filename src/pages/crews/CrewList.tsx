@@ -17,8 +17,8 @@ export default function CrewList() {
         const res = await api.get(`/crews/event/${eventId}`);
         console.log("✅ Réponse API crews:", res.data);
         const sorted = res.data.data.sort((a: any, b: any) => {
-          const codeA = a.Category?.code || a.category_label || "";
-          const codeB = b.Category?.code || b.category_label || "";
+          const codeA = a.category?.code || "";
+          const codeB = b.category?.code || "";
           return codeA.localeCompare(codeB);
         });
         setCrews(sorted);
@@ -61,7 +61,7 @@ export default function CrewList() {
                       to={`${crew.id}`}
                       className="text-primary underline underline-offset-2"
                     >
-                      {crew.Category?.code || crew.category_label || "N/A"}
+                      {crew.category?.code || "N/A"}
                     </Link>
                   </TableCell>
                   <TableCell>{crew.club_name}</TableCell>
