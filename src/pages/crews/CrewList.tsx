@@ -15,12 +15,15 @@ export default function CrewList() {
     async function fetchCrews() {
       try {
         const res = await api.get(`/crews/event/${eventId}`);
+        console.log("✅ Réponse API crews:", res.data);
         const sorted = res.data.data.sort((a: any, b: any) =>
           a.Category.code.localeCompare(b.Category.code)
         );
         setCrews(sorted);
-      } catch (err) {
-        console.error("Erreur chargement crews:", err);
+      } catch (err: any) {
+        console.error("❌ Erreur chargement crews:", err);
+        console.error("❌ Détails:", err.response?.data);
+        console.error("❌ Status:", err.response?.status);
       } finally {
         setLoading(false);
       }

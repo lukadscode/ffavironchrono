@@ -46,9 +46,12 @@ export default function ParticipantsPage() {
     async function fetchParticipants() {
       try {
         const res = await api.get(`/participants/event/${eventId}`);
+        console.log("✅ Réponse API participants:", res.data);
         setParticipants(res.data.data ?? []);
-      } catch (err) {
-        console.error("Erreur chargement participants:", err);
+      } catch (err: any) {
+        console.error("❌ Erreur chargement participants:", err);
+        console.error("❌ Détails:", err.response?.data);
+        console.error("❌ Status:", err.response?.status);
       } finally {
         setLoading(false);
       }
