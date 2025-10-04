@@ -148,7 +148,7 @@ export default function RaceListItem({ race, onDelete, refresh, enableCrewDrag =
           )}
         >
           <span className="font-semibold">L{laneNum}</span>
-          <span className="truncate max-w-[160px] text-right">{entry?.Crew.club_name || "(vide)"}</span>
+          <span className="truncate max-w-[160px] text-right">{entry?.Crew?.club_name || "(vide)"}</span>
         </div>
       );
     })}
