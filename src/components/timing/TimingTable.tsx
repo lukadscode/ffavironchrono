@@ -127,7 +127,7 @@ export default function TimingTable({
             <th className="p-3 w-40 font-semibold">
               {isStartPoint ? 'Heure de départ' : isFinishPoint ? 'Temps final' : `Temps intermédiaire (${currentTimingPoint?.distance_m}m)`}
             </th>
-            {race.RaceCrews.map((rc) => (
+            {(race.RaceCrews || []).map((rc) => (
               <th key={rc.id} className="p-3 text-center font-semibold">
                 Couloir {rc.lane}
                 <br />
@@ -169,7 +169,7 @@ export default function TimingTable({
                   </div>
                 </td>
 
-                {race.RaceCrews.map((rc) => {
+                {(race.RaceCrews || []).map((rc) => {
                   const isChecked = assigned.some((a) => a.crew_id === rc.Crew?.id);
                   const assignmentId = assigned.find((a) => a.crew_id === rc.Crew?.id)?.id;
 
@@ -252,7 +252,7 @@ export default function TimingTable({
                     onClick={async () => {
                       try {
                         const res = await Promise.all(
-                          race.RaceCrews.map(async (rc) => {
+                          (race.RaceCrews || []).map(async (rc) => {
                             const result = await api.post("/timing-assignments", {
                               timing_id: timing.id,
                               crew_id: rc.Crew?.id,
