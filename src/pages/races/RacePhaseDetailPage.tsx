@@ -436,7 +436,11 @@ export default function RacePhaseDetailPage() {
         {/* Colonne gauche */}
         <div className="w-1/3 space-y-4">
           {previousPhase && (
-            <PhaseResultsPanel phaseId={previousPhase.id} phaseName={previousPhase.name} />
+            <PhaseResultsPanel
+              phaseId={previousPhase.id}
+              phaseName={previousPhase.name}
+              assignedCrewIds={getAllCrewIdsInRaces()}
+            />
           )}
           <Card>
             <CardHeader className="bg-red-50">

@@ -10,9 +10,10 @@ import { Button } from "@/components/ui/button";
 interface PhaseResultsPanelProps {
   phaseId: string;
   phaseName?: string;
+  assignedCrewIds?: string[];
 }
 
-export default function PhaseResultsPanel({ phaseId, phaseName }: PhaseResultsPanelProps) {
+export default function PhaseResultsPanel({ phaseId, phaseName, assignedCrewIds = [] }: PhaseResultsPanelProps) {
   const [results, setResults] = useState<Record<string, PhaseResult[]>>({});
   const [allResults, setAllResults] = useState<PhaseResult[]>([]);
   const [loading, setLoading] = useState(true);
@@ -116,6 +117,18 @@ export default function PhaseResultsPanel({ phaseId, phaseName }: PhaseResultsPa
             Par course
           </Button>
         </div>
+        {assignedCrewIds.length > 0 && (
+          <div className="flex items-center gap-3 text-xs text-gray-600">
+            <div className="flex items-center gap-1">
+              <div className="w-4 h-4 bg-green-50 border border-green-300 rounded"></div>
+              <span>Déjà affecté</span>
+            </div>
+            <div className="flex items-center gap-1">
+              <div className="w-4 h-4 bg-white border border-gray-300 rounded"></div>
+              <span>Non affecté</span>
+            </div>
+          </div>
+        )}
       </CardHeader>
       <CardContent className="space-y-6 max-h-[80vh] overflow-y-auto p-4">
         {viewMode === 'category' ? (
@@ -126,7 +139,12 @@ export default function PhaseResultsPanel({ phaseId, phaseName }: PhaseResultsPa
               </h3>
               <div className="space-y-1">
                 {results[category].map((result) => (
-                  <DraggableResult key={result.crew_id} result={result} rankType="scratch" />
+                  <DraggableResult
+                    key={result.crew_id}
+                    result={result}
+                    rankType="scratch"
+                    isAssigned={assignedCrewIds.includes(result.crew_id)}
+                  />
                 ))}
               </div>
             </div>
@@ -141,7 +159,12 @@ export default function PhaseResultsPanel({ phaseId, phaseName }: PhaseResultsPa
                 {resultsByRace[raceName]
                   .sort((a, b) => (a.rank_in_race || 999) - (b.rank_in_race || 999))
                   .map((result) => (
-                    <DraggableResult key={`${result.race.id}-${result.crew_id}`} result={result} rankType="race" />
+                    <DraggableResult
+                      key={`${result.race.id}-${result.crew_id}`}
+                      result={result}
+                      rankType="race"
+                      isAssigned={assignedCrewIds.includes(result.crew_id)}
+                    />
                   ))}
               </div>
             </div>
@@ -152,7 +175,7 @@ export default function PhaseResultsPanel({ phaseId, phaseName }: PhaseResultsPa
   );
 }
 
-function DraggableResult({ result, rankType }: { result: PhaseResult; rankType: 'scratch' | 'race' }) {
+function DraggableResult({ result, rankType, isAssigned }: { result: PhaseResult; rankType: 'scratch' | 'race'; isAssigned?: boolean }) {
   const { setNodeRef, attributes, listeners, transform, isDragging } = useDraggable({
     id: `result-crew-${result.crew_id}`,
     data: { type: "crew", crewId: result.crew_id },
@@ -176,7 +199,9 @@ function DraggableResult({ result, rankType }: { result: PhaseResult; rankType: 
         "flex items-center justify-between px-3 py-2 text-xs border rounded cursor-move select-none transition-colors",
         isDragging ? "opacity-60 ring-2 ring-blue-400" : "",
         result.has_timing
-          ? "bg-white border-gray-300 hover:border-blue-400"
+          ? isAssigned
+            ? "bg-green-50 border-green-300 hover:border-green-400"
+            : "bg-white border-gray-300 hover:border-blue-400"
           : "bg-gray-50 border-gray-200 text-gray-500"
       )}
     >
