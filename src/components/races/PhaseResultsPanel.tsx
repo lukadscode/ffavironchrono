@@ -20,8 +20,6 @@ export default function PhaseResultsPanel({ phaseId, phaseName, assignedCrewIds 
   const [error, setError] = useState<string | null>(null);
   const [viewMode, setViewMode] = useState<'category' | 'race'>('category');
 
-  console.log('[PhaseResultsPanel] assignedCrewIds:', assignedCrewIds);
-
   useEffect(() => {
     const fetchResults = async () => {
       try {
@@ -140,14 +138,17 @@ export default function PhaseResultsPanel({ phaseId, phaseName, assignedCrewIds 
                 {category}
               </h3>
               <div className="space-y-1">
-                {results[category].map((result) => (
-                  <DraggableResult
-                    key={result.crew_id}
-                    result={result}
-                    rankType="scratch"
-                    isAssigned={assignedCrewIds.includes(result.crew_id)}
-                  />
-                ))}
+                {results[category].map((result) => {
+                  const isAssigned = assignedCrewIds.includes(result.crew.id);
+                  return (
+                    <DraggableResult
+                      key={result.crew_id}
+                      result={result}
+                      rankType="scratch"
+                      isAssigned={isAssigned}
+                    />
+                  );
+                })}
               </div>
             </div>
           ))
@@ -165,7 +166,7 @@ export default function PhaseResultsPanel({ phaseId, phaseName, assignedCrewIds 
                       key={`${result.race.id}-${result.crew_id}`}
                       result={result}
                       rankType="race"
-                      isAssigned={assignedCrewIds.includes(result.crew_id)}
+                      isAssigned={assignedCrewIds.includes(result.crew.id)}
                     />
                   ))}
               </div>
@@ -180,10 +181,8 @@ export default function PhaseResultsPanel({ phaseId, phaseName, assignedCrewIds 
 function DraggableResult({ result, rankType, isAssigned }: { result: PhaseResult; rankType: 'scratch' | 'race'; isAssigned?: boolean }) {
   const { setNodeRef, attributes, listeners, transform, isDragging } = useDraggable({
     id: `result-crew-${result.crew_id}`,
-    data: { type: "crew", crewId: result.crew_id },
+    data: { type: "crew", crewId: result.crew.id },
   });
-
-  console.log('[DraggableResult]', result.crew.club_name, 'crew_id:', result.crew_id, 'isAssigned:', isAssigned);
 
   const style = { transform: CSS.Translate.toString(transform) } as React.CSSProperties;
 

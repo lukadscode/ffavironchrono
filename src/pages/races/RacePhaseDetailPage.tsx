@@ -198,8 +198,7 @@ export default function RacePhaseDetailPage() {
   };
 
   const getAllCrewIdsInRaces = () => {
-    const ids = races.flatMap((race) => (race.crews ?? []).map((c) => c.crew?.id)).filter(Boolean);
-    console.log('[getAllCrewIdsInRaces] ids:', ids);
+    const ids = races.flatMap((race) => (race.crews ?? []).map((c) => c.crew?.id)).filter((id): id is string => Boolean(id));
     return ids;
   };
 
@@ -427,10 +426,11 @@ export default function RacePhaseDetailPage() {
     const m = Math.max(1, minutes || 1);
     setGapsByRaceId(prev => ({ ...prev, [raceId]: m }));
     const idx = races.findIndex(r => r.id === raceId);
-    if (idx < 0) return;
+    if (idx < 0 || idx >= races.length - 1) return;
     const current = races[idx];
     const currentDate = new Date(current.start_time || parseLocalInput(firstStartLocal));
-    const next = recomputeTimesFrom(races, idx, currentDate);
+    const nextStartDate = addMinutes(currentDate, m);
+    const next = recomputeTimesFrom(races, idx + 1, nextStartDate);
     setRaces(next);
   };
 
