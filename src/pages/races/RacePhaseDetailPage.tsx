@@ -472,7 +472,7 @@ export default function RacePhaseDetailPage() {
                     try {
                       setExporting((s) => ({ ...s, start: true }));
                       await downloadPdfSafely({
-                        url: `exports/startlist/phase/${phaseId}`,
+                        url: `/exports/startlist/phase/${phaseId}`,
                         filename: `startlist_${phaseId}.pdf`,
                         onError: (title, description) => toast({ title, description, variant: "destructive" }),
                       });
@@ -491,7 +491,7 @@ export default function RacePhaseDetailPage() {
                     try {
                       setExporting((s) => ({ ...s, weigh: true }));
                       await downloadPdfSafely({
-                        url: `exports/weighin/phase/${phaseId}`,
+                        url: `/exports/weighin/phase/${phaseId}`,
                         filename: `pesee_${phaseId}.pdf`,
                         onError: (title, description) => toast({ title, description, variant: "destructive" }),
                       });
