@@ -19,7 +19,7 @@ import {
 
 type Crew = {
   club_name: string;
-  Category: {
+  category: {
     code: string;
   };
 };
@@ -60,8 +60,8 @@ export default function ParticipantsPage() {
   }, [eventId]);
 
   const sortedParticipants = [...participants].sort((a, b) => {
-    const codeA = a.CrewParticipants[0]?.Crew?.Category?.code ?? "";
-    const codeB = b.CrewParticipants[0]?.Crew?.Category?.code ?? "";
+    const codeA = a.CrewParticipants[0]?.Crew?.category?.code ?? "";
+    const codeB = b.CrewParticipants[0]?.Crew?.category?.code ?? "";
     return codeA.localeCompare(codeB);
   });
 
@@ -89,7 +89,7 @@ export default function ParticipantsPage() {
             <TableBody>
               {sortedParticipants.map((p) => {
                 const crew = p.CrewParticipants[0]?.Crew;
-                const category = crew?.Category?.code ?? "—";
+                const category = crew?.category?.code ?? "—";
                 const crewName = crew?.club_name ?? "—";
                 return (
                   <TableRow

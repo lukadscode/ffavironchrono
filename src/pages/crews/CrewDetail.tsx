@@ -144,7 +144,7 @@ export default function CrewDetail() {
 
   return (
     <div className="space-y-6">
-      <h2 className="text-2xl font-bold">{crew.Category.code} - {crew.club_name}</h2>
+      <h2 className="text-2xl font-bold">{crew.category?.code || 'N/A'} - {crew.club_name}</h2>
 
       <div className="grid md:grid-cols-2 gap-4">
         <div>
@@ -157,7 +157,7 @@ export default function CrewDetail() {
         </div>
         <div>
           <Label>Catégorie</Label>
-          <Input value={crew.Category.label} readOnly />
+          <Input value={crew.category?.label || 'N/A'} readOnly />
         </div>
       </div>
 
