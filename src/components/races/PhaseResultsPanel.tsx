@@ -20,6 +20,8 @@ export default function PhaseResultsPanel({ phaseId, phaseName, assignedCrewIds 
   const [error, setError] = useState<string | null>(null);
   const [viewMode, setViewMode] = useState<'category' | 'race'>('category');
 
+  console.log('[PhaseResultsPanel] assignedCrewIds:', assignedCrewIds);
+
   useEffect(() => {
     const fetchResults = async () => {
       try {
@@ -180,6 +182,8 @@ function DraggableResult({ result, rankType, isAssigned }: { result: PhaseResult
     id: `result-crew-${result.crew_id}`,
     data: { type: "crew", crewId: result.crew_id },
   });
+
+  console.log('[DraggableResult]', result.crew.club_name, 'crew_id:', result.crew_id, 'isAssigned:', isAssigned);
 
   const style = { transform: CSS.Translate.toString(transform) } as React.CSSProperties;
 

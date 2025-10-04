@@ -197,7 +197,11 @@ export default function RacePhaseDetailPage() {
     }
   };
 
-  const getAllCrewIdsInRaces = () => races.flatMap((race) => (race.crews ?? []).map((c) => c.crew?.id)).filter(Boolean);
+  const getAllCrewIdsInRaces = () => {
+    const ids = races.flatMap((race) => (race.crews ?? []).map((c) => c.crew?.id)).filter(Boolean);
+    console.log('[getAllCrewIdsInRaces] ids:', ids);
+    return ids;
+  };
 
   const unassignedCrews = useMemo(() => crews.filter((c) => !getAllCrewIdsInRaces().includes(c.id)), [crews, races]);
 
