@@ -8,6 +8,8 @@ import { DndContext } from "@dnd-kit/core";
 import type { DragEndEvent } from "@dnd-kit/core";
 import { SortableContext, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import api from "@/lib/axios";
+import { useNavigate } from "react-router-dom";
+import { Settings } from "lucide-react";
 
 // helper téléchargement
 async function downloadPdf(url: string, filename: string) {
@@ -42,6 +44,7 @@ export default function RacePhaseCard({
 }: RacePhaseCardProps) {
   const [races, setRaces] = useState<any[]>([]);
   const { toast } = useToast();
+  const navigate = useNavigate();
 
   const fetchRaces = async () => {
     try {
@@ -92,11 +95,20 @@ export default function RacePhaseCard({
     <Card className="min-w-[320px] w-full  rounded-xl shadow-sm flex flex-col">
       <CardHeader className=" border-b px-4 py-2 flex items-center justify-between">
         <CardTitle className="text-sm font-semibold text-gray-700">{phase.name}</CardTitle>
-        <RaceFormDialog
-          phaseId={phase.id}
-          eventId={eventId}
-          onSuccess={handleCreateSuccess}
-        />
+        <div className="flex items-center gap-2">
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => navigate(`/dashboard/events/${eventId}/races/phases/${phase.id}`)}
+          >
+            <Settings className="w-4 h-4" />
+          </Button>
+          <RaceFormDialog
+            phaseId={phase.id}
+            eventId={eventId}
+            onSuccess={handleCreateSuccess}
+          />
+        </div>
       </CardHeader>
 
       <CardContent className="px-4 py-2 overflow-y-auto max-h-[75vh] space-y-4">
