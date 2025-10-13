@@ -166,6 +166,8 @@ export default function Live() {
                 final_time: null,
               }));
 
+            console.log(`🚣 Course ${race.name} - ${crews.length} équipages:`, crews);
+
             try {
               const assignmentsRes = await api.get(`/timing-assignments/race/${race.id}`);
               const assignments = assignmentsRes.data.data || [];
@@ -184,6 +186,9 @@ export default function Live() {
 
               const lastPointId = sortedPoints[sortedPoints.length - 1]?.id;
 
+              const raceStartTime = new Date(race.start_time).getTime();
+              console.log(`🏁 Course ${race.name} - start_time:`, race.start_time, 'timestamp:', raceStartTime);
+
               for (const assignment of assignments) {
                 if (!assignment.timing?.time_ms) continue;
 
@@ -193,7 +198,9 @@ export default function Live() {
                 const crewIndex = crews.findIndex((c: any) => c.crew_id === assignment.crew_id);
                 if (crewIndex === -1) continue;
 
-                const time_ms = assignment.timing.time_ms;
+                const absoluteTime = parseInt(assignment.timing.time_ms);
+                const time_ms = absoluteTime - raceStartTime;
+                console.log(`⏱️ Crew ${assignment.crew_id} - Point ${timingPoint.label}: absolu=${absoluteTime}, relatif=${time_ms}ms`);
 
                 if (timingPoint.id === lastPointId) {
                   crews[crewIndex].final_time = time_ms.toString();
@@ -241,7 +248,7 @@ export default function Live() {
 
   const formatTime = (ms: string | number) => {
     const totalMs = Math.abs(parseInt(ms.toString(), 10));
-    if (isNaN(totalMs)) return "N/A";
+    if (isNaN(totalMs) || totalMs < 0) return "N/A";
 
     const totalSeconds = Math.floor(totalMs / 1000);
     const minutes = Math.floor(totalSeconds / 60);
@@ -311,6 +318,13 @@ export default function Live() {
                   </tr>
                 </thead>
                 <tbody>
+                  {race.crews.length === 0 && (
+                    <tr>
+                      <td colSpan={timingPoints.length + 2} className="py-6 text-center text-muted-foreground">
+                        Aucun équipage pour cette course
+                      </td>
+                    </tr>
+                  )}
                   {race.crews.map((crew) => {
                     const isFinished = crew.final_time !== null;
                     return (
