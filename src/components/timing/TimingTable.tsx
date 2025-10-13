@@ -112,24 +112,22 @@ export default function TimingTable({
         return;
       }
 
-      const timingsRes = await api.get(`/timings/timing-point/${finishPointId}`);
-      const finishTimings = timingsRes.data.data || [];
-
-      console.log("⏱️ Timings d'arrivée:", finishTimings);
-
       const assignmentsRes = await api.get(`/timing-assignments/race/${selectedRaceId}`);
       const allAssignments = assignmentsRes.data.data || [];
 
       console.log("🔗 Assignments de la course:", allAssignments);
 
+      const finishTimings = allAssignments.filter((a: any) => {
+        return visibleTimings.some(t => t.id === a.timing_id);
+      });
+
+      console.log("⏱️ Timings d'arrivée assignés:", finishTimings);
+
       const finishedCrews = new Set();
 
-      for (const timing of finishTimings) {
-        const assignment = allAssignments.find((a: any) => a.timing_id === timing.id);
-        if (assignment) {
-          console.log(`✅ Timing ${timing.id} assigné à crew ${assignment.crew_id}`);
-          finishedCrews.add(assignment.crew_id);
-        }
+      for (const assignment of finishTimings) {
+        console.log(`✅ Crew ${assignment.crew_id} a franchi l'arrivée`);
+        finishedCrews.add(assignment.crew_id);
       }
 
       console.log(`🏁 Crews finis: ${finishedCrews.size}/${totalCrews}`, Array.from(finishedCrews));

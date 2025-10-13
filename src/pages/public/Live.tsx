@@ -183,8 +183,8 @@ export default function Live() {
     if (eventId) fetchData();
   }, [eventId]);
 
-  const formatTime = (ms: string) => {
-    const totalMs = parseInt(ms, 10);
+  const formatTime = (ms: string | number) => {
+    const totalMs = Math.abs(parseInt(ms.toString(), 10));
     if (isNaN(totalMs)) return "N/A";
 
     const totalSeconds = Math.floor(totalMs / 1000);
