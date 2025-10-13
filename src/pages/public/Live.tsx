@@ -147,7 +147,7 @@ export default function Live() {
         const sortedPoints = points.sort((a: TimingPoint, b: TimingPoint) => a.order_index - b.order_index);
         setTimingPoints(sortedPoints);
 
-        const sorted = allRaces.sort((a: any, b: any) => a.race_number - b.race_number);
+        const sorted = allRaces.sort((a: any, b: any) => (a.race_number || 0) - (b.race_number || 0));
         const upcoming = sorted.slice(0, 6);
 
         const enriched = await Promise.all(
