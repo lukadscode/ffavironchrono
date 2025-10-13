@@ -43,6 +43,7 @@ type Timing = {
   timestamp: string;
   manual_entry: boolean;
   status: string;
+  timing_point_id: string;
 };
 
 type Assignment = {
@@ -114,6 +115,7 @@ export default function TimingPage() {
     socket.emit("joinRoom", { event_id: eventId, race_id: selectedRaceId });
 
     socket.on("timingImpulse", (data: Timing) => {
+      if (data.timing_point_id !== timingPointId) return;
       setTimings((prev) => {
         const exists = prev.some((t) => t.id === data.id);
         if (exists) return prev;
@@ -141,7 +143,7 @@ export default function TimingPage() {
     return () => {
       socket.emit("leaveRoom", { event_id: eventId, race_id: selectedRaceId });
     };
-  }, [selectedRaceId]);
+  }, [selectedRaceId, timingPointId]);
 
   useEffect(() => {
     fetchRaces();
@@ -225,7 +227,8 @@ export default function TimingPage() {
   const fetchTimings = async () => {
     try {
       const res = await api.get(`/timings/event/${eventId}`);
-      setTimings(res.data.data);
+      const filtered = res.data.data.filter((t: any) => t.timing_point_id === timingPointId);
+      setTimings(filtered);
     } catch {
       toast({
         title: "Erreur",

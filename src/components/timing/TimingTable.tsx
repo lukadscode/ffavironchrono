@@ -127,15 +127,17 @@ export default function TimingTable({
             <th className="p-3 w-40 font-semibold">
               {isStartPoint ? 'Heure de départ' : isFinishPoint ? 'Temps final' : `Temps intermédiaire (${currentTimingPoint?.distance_m}m)`}
             </th>
-            {(race.RaceCrews || []).map((rc) => (
-              <th key={rc.id} className="p-3 text-center font-semibold">
-                Couloir {rc.lane}
-                <br />
-                <span className="text-xs text-muted-foreground">
-                  {rc.Crew?.club_name}
-                </span>
-              </th>
-            ))}
+            {(race.RaceCrews || [])
+              .sort((a, b) => a.lane - b.lane)
+              .map((rc) => (
+                <th key={rc.id} className="p-3 text-center font-semibold">
+                  Couloir {rc.lane}
+                  <br />
+                  <span className="text-xs text-muted-foreground">
+                    {rc.Crew?.club_name}
+                  </span>
+                </th>
+              ))}
             <th className="p-3 text-center font-semibold w-32">Actions</th>
             <th className="p-3 text-center font-semibold w-40">Statut</th>
           </tr>
@@ -169,12 +171,14 @@ export default function TimingTable({
                   </div>
                 </td>
 
-                {(race.RaceCrews || []).map((rc) => {
-                  const isChecked = assigned.some((a) => a.crew_id === rc.Crew?.id);
-                  const assignmentId = assigned.find((a) => a.crew_id === rc.Crew?.id)?.id;
+                {(race.RaceCrews || [])
+                  .sort((a, b) => a.lane - b.lane)
+                  .map((rc) => {
+                    const isChecked = assigned.some((a) => a.crew_id === rc.Crew?.id);
+                    const assignmentId = assigned.find((a) => a.crew_id === rc.Crew?.id)?.id;
 
-                  return (
-                    <td key={rc.id} className="p-2 text-center">
+                    return (
+                      <td key={rc.id} className="p-2 text-center">
                       <Checkbox
                         checked={isChecked}
                         disabled={isLocked && !isChecked}
