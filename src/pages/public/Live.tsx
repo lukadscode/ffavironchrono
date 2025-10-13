@@ -167,24 +167,22 @@ export default function Live() {
               const assignmentsRes = await api.get(`/timing-assignments/race/${race.id}`);
               const assignments = assignmentsRes.data.data || [];
 
-              const timingsRes = await api.get(`/timings/event/${eventId}`);
-              const allTimings = timingsRes.data.data || [];
+              if (!assignments || assignments.length === 0) {
+                return;
+              }
 
               const lastPointId = sortedPoints[sortedPoints.length - 1]?.id;
 
               for (const assignment of assignments) {
-                const timing = allTimings.find((t: any) => t.id === assignment.timing_id);
-                if (!timing) continue;
+                if (!assignment.timing?.time_ms) continue;
 
-                const timingPoint = sortedPoints.find((p: TimingPoint) => p.id === timing.timing_point_id);
+                const timingPoint = sortedPoints.find((p: TimingPoint) => p.id === assignment.timing?.timing_point_id);
                 if (!timingPoint) continue;
 
                 const crewIndex = crews.findIndex((c: any) => c.crew_id === assignment.crew_id);
                 if (crewIndex === -1) continue;
 
-                const startTime = new Date(race.start_time).getTime();
-                const timingTime = new Date(timing.timestamp).getTime();
-                const time_ms = Math.abs(timingTime - startTime);
+                const time_ms = assignment.timing.time_ms;
 
                 if (timingPoint.id === lastPointId) {
                   crews[crewIndex].final_time = time_ms.toString();
