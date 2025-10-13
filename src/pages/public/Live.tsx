@@ -1,0 +1,281 @@
+import { useEffect, useState } from "react";
+import { useParams } from "react-router-dom";
+import api from "@/lib/axios";
+import { initSocket, getSocket } from "@/lib/socket";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import dayjs from "dayjs";
+
+type IntermediateTime = {
+  timing_point_id: string;
+  timing_point_label: string;
+  distance_m: number;
+  time_ms: string;
+  order_index: number;
+};
+
+type LiveCrew = {
+  crew_id: string;
+  lane: number;
+  club_name: string;
+  club_code: string;
+  intermediate_times: IntermediateTime[];
+  final_time: string | null;
+};
+
+type LiveRace = {
+  id: string;
+  name: string;
+  race_number: number;
+  start_time: string;
+  status: string;
+  crews: LiveCrew[];
+};
+
+export default function Live() {
+  const { eventId } = useParams();
+  const [races, setRaces] = useState<LiveRace[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    if (!eventId) return;
+
+    initSocket();
+    const socket = getSocket();
+
+    socket.emit("joinPublicEvent", { event_id: eventId });
+
+    socket.on("raceStatusUpdate", ({ race_id, status }: { race_id: string; status: string }) => {
+      setRaces((prev) =>
+        prev.map((race) => (race.id === race_id ? { ...race, status } : race))
+      );
+    });
+
+    socket.on(
+      "raceIntermediateUpdate",
+      ({
+        race_id,
+        crew_id,
+        timing_point_id,
+        timing_point_label,
+        distance_m,
+        time_ms,
+        order_index,
+      }: {
+        race_id: string;
+        crew_id: string;
+        timing_point_id: string;
+        timing_point_label: string;
+        distance_m: number;
+        time_ms: string;
+        order_index: number;
+      }) => {
+        setRaces((prev) =>
+          prev.map((race) => {
+            if (race.id !== race_id) return race;
+
+            return {
+              ...race,
+              crews: race.crews.map((crew) => {
+                if (crew.crew_id !== crew_id) return crew;
+
+                const existingTimes = crew.intermediate_times.filter(
+                  (t) => t.timing_point_id !== timing_point_id
+                );
+
+                return {
+                  ...crew,
+                  intermediate_times: [
+                    ...existingTimes,
+                    {
+                      timing_point_id,
+                      timing_point_label,
+                      distance_m,
+                      time_ms,
+                      order_index,
+                    },
+                  ].sort((a, b) => a.order_index - b.order_index),
+                };
+              }),
+            };
+          })
+        );
+      }
+    );
+
+    socket.on(
+      "raceFinalUpdate",
+      ({ race_id, crew_id, final_time }: { race_id: string; crew_id: string; final_time: string }) => {
+        setRaces((prev) =>
+          prev.map((race) => {
+            if (race.id !== race_id) return race;
+
+            return {
+              ...race,
+              crews: race.crews.map((crew) =>
+                crew.crew_id === crew_id ? { ...crew, final_time } : crew
+              ),
+            };
+          })
+        );
+      }
+    );
+
+    return () => {
+      socket.emit("leavePublicEvent", { event_id: eventId });
+    };
+  }, [eventId]);
+
+  useEffect(() => {
+    const fetchLiveRaces = async () => {
+      try {
+        const res = await api.get(`/races/event/${eventId}`);
+        const allRaces = res.data.data || [];
+
+        const sorted = allRaces.sort((a: any, b: any) => a.race_number - b.race_number);
+        const upcoming = sorted.slice(0, 6);
+
+        const enriched = upcoming.map((race: any) => {
+          const crews = (race.race_crews || [])
+            .sort((a: any, b: any) => a.lane - b.lane)
+            .map((rc: any) => ({
+              crew_id: rc.crew?.id || rc.crew_id,
+              lane: rc.lane,
+              club_name: rc.crew?.club_name || "N/A",
+              club_code: rc.crew?.club_code || "N/A",
+              intermediate_times: [],
+              final_time: null,
+            }));
+
+          return {
+            id: race.id,
+            name: race.name,
+            race_number: race.race_number,
+            start_time: race.start_time,
+            status: race.status || "not_started",
+            crews,
+          };
+        });
+
+        setRaces(enriched);
+      } catch (err) {
+        console.error("Erreur chargement courses live", err);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    if (eventId) fetchLiveRaces();
+  }, [eventId]);
+
+  const formatTime = (ms: string) => {
+    const totalMs = parseInt(ms, 10);
+    if (isNaN(totalMs)) return "N/A";
+
+    const totalSeconds = Math.floor(totalMs / 1000);
+    const minutes = Math.floor(totalSeconds / 60);
+    const seconds = totalSeconds % 60;
+    const milliseconds = totalMs % 1000;
+
+    return `${minutes}:${seconds.toString().padStart(2, "0")}.${milliseconds.toString().padStart(3, "0")}`;
+  };
+
+  const getStatusBadge = (status: string) => {
+    switch (status) {
+      case "not_started":
+        return <span className="px-3 py-1 rounded-full text-xs font-medium bg-gray-100 text-gray-700">À venir</span>;
+      case "in_progress":
+        return <span className="px-3 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-700 animate-pulse">En cours</span>;
+      case "unofficial":
+        return <span className="px-3 py-1 rounded-full text-xs font-medium bg-yellow-100 text-yellow-700">Non officiel</span>;
+      case "official":
+        return <span className="px-3 py-1 rounded-full text-xs font-medium bg-green-100 text-green-700">Officiel</span>;
+      default:
+        return null;
+    }
+  };
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center py-12">
+        <p className="text-lg text-muted-foreground">Chargement...</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-6">
+      <h2 className="text-2xl font-bold text-slate-900">Live - Courses en cours</h2>
+
+      {races.map((race) => (
+        <Card key={race.id}>
+          <CardHeader className="bg-slate-50">
+            <div className="flex items-center justify-between">
+              <CardTitle className="text-lg">
+                Course {race.race_number} - {race.name}
+              </CardTitle>
+              <div className="flex items-center gap-3">
+                <span className="text-sm text-muted-foreground">
+                  {dayjs(race.start_time).format("HH:mm")}
+                </span>
+                {getStatusBadge(race.status)}
+              </div>
+            </div>
+          </CardHeader>
+          <CardContent className="pt-6">
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b">
+                    <th className="text-left py-2 px-4 font-semibold">Couloir</th>
+                    <th className="text-left py-2 px-4 font-semibold">Club</th>
+                    <th className="text-left py-2 px-4 font-semibold">Intermédiaires</th>
+                    <th className="text-right py-2 px-4 font-semibold">Temps final</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {race.crews.map((crew) => (
+                    <tr key={crew.crew_id} className="border-b hover:bg-slate-50">
+                      <td className="py-3 px-4 font-medium">{crew.lane}</td>
+                      <td className="py-3 px-4">
+                        <div>
+                          <p className="font-medium">{crew.club_name}</p>
+                          <p className="text-xs text-muted-foreground">{crew.club_code}</p>
+                        </div>
+                      </td>
+                      <td className="py-3 px-4">
+                        <div className="flex flex-wrap gap-2">
+                          {crew.intermediate_times.map((time) => (
+                            <span
+                              key={time.timing_point_id}
+                              className="px-2 py-1 bg-blue-50 text-blue-700 rounded text-xs font-mono"
+                            >
+                              {time.distance_m}m: {formatTime(time.time_ms)}
+                            </span>
+                          ))}
+                        </div>
+                        {crew.intermediate_times.length === 0 && (
+                          <span className="text-muted-foreground text-xs">Aucun temps</span>
+                        )}
+                      </td>
+                      <td className="py-3 px-4 text-right font-mono font-bold">
+                        {crew.final_time ? (
+                          <span className="text-green-600">{formatTime(crew.final_time)}</span>
+                        ) : (
+                          <span className="text-muted-foreground">-</span>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </CardContent>
+        </Card>
+      ))}
+
+      {races.length === 0 && (
+        <p className="text-center text-muted-foreground py-12">Aucune course à afficher</p>
+      )}
+    </div>
+  );
+}

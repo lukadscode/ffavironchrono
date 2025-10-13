@@ -15,18 +15,39 @@ import EventOverviewPage from "@/pages/event/EventOverviewPage";
 import ParticipantDetail from "@/pages/event/ParticipantDetail";
 import CrewList from "@/pages/crews/CrewList";
 import CrewDetail from "@/pages/crews/CrewDetail";
-import DistancesPage from "@/pages/event/DistancesPage"; // ✅ import ajouté
+import DistancesPage from "@/pages/event/DistancesPage";
 import EventPermissionsPage from "@/pages/event/EventPermissionsPage";
 import TimingPointsPage from "@/pages/event/TimingPointsPage";
 import RacePhasesPage from "@/pages/races/RacePhasesPage";
 import TimingOverviewPage from "@/pages/timing/TimingOverviewPage";
 import RacePhaseDetailPage from "@/pages/races/RacePhaseDetailPage";
+import EventsList from "@/pages/public/EventsList";
+import PublicEvent from "@/pages/public/PublicEvent";
+import Live from "@/pages/public/Live";
+import Startlist from "@/pages/public/Startlist";
+import Results from "@/pages/public/Results";
 
 const router = createBrowserRouter([
-  { path: "/", element: <Navigate to="/dashboard" replace /> },
+  { path: "/", element: <Navigate to="/public/events" replace /> },
   { path: "/login", element: <Login /> },
   { path: "/register", element: <Register /> },
   { path: "/logout", element: <Logout /> },
+
+  {
+    path: "/public/events",
+    element: <EventsList />,
+  },
+
+  {
+    path: "/public/event/:eventId",
+    element: <PublicEvent />,
+    children: [
+      { path: "", element: <Navigate to="live" replace /> },
+      { path: "live", element: <Live /> },
+      { path: "startlist", element: <Startlist /> },
+      { path: "results", element: <Results /> },
+    ],
+  },
 
   {
     path: "/dashboard",
