@@ -62,6 +62,57 @@ export default function TimingTable({
   const isFinishPoint = timingPoints.length > 0 && currentTimingPoint?.order_index === timingPoints.length;
   const startPoint = timingPoints.find(tp => tp.order_index === 1);
 
+  const checkRaceStarted = async () => {
+    if (!isStartPoint) return;
+
+    try {
+      const res = await api.get(`/races/${selectedRaceId}`);
+      const currentRace = res.data.data;
+
+      if (currentRace.status === "not_started") {
+        await api.put(`/races/${selectedRaceId}`, { status: "in_progress" });
+      }
+    } catch (err) {
+      console.error("Erreur mise à jour statut course", err);
+    }
+  };
+
+  const checkRaceFinished = async () => {
+    if (!isFinishPoint) return;
+
+    try {
+      const res = await api.get(`/races/${selectedRaceId}`);
+      const currentRace = res.data.data;
+      const totalCrews = currentRace.race_crews?.length || 0;
+
+      if (totalCrews === 0) return;
+
+      const assignmentsRes = await api.get(`/timing-assignments/race/${selectedRaceId}`);
+      const allAssignments = assignmentsRes.data.data;
+
+      const finishPointId = timingPoints.find(tp => tp.order_index === timingPoints.length)?.id;
+      if (!finishPointId) return;
+
+      const timingsRes = await api.get(`/timings/event/${eventId}`);
+      const allTimings = timingsRes.data.data;
+
+      const finishedCrews = new Set();
+
+      for (const assignment of allAssignments) {
+        const timing = allTimings.find((t: any) => t.id === assignment.timing_id);
+        if (timing && timing.timing_point_id === finishPointId) {
+          finishedCrews.add(assignment.crew_id);
+        }
+      }
+
+      if (finishedCrews.size === totalCrews && currentRace.status === "in_progress") {
+        await api.put(`/races/${selectedRaceId}`, { status: "unofficial" });
+      }
+    } catch (err) {
+      console.error("Erreur vérification fin de course", err);
+    }
+  };
+
   React.useEffect(() => {
     if (isStartPoint || !startPoint) return;
 
@@ -215,6 +266,9 @@ export default function TimingTable({
                                 timing_id: timing.id,
                                 crew_id: rc.Crew?.id,
                               });
+
+                              await checkRaceStarted();
+                              await checkRaceFinished();
                             } else {
                               if (!assignmentId) return;
 
@@ -285,6 +339,9 @@ export default function TimingTable({
                           timing_id: timing.id,
                           crew_id: "multi",
                         });
+
+                        await checkRaceStarted();
+                        await checkRaceFinished();
                       } catch (e) {
                         console.error(e);
                       }
