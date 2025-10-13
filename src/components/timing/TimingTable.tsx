@@ -133,11 +133,11 @@ export default function TimingTable({
       console.log(`🏁 Crews finis: ${finishedCrews.size}/${totalCrews}`, Array.from(finishedCrews));
 
       if (finishedCrews.size === totalCrews && currentRace.status === "in_progress") {
-        console.log("🎉 Passage en unofficial");
-        await api.put(`/races/${selectedRaceId}`, { status: "unofficial" });
-      } else if (finishedCrews.size < totalCrews && currentRace.status === "unofficial") {
+        console.log("🎉 Passage en finished");
+        await api.patch(`/races/${selectedRaceId}`, { status: "finished" });
+      } else if (finishedCrews.size < totalCrews && currentRace.status === "finished") {
         console.log("↩️ Retour en in_progress");
-        await api.put(`/races/${selectedRaceId}`, { status: "in_progress" });
+        await api.patch(`/races/${selectedRaceId}`, { status: "in_progress" });
       } else {
         console.log("⏸️ Aucune action nécessaire", {
           condition1: `${finishedCrews.size} === ${totalCrews}`,
