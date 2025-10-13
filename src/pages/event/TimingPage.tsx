@@ -178,7 +178,18 @@ export default function TimingPage() {
   const fetchRaces = async () => {
     try {
       const res = await api.get(`/races/event/${eventId}`);
-      const sorted = res.data.data.sort((a: Race, b: Race) => a.race_number - b.race_number);
+      const mapped = res.data.data.map((race: any) => ({
+        ...race,
+        RaceCrews: (race.race_crews || []).map((rc: any) => ({
+          id: rc.id,
+          lane: rc.lane,
+          Crew: rc.crew ? {
+            id: rc.crew.id,
+            club_name: rc.crew.club_name
+          } : null
+        }))
+      }));
+      const sorted = mapped.sort((a: Race, b: Race) => a.race_number - b.race_number);
       setRaces(sorted);
     } catch {
       toast({
