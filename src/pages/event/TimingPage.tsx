@@ -216,6 +216,15 @@ export default function TimingPage() {
       }));
       const sorted = mapped.sort((a: Race, b: Race) => a.race_number - b.race_number);
       setRaces(sorted);
+
+      if (!selectedRaceId && sorted.length > 0) {
+        const autoSelectRace = sorted.find((r: Race) =>
+          r.status === "in_progress" || r.status === "not_started"
+        );
+        if (autoSelectRace) {
+          setSelectedRaceId(autoSelectRace.id);
+        }
+      }
     } catch {
       toast({
         title: "Erreur",
