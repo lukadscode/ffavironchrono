@@ -150,27 +150,72 @@ export default function Live() {
         const sorted = allRaces.sort((a: any, b: any) => a.race_number - b.race_number);
         const upcoming = sorted.slice(0, 6);
 
-        const enriched = upcoming.map((race: any) => {
-          const crews = (race.race_crews || [])
-            .sort((a: any, b: any) => a.lane - b.lane)
-            .map((rc: any) => ({
-              crew_id: rc.crew?.id || rc.crew_id,
-              lane: rc.lane,
-              club_name: rc.crew?.club_name || "N/A",
-              club_code: rc.crew?.club_code || "N/A",
-              intermediate_times: [],
-              final_time: null,
-            }));
+        const enriched = await Promise.all(
+          upcoming.map(async (race: any) => {
+            const crews = (race.race_crews || [])
+              .sort((a: any, b: any) => a.lane - b.lane)
+              .map((rc: any) => ({
+                crew_id: rc.crew?.id || rc.crew_id,
+                lane: rc.lane,
+                club_name: rc.crew?.club_name || "N/A",
+                club_code: rc.crew?.club_code || "N/A",
+                intermediate_times: [],
+                final_time: null,
+              }));
 
-          return {
-            id: race.id,
-            name: race.name,
-            race_number: race.race_number,
-            start_time: race.start_time,
-            status: race.status || "not_started",
-            crews,
-          };
-        });
+            try {
+              const assignmentsRes = await api.get(`/timing-assignments/race/${race.id}`);
+              const assignments = assignmentsRes.data.data || [];
+
+              const timingsRes = await api.get(`/timings/event/${eventId}`);
+              const allTimings = timingsRes.data.data || [];
+
+              const lastPointId = sortedPoints[sortedPoints.length - 1]?.id;
+
+              for (const assignment of assignments) {
+                const timing = allTimings.find((t: any) => t.id === assignment.timing_id);
+                if (!timing) continue;
+
+                const timingPoint = sortedPoints.find((p: TimingPoint) => p.id === timing.timing_point_id);
+                if (!timingPoint) continue;
+
+                const crewIndex = crews.findIndex((c: any) => c.crew_id === assignment.crew_id);
+                if (crewIndex === -1) continue;
+
+                const startTime = new Date(race.start_time).getTime();
+                const timingTime = new Date(timing.timestamp).getTime();
+                const time_ms = Math.abs(timingTime - startTime);
+
+                if (timingPoint.id === lastPointId) {
+                  crews[crewIndex].final_time = time_ms.toString();
+                } else {
+                  crews[crewIndex].intermediate_times.push({
+                    timing_point_id: timingPoint.id,
+                    timing_point_label: timingPoint.label,
+                    distance_m: timingPoint.distance_m,
+                    time_ms: time_ms.toString(),
+                    order_index: timingPoint.order_index,
+                  });
+                }
+              }
+
+              crews.forEach((crew: any) => {
+                crew.intermediate_times.sort((a: any, b: any) => a.order_index - b.order_index);
+              });
+            } catch (err) {
+              console.error(`Erreur chargement temps pour course ${race.id}`, err);
+            }
+
+            return {
+              id: race.id,
+              name: race.name,
+              race_number: race.race_number,
+              start_time: race.start_time,
+              status: race.status || "not_started",
+              crews,
+            };
+          })
+        );
 
         setRaces(enriched);
       } catch (err) {
