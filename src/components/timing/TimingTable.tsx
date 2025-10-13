@@ -87,26 +87,32 @@ export default function TimingTable({
 
       if (totalCrews === 0) return;
 
-      const assignmentsRes = await api.get(`/timing-assignments/race/${selectedRaceId}`);
-      const allAssignments = assignmentsRes.data.data;
-
-      const finishPointId = timingPoints.find(tp => tp.order_index === timingPoints.length)?.id;
+      const finishPointId = currentTimingPoint?.id;
       if (!finishPointId) return;
 
-      const timingsRes = await api.get(`/timings/event/${eventId}`);
-      const allTimings = timingsRes.data.data;
+      const timingsRes = await api.get(`/timings/timing-point/${finishPointId}`);
+      const finishTimings = timingsRes.data.data || [];
+
+      const assignmentsRes = await api.get(`/timing-assignments/race/${selectedRaceId}`);
+      const allAssignments = assignmentsRes.data.data || [];
 
       const finishedCrews = new Set();
 
-      for (const assignment of allAssignments) {
-        const timing = allTimings.find((t: any) => t.id === assignment.timing_id);
-        if (timing && timing.timing_point_id === finishPointId) {
+      for (const timing of finishTimings) {
+        const assignment = allAssignments.find((a: any) => a.timing_id === timing.id);
+        if (assignment) {
           finishedCrews.add(assignment.crew_id);
         }
       }
 
+      console.log(`Crews finis: ${finishedCrews.size}/${totalCrews}`);
+
       if (finishedCrews.size === totalCrews && currentRace.status === "in_progress") {
+        console.log("Passage en unofficial");
         await api.put(`/races/${selectedRaceId}`, { status: "unofficial" });
+      } else if (finishedCrews.size < totalCrews && currentRace.status === "unofficial") {
+        console.log("Retour en in_progress");
+        await api.put(`/races/${selectedRaceId}`, { status: "in_progress" });
       }
     } catch (err) {
       console.error("Erreur vérification fin de course", err);
@@ -292,6 +298,8 @@ export default function TimingTable({
                                   )
                                 );
                               }
+
+                              await checkRaceFinished();
                             }
                           } catch (err) {
                             console.error("Erreur assignation", err);
@@ -360,6 +368,7 @@ export default function TimingTable({
                           status: "hidden",
                         });
                         setTimings((prev) => prev.filter((t) => t.id !== timing.id));
+                        await checkRaceFinished();
                       } catch {}
                     }}
                   >
