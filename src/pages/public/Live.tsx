@@ -143,12 +143,15 @@ export default function Live() {
 
         const allRaces = racesRes.data.data || [];
         const points = timingPointsRes.data.data || [];
+        console.log('📊 Courses reçues:', allRaces.length, allRaces);
+        console.log('📍 Points de chronométrage:', points.length, points);
 
         const sortedPoints = points.sort((a: TimingPoint, b: TimingPoint) => a.order_index - b.order_index);
         setTimingPoints(sortedPoints);
 
         const sorted = allRaces.sort((a: any, b: any) => (a.race_number || 0) - (b.race_number || 0));
         const upcoming = sorted.slice(0, 6);
+        console.log('🔝 6 premières courses:', upcoming);
 
         const enriched = await Promise.all(
           upcoming.map(async (race: any) => {
@@ -168,7 +171,15 @@ export default function Live() {
               const assignments = assignmentsRes.data.data || [];
 
               if (!assignments || assignments.length === 0) {
-                return;
+                console.log(`⚠️ Pas d'assignments pour course ${race.id}`);
+                return {
+                  id: race.id,
+                  name: race.name,
+                  race_number: race.race_number || 0,
+                  start_time: race.start_time,
+                  status: race.status || "not_started",
+                  crews,
+                };
               }
 
               const lastPointId = sortedPoints[sortedPoints.length - 1]?.id;
@@ -215,7 +226,9 @@ export default function Live() {
           })
         );
 
-        setRaces(enriched);
+        const validRaces = enriched.filter(r => r !== undefined);
+        console.log('✅ Courses valides après enrichissement:', validRaces.length, validRaces);
+        setRaces(validRaces);
       } catch (err) {
         console.error("Erreur chargement données live", err);
       } finally {
