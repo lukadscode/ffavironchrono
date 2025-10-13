@@ -78,41 +78,72 @@ export default function TimingTable({
   };
 
   const checkRaceFinished = async () => {
-    if (!isFinishPoint) return;
+    console.log("🔍 checkRaceFinished appelée", {
+      isFinishPoint,
+      currentTimingPoint,
+      timingPointsLength: timingPoints.length
+    });
+
+    if (!isFinishPoint) {
+      console.log("❌ Pas un point d'arrivée, skip");
+      return;
+    }
 
     try {
       const res = await api.get(`/races/${selectedRaceId}`);
       const currentRace = res.data.data;
       const totalCrews = currentRace.race_crews?.length || 0;
 
-      if (totalCrews === 0) return;
+      console.log("📊 Race actuelle:", {
+        raceId: selectedRaceId,
+        status: currentRace.status,
+        totalCrews
+      });
+
+      if (totalCrews === 0) {
+        console.log("⚠️ Aucun équipage dans cette course");
+        return;
+      }
 
       const finishPointId = currentTimingPoint?.id;
-      if (!finishPointId) return;
+      if (!finishPointId) {
+        console.log("❌ Pas de finishPointId");
+        return;
+      }
 
       const timingsRes = await api.get(`/timings/timing-point/${finishPointId}`);
       const finishTimings = timingsRes.data.data || [];
 
+      console.log("⏱️ Timings d'arrivée:", finishTimings);
+
       const assignmentsRes = await api.get(`/timing-assignments/race/${selectedRaceId}`);
       const allAssignments = assignmentsRes.data.data || [];
+
+      console.log("🔗 Assignments de la course:", allAssignments);
 
       const finishedCrews = new Set();
 
       for (const timing of finishTimings) {
         const assignment = allAssignments.find((a: any) => a.timing_id === timing.id);
         if (assignment) {
+          console.log(`✅ Timing ${timing.id} assigné à crew ${assignment.crew_id}`);
           finishedCrews.add(assignment.crew_id);
         }
       }
 
-      console.log(`Crews finis: ${finishedCrews.size}/${totalCrews}`);
+      console.log(`🏁 Crews finis: ${finishedCrews.size}/${totalCrews}`, Array.from(finishedCrews));
 
       if (finishedCrews.size === totalCrews && currentRace.status === "in_progress") {
-        console.log("Passage en unofficial");
+        console.log("🎉 Passage en unofficial");
         await api.put(`/races/${selectedRaceId}`, { status: "unofficial" });
       } else if (finishedCrews.size < totalCrews && currentRace.status === "unofficial") {
-        console.log("Retour en in_progress");
+        console.log("↩️ Retour en in_progress");
         await api.put(`/races/${selectedRaceId}`, { status: "in_progress" });
+      } else {
+        console.log("⏸️ Aucune action nécessaire", {
+          condition1: `${finishedCrews.size} === ${totalCrews}`,
+          condition2: `status = ${currentRace.status}`
+        });
       }
     } catch (err) {
       console.error("Erreur vérification fin de course", err);
