@@ -31,9 +31,17 @@ type LiveRace = {
   crews: LiveCrew[];
 };
 
+type TimingPoint = {
+  id: string;
+  label: string;
+  distance_m: number;
+  order_index: number;
+};
+
 export default function Live() {
   const { eventId } = useParams();
   const [races, setRaces] = useState<LiveRace[]>([]);
+  const [timingPoints, setTimingPoints] = useState<TimingPoint[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -126,10 +134,18 @@ export default function Live() {
   }, [eventId]);
 
   useEffect(() => {
-    const fetchLiveRaces = async () => {
+    const fetchData = async () => {
       try {
-        const res = await api.get(`/races/event/${eventId}`);
-        const allRaces = res.data.data || [];
+        const [racesRes, timingPointsRes] = await Promise.all([
+          api.get(`/races/event/${eventId}`),
+          api.get(`/timing-points/event/${eventId}`)
+        ]);
+
+        const allRaces = racesRes.data.data || [];
+        const points = timingPointsRes.data.data || [];
+
+        const sortedPoints = points.sort((a: TimingPoint, b: TimingPoint) => a.order_index - b.order_index);
+        setTimingPoints(sortedPoints);
 
         const sorted = allRaces.sort((a: any, b: any) => a.race_number - b.race_number);
         const upcoming = sorted.slice(0, 6);
@@ -158,13 +174,13 @@ export default function Live() {
 
         setRaces(enriched);
       } catch (err) {
-        console.error("Erreur chargement courses live", err);
+        console.error("Erreur chargement données live", err);
       } finally {
         setLoading(false);
       }
     };
 
-    if (eventId) fetchLiveRaces();
+    if (eventId) fetchData();
   }, [eventId]);
 
   const formatTime = (ms: string) => {
@@ -226,46 +242,63 @@ export default function Live() {
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b">
-                    <th className="text-left py-2 px-4 font-semibold">Couloir</th>
-                    <th className="text-left py-2 px-4 font-semibold">Club</th>
-                    <th className="text-left py-2 px-4 font-semibold">Intermédiaires</th>
-                    <th className="text-right py-2 px-4 font-semibold">Temps final</th>
+                    <th className="text-left py-2 px-3 font-semibold">Coul.</th>
+                    <th className="text-left py-2 px-3 font-semibold min-w-[140px]">Club</th>
+                    {timingPoints.map((point) => (
+                      <th key={point.id} className="text-center py-2 px-3 font-semibold">
+                        <div className="text-xs">{point.label}</div>
+                        <div className="text-[10px] text-muted-foreground font-normal">
+                          {point.distance_m}m
+                        </div>
+                      </th>
+                    ))}
                   </tr>
                 </thead>
                 <tbody>
-                  {race.crews.map((crew) => (
-                    <tr key={crew.crew_id} className="border-b hover:bg-slate-50">
-                      <td className="py-3 px-4 font-medium">{crew.lane}</td>
-                      <td className="py-3 px-4">
-                        <div>
-                          <p className="font-medium">{crew.club_name}</p>
-                          <p className="text-xs text-muted-foreground">{crew.club_code}</p>
-                        </div>
-                      </td>
-                      <td className="py-3 px-4">
-                        <div className="flex flex-wrap gap-2">
-                          {crew.intermediate_times.map((time) => (
-                            <span
-                              key={time.timing_point_id}
-                              className="px-2 py-1 bg-blue-50 text-blue-700 rounded text-xs font-mono"
+                  {race.crews.map((crew) => {
+                    const isFinished = crew.final_time !== null;
+                    return (
+                      <tr key={crew.crew_id} className="border-b hover:bg-slate-50">
+                        <td className="py-3 px-3 font-medium">{crew.lane}</td>
+                        <td className="py-3 px-3">
+                          <div>
+                            <p className="font-medium text-sm">{crew.club_name}</p>
+                            <p className="text-xs text-muted-foreground">{crew.club_code}</p>
+                          </div>
+                        </td>
+                        {timingPoints.map((point, index) => {
+                          const isLastPoint = index === timingPoints.length - 1;
+                          let timeToDisplay = null;
+
+                          if (isLastPoint && crew.final_time) {
+                            timeToDisplay = crew.final_time;
+                          } else {
+                            const intermediate = crew.intermediate_times.find(
+                              (t) => t.timing_point_id === point.id
+                            );
+                            if (intermediate) {
+                              timeToDisplay = intermediate.time_ms;
+                            }
+                          }
+
+                          return (
+                            <td
+                              key={point.id}
+                              className={`py-3 px-3 text-center font-mono text-sm ${
+                                isLastPoint && timeToDisplay ? "font-bold text-green-600" : ""
+                              }`}
                             >
-                              {time.distance_m}m: {formatTime(time.time_ms)}
-                            </span>
-                          ))}
-                        </div>
-                        {crew.intermediate_times.length === 0 && (
-                          <span className="text-muted-foreground text-xs">Aucun temps</span>
-                        )}
-                      </td>
-                      <td className="py-3 px-4 text-right font-mono font-bold">
-                        {crew.final_time ? (
-                          <span className="text-green-600">{formatTime(crew.final_time)}</span>
-                        ) : (
-                          <span className="text-muted-foreground">-</span>
-                        )}
-                      </td>
-                    </tr>
-                  ))}
+                              {timeToDisplay ? (
+                                formatTime(timeToDisplay)
+                              ) : (
+                                <span className="text-muted-foreground">-</span>
+                              )}
+                            </td>
+                          );
+                        })}
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
