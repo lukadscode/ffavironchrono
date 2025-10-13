@@ -189,6 +189,10 @@ export default function Live() {
               const raceStartTime = new Date(race.start_time).getTime();
               console.log(`🏁 Course ${race.name} - start_time:`, race.start_time, 'timestamp:', raceStartTime);
 
+              if (isNaN(raceStartTime)) {
+                console.warn(`⚠️ Course ${race.name} - start_time invalide, impossible de calculer les temps`);
+              }
+
               for (const assignment of assignments) {
                 if (!assignment.timing?.time_ms) continue;
 
@@ -199,7 +203,7 @@ export default function Live() {
                 if (crewIndex === -1) continue;
 
                 const absoluteTime = parseInt(assignment.timing.time_ms);
-                const time_ms = absoluteTime - raceStartTime;
+                const time_ms = isNaN(raceStartTime) ? absoluteTime : absoluteTime - raceStartTime;
                 console.log(`⏱️ Crew ${assignment.crew_id} - Point ${timingPoint.label}: absolu=${absoluteTime}, relatif=${time_ms}ms`);
 
                 if (timingPoint.id === lastPointId) {
