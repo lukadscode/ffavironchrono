@@ -90,20 +90,21 @@ export default function TimingTable({
     }
 
     try {
-      const res = await api.get(`/races/${selectedRaceId}`);
-      const currentRace = res.data.data;
-      const totalCrews = currentRace.race_crews?.length || 0;
+      const totalCrews = race.RaceCrews?.length || 0;
 
       console.log("📊 Race actuelle:", {
         raceId: selectedRaceId,
-        status: currentRace.status,
-        totalCrews
+        totalCrews,
+        RaceCrews: race.RaceCrews
       });
 
       if (totalCrews === 0) {
         console.log("⚠️ Aucun équipage dans cette course");
         return;
       }
+
+      const res = await api.get(`/races/${selectedRaceId}`);
+      const currentRace = res.data.data;
 
       const finishPointId = currentTimingPoint?.id;
       if (!finishPointId) {
