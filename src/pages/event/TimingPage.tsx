@@ -20,6 +20,7 @@ type Race = {
   id: string;
   name: string;
   race_number: number;
+  status: string;
   RaceCrews: {
     id: string;
     lane: number;
@@ -50,6 +51,22 @@ type Assignment = {
   id: string;
   timing_id: string;
   crew_id: string;
+};
+
+const getStatusBadge = (status: string) => {
+  const statusConfig: Record<string, { label: string; color: string }> = {
+    not_started: { label: "Non démarrée", color: "bg-gray-100 text-gray-700" },
+    in_progress: { label: "En cours", color: "bg-blue-100 text-blue-700" },
+    unofficial: { label: "Non officiel", color: "bg-yellow-100 text-yellow-700" },
+    official: { label: "Officiel", color: "bg-green-100 text-green-700" },
+  };
+
+  const config = statusConfig[status] || statusConfig.not_started;
+  return (
+    <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${config.color}`}>
+      {config.label}
+    </span>
+  );
 };
 
 export default function TimingPage() {
@@ -150,6 +167,12 @@ export default function TimingPage() {
     syncServerTime();
     fetchTimingPoints();
   }, []);
+
+  useEffect(() => {
+    if (selectedRaceId) {
+      fetchRaces();
+    }
+  }, [assignments]);
 
   useEffect(() => {
     const interval = setInterval(() => {
@@ -349,18 +372,29 @@ export default function TimingPage() {
           </CardTitle>
         </CardHeader>
         <CardContent className="grid gap-4 md:grid-cols-2">
-          <Select onValueChange={setSelectedRaceId}>
-            <SelectTrigger className="w-full">
-              <SelectValue placeholder="Sélectionner une course" />
-            </SelectTrigger>
-            <SelectContent>
-              {races.map((r) => (
-                <SelectItem key={r.id} value={r.id}>
-                  #{r.race_number} – {r.name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          <div className="flex flex-col gap-2">
+            <Select onValueChange={setSelectedRaceId} value={selectedRaceId || undefined}>
+              <SelectTrigger className="w-full">
+                <SelectValue placeholder="Sélectionner une course" />
+              </SelectTrigger>
+              <SelectContent>
+                {races.map((r) => (
+                  <SelectItem key={r.id} value={r.id}>
+                    <div className="flex items-center justify-between w-full gap-3">
+                      <span>#{r.race_number} – {r.name}</span>
+                      {getStatusBadge(r.status)}
+                    </div>
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            {selectedRace && (
+              <div className="flex items-center gap-2 text-sm">
+                <span className="text-muted-foreground">Statut:</span>
+                {getStatusBadge(selectedRace.status)}
+              </div>
+            )}
+          </div>
           <div className="flex flex-col gap-2 w-full">
             <div className="px-3 py-1 rounded-md bg-muted font-mono text-sm text-center">
               {liveTime}
