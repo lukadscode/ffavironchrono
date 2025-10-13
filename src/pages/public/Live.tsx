@@ -207,7 +207,7 @@ export default function Live() {
             return {
               id: race.id,
               name: race.name,
-              race_number: race.race_number,
+              race_number: race.race_number || 0,
               start_time: race.start_time,
               status: race.status || "not_started",
               crews,
@@ -270,7 +270,7 @@ export default function Live() {
           <CardHeader className="bg-slate-50">
             <div className="flex items-center justify-between">
               <CardTitle className="text-lg">
-                Course {race.race_number} - {race.name}
+                {race.race_number > 0 ? `Course ${race.race_number} - ` : ""}{race.name}
               </CardTitle>
               <div className="flex items-center gap-3">
                 <span className="text-sm text-muted-foreground">
