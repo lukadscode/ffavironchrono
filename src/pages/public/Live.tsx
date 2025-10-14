@@ -157,6 +157,18 @@ export default function Live() {
         const upcoming = sorted.slice(0, 6);
         console.log('🔝 6 premières courses:', upcoming);
 
+        let allTimingsMap: Record<string, any> = {};
+        try {
+          const timingsRes = await api.get(`/timings/event/${eventId}`);
+          const allTimings = timingsRes.data.data || [];
+          allTimings.forEach((timing: any) => {
+            allTimingsMap[timing.id] = timing;
+          });
+          console.log('⏱️ Timings chargés:', Object.keys(allTimingsMap).length);
+        } catch (err) {
+          console.error('Erreur chargement timings:', err);
+        }
+
         const enriched = await Promise.all(
           upcoming.map(async (race: any) => {
             const crews = (race.race_crews || [])
@@ -196,43 +208,38 @@ export default function Live() {
               for (const assignment of assignments) {
                 if (!assignment.timing_id || !assignment.crew_id) continue;
 
-                try {
-                  const timingRes = await api.get(`/timings/${assignment.timing_id}`);
-                  const timing = timingRes.data.data;
-                  if (!timing) continue;
+                const timing = allTimingsMap[assignment.timing_id];
+                if (!timing) continue;
 
-                  const timingPoint = sortedPoints.find((p: TimingPoint) => p.id === timing.timing_point_id);
-                  if (!timingPoint) continue;
+                const timingPoint = sortedPoints.find((p: TimingPoint) => p.id === timing.timing_point_id);
+                if (!timingPoint) continue;
 
-                  const crewIndex = crews.findIndex((c: any) => c.crew_id === assignment.crew_id);
-                  if (crewIndex === -1) continue;
+                const crewIndex = crews.findIndex((c: any) => c.crew_id === assignment.crew_id);
+                if (crewIndex === -1) continue;
 
-                  const absoluteTime = new Date(timing.timestamp).getTime();
+                const absoluteTime = new Date(timing.timestamp).getTime();
 
-                  if (timingPoint.id === startPointId) {
-                    startTimings[assignment.crew_id] = absoluteTime;
-                    continue;
-                  }
+                if (timingPoint.id === startPointId) {
+                  startTimings[assignment.crew_id] = absoluteTime;
+                  continue;
+                }
 
-                  const startTime = startTimings[assignment.crew_id];
-                  if (!startTime) continue;
+                const startTime = startTimings[assignment.crew_id];
+                if (!startTime) continue;
 
-                  const time_ms = absoluteTime - startTime;
-                  console.log(`⏱️ Crew ${assignment.crew_id} - Point ${timingPoint.label}: absolu=${absoluteTime}, start=${startTime}, relatif=${time_ms}ms`);
+                const time_ms = absoluteTime - startTime;
+                console.log(`⏱️ Crew ${assignment.crew_id} - Point ${timingPoint.label}: absolu=${absoluteTime}, start=${startTime}, relatif=${time_ms}ms`);
 
-                  if (timingPoint.id === lastPointId) {
-                    crews[crewIndex].final_time = time_ms.toString();
-                  } else {
-                    crews[crewIndex].intermediate_times.push({
-                      timing_point_id: timingPoint.id,
-                      timing_point_label: timingPoint.label,
-                      distance_m: timingPoint.distance_m,
-                      time_ms: time_ms.toString(),
-                      order_index: timingPoint.order_index,
-                    });
-                  }
-                } catch (err) {
-                  console.error(`Erreur chargement timing ${assignment.timing_id}`, err);
+                if (timingPoint.id === lastPointId) {
+                  crews[crewIndex].final_time = time_ms.toString();
+                } else {
+                  crews[crewIndex].intermediate_times.push({
+                    timing_point_id: timingPoint.id,
+                    timing_point_label: timingPoint.label,
+                    distance_m: timingPoint.distance_m,
+                    time_ms: time_ms.toString(),
+                    order_index: timingPoint.order_index,
+                  });
                 }
               }
 
