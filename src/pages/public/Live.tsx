@@ -214,17 +214,39 @@ export default function Live() {
                 const timingPoint = sortedPoints.find((p: TimingPoint) => p.id === timing.timing_point_id);
                 if (!timingPoint) continue;
 
-                const crewIndex = crews.findIndex((c: any) => c.crew_id === assignment.crew_id);
-                if (crewIndex === -1) continue;
-
                 const absoluteTime = new Date(timing.timestamp).getTime();
 
                 if (timingPoint.id === startPointId) {
                   startTimings[assignment.crew_id] = absoluteTime;
+                }
+              }
+
+              for (const assignment of assignments) {
+                if (!assignment.timing_id || !assignment.crew_id) continue;
+
+                const timing = allTimingsMap[assignment.timing_id];
+                if (!timing) continue;
+
+                const timingPoint = sortedPoints.find((p: TimingPoint) => p.id === timing.timing_point_id);
+                if (!timingPoint) continue;
+
+                const crewIndex = crews.findIndex((c: any) => c.crew_id === assignment.crew_id);
+                if (crewIndex === -1) continue;
+
+                const absoluteTime = new Date(timing.timestamp).getTime();
+                const startTime = startTimings[assignment.crew_id];
+
+                if (timingPoint.id === startPointId) {
+                  crews[crewIndex].intermediate_times.push({
+                    timing_point_id: timingPoint.id,
+                    timing_point_label: timingPoint.label,
+                    distance_m: timingPoint.distance_m,
+                    time_ms: "0",
+                    order_index: timingPoint.order_index,
+                  });
                   continue;
                 }
 
-                const startTime = startTimings[assignment.crew_id];
                 if (!startTime) continue;
 
                 const time_ms = absoluteTime - startTime;
