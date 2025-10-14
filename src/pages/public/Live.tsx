@@ -43,6 +43,7 @@ export default function Live() {
   const [races, setRaces] = useState<LiveRace[]>([]);
   const [timingPoints, setTimingPoints] = useState<TimingPoint[]>([]);
   const [loading, setLoading] = useState(true);
+  const [startTimingsMap, setStartTimingsMap] = useState<Record<string, Record<string, number>>>({});
 
   useEffect(() => {
     if (!eventId) return;
@@ -83,6 +84,18 @@ export default function Live() {
           prev.map((race) => {
             if (race.id !== race_id) return race;
 
+            const raceStartTimings = startTimingsMap[race_id] || {};
+            const startTime = raceStartTimings[crew_id];
+            const absoluteTime = parseInt(time_ms);
+
+            let relativeTime = time_ms;
+            if (startTime && !isNaN(absoluteTime)) {
+              relativeTime = (absoluteTime - startTime).toString();
+              console.log('🔔 Calcul temps relatif:', { absoluteTime, startTime, relativeTime });
+            } else {
+              console.warn('⚠️ Pas de temps de départ pour crew', crew_id, 'dans race', race_id);
+            }
+
             return {
               ...race,
               crews: race.crews.map((crew) => {
@@ -100,7 +113,7 @@ export default function Live() {
                       timing_point_id,
                       timing_point_label,
                       distance_m,
-                      time_ms,
+                      time_ms: relativeTime,
                       order_index,
                     },
                   ].sort((a, b) => a.order_index - b.order_index),
@@ -121,10 +134,22 @@ export default function Live() {
           prev.map((race) => {
             if (race.id !== race_id) return race;
 
+            const raceStartTimings = startTimingsMap[race_id] || {};
+            const startTime = raceStartTimings[crew_id];
+            const absoluteTime = parseInt(final_time);
+
+            let relativeTime = final_time;
+            if (startTime && !isNaN(absoluteTime)) {
+              relativeTime = (absoluteTime - startTime).toString();
+              console.log('🏁 Calcul temps final relatif:', { absoluteTime, startTime, relativeTime });
+            } else {
+              console.warn('⚠️ Pas de temps de départ pour crew', crew_id, 'dans race', race_id);
+            }
+
             return {
               ...race,
               crews: race.crews.map((crew) =>
-                crew.crew_id === crew_id ? { ...crew, final_time } : crew
+                crew.crew_id === crew_id ? { ...crew, final_time: relativeTime } : crew
               ),
             };
           })
@@ -135,7 +160,7 @@ export default function Live() {
     return () => {
       socket.emit("leavePublicEvent", { event_id: eventId });
     };
-  }, [eventId]);
+  }, [eventId, startTimingsMap]);
 
   useEffect(() => {
     const fetchData = async () => {
@@ -203,7 +228,7 @@ export default function Live() {
               const lastPointId = sortedPoints[sortedPoints.length - 1]?.id;
               const startPointId = sortedPoints[0]?.id;
 
-              const startTimings: Record<string, number> = {};
+              const raceStartTimings: Record<string, number> = {};
 
               for (const assignment of assignments) {
                 if (!assignment.timing_id || !assignment.crew_id) continue;
@@ -217,9 +242,14 @@ export default function Live() {
                 const absoluteTime = new Date(timing.timestamp).getTime();
 
                 if (timingPoint.id === startPointId) {
-                  startTimings[assignment.crew_id] = absoluteTime;
+                  raceStartTimings[assignment.crew_id] = absoluteTime;
                 }
               }
+
+              setStartTimingsMap((prev) => ({
+                ...prev,
+                [race.id]: raceStartTimings,
+              }));
 
               for (const assignment of assignments) {
                 if (!assignment.timing_id || !assignment.crew_id) continue;
@@ -234,7 +264,7 @@ export default function Live() {
                 if (crewIndex === -1) continue;
 
                 const absoluteTime = new Date(timing.timestamp).getTime();
-                const startTime = startTimings[assignment.crew_id];
+                const startTime = raceStartTimings[assignment.crew_id];
 
                 if (timingPoint.id === startPointId) {
                   crews[crewIndex].intermediate_times.push({
