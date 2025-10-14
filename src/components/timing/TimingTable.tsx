@@ -5,6 +5,8 @@ import dayjs from "dayjs";
 import api from "@/lib/axios";
 import { getSocket } from "@/lib/socket";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Input } from "@/components/ui/input";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
 type TimingPoint = {
   id: string;
@@ -57,6 +59,8 @@ export default function TimingTable({
   eventId,
 }: Props) {
   const [startTimings, setStartTimings] = React.useState<Record<string, Record<string, string>>>({});
+  const [viewMode, setViewMode] = React.useState<'grid' | 'list'>('grid');
+  const [laneInput, setLaneInput] = React.useState('');
 
   const isStartPoint = currentTimingPoint?.order_index === 1;
   const isFinishPoint = timingPoints.length > 0 && currentTimingPoint?.order_index === timingPoints.length;
@@ -206,9 +210,252 @@ export default function TimingTable({
 
     return `${minutes}:${seconds.toString().padStart(2, '0')}.${ms.toString().padStart(3, '0')}`;
   };
+
+  const handleLaneInputSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const laneNum = parseInt(laneInput);
+    if (isNaN(laneNum)) return;
+
+    const raceCrew = race.RaceCrews?.find(rc => rc.lane === laneNum);
+    if (!raceCrew || !raceCrew.Crew?.id) return;
+
+    const nextTiming = visibleTimings.find(t => {
+      const assigned = assignments[t.id] || [];
+      return assigned.length === 0;
+    });
+
+    if (!nextTiming) return;
+
+    try {
+      const res = await api.post("/timing-assignments", {
+        timing_id: nextTiming.id,
+        crew_id: raceCrew.Crew.id,
+      });
+
+      setAssignments((prev) => ({
+        ...prev,
+        [nextTiming.id]: [...(prev[nextTiming.id] || []), { id: res.data.data.id, crew_id: raceCrew.Crew.id }],
+      }));
+
+      await api.put(`/timings/${nextTiming.id}`, { status: "assigned" });
+      setTimings((prev) => prev.map((t) => t.id === nextTiming.id ? { ...t, status: "assigned" } : t));
+
+      getSocket().emit("assignTiming", {
+        race_id: selectedRaceId,
+        timing_id: nextTiming.id,
+        crew_id: raceCrew.Crew.id,
+      });
+
+      await checkRaceStarted();
+      await checkRaceFinished();
+
+      setLaneInput('');
+    } catch (err) {
+      console.error("Erreur assignation", err);
+    }
+  };
+
+  const handleCrewClick = async (crewId: string) => {
+    const nextTiming = visibleTimings.find(t => {
+      const assigned = assignments[t.id] || [];
+      return assigned.length === 0;
+    });
+
+    if (!nextTiming) return;
+
+    try {
+      const res = await api.post("/timing-assignments", {
+        timing_id: nextTiming.id,
+        crew_id: crewId,
+      });
+
+      setAssignments((prev) => ({
+        ...prev,
+        [nextTiming.id]: [...(prev[nextTiming.id] || []), { id: res.data.data.id, crew_id: crewId }],
+      }));
+
+      await api.put(`/timings/${nextTiming.id}`, { status: "assigned" });
+      setTimings((prev) => prev.map((t) => t.id === nextTiming.id ? { ...t, status: "assigned" } : t));
+
+      getSocket().emit("assignTiming", {
+        race_id: selectedRaceId,
+        timing_id: nextTiming.id,
+        crew_id: crewId,
+      });
+
+      await checkRaceStarted();
+      await checkRaceFinished();
+    } catch (err) {
+      console.error("Erreur assignation", err);
+    }
+  };
+
+  const sortedCrews = React.useMemo(() => {
+    return [...(race.RaceCrews || [])].sort((a, b) => a.lane - b.lane);
+  }, [race.RaceCrews]);
+
+  if (viewMode === 'list') {
+    return (
+      <div className="space-y-4">
+        <div className="flex items-center justify-between gap-4">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setViewMode('grid')}
+          >
+            Mode grille
+          </Button>
+          <form onSubmit={handleLaneInputSubmit} className="flex gap-2">
+            <Input
+              type="text"
+              placeholder="N° couloir"
+              value={laneInput}
+              onChange={(e) => setLaneInput(e.target.value)}
+              className="w-32"
+              autoFocus
+            />
+            <Button type="submit">Valider</Button>
+          </form>
+        </div>
+
+        <div className="grid md:grid-cols-2 gap-4">
+          <Card className="border rounded-lg">
+            <CardHeader className="bg-blue-50">
+              <CardTitle className="text-sm">Équipages (cliquer pour affecter)</CardTitle>
+            </CardHeader>
+            <CardContent className="p-2 space-y-1">
+              {sortedCrews.map((rc) => {
+                const timingsForCrew = visibleTimings.filter(t => {
+                  const assigned = assignments[t.id] || [];
+                  return assigned.some(a => a.crew_id === rc.Crew?.id);
+                });
+                const hasAssignment = timingsForCrew.length > 0;
+
+                return (
+                  <button
+                    key={rc.id}
+                    onClick={() => handleCrewClick(rc.Crew?.id || '')}
+                    className={`w-full text-left p-3 rounded border transition ${
+                      hasAssignment
+                        ? 'bg-green-50 border-green-300 cursor-default'
+                        : 'bg-white hover:bg-blue-50 border-gray-200 cursor-pointer'
+                    }`}
+                    disabled={hasAssignment}
+                  >
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <span className="font-bold text-lg">Couloir {rc.lane}</span>
+                        <p className="text-sm text-muted-foreground">{rc.Crew?.club_name}</p>
+                      </div>
+                      {hasAssignment && (
+                        <span className="text-xs text-green-600 font-semibold">✓ Affecté</span>
+                      )}
+                    </div>
+                  </button>
+                );
+              })}
+            </CardContent>
+          </Card>
+
+          <Card className="border rounded-lg">
+            <CardHeader className="bg-yellow-50">
+              <CardTitle className="text-sm">Temps enregistrés</CardTitle>
+            </CardHeader>
+            <CardContent className="p-2 space-y-1">
+              {visibleTimings.map((timing) => {
+                const assigned = assignments[timing.id] || [];
+                const isAssigned = assigned.length > 0;
+                const crew = sortedCrews.find(rc => assigned.some(a => a.crew_id === rc.Crew?.id));
+
+                return (
+                  <div
+                    key={timing.id}
+                    className={`p-3 rounded border ${
+                      isAssigned ? 'bg-green-50 border-green-300' : 'bg-yellow-50 border-yellow-300'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <span className="font-mono text-sm">
+                          {dayjs(timing.timestamp).format("HH:mm:ss.SSS")}
+                        </span>
+                        {!isStartPoint && assigned.length > 0 && assigned.map((a) => {
+                          const splitTime = calculateSplitTime(timing.timestamp, a.crew_id);
+                          if (!splitTime) return null;
+                          return (
+                            <p key={a.crew_id} className={`font-bold text-lg ${isFinishPoint ? 'text-red-600' : 'text-blue-600'}`}>
+                              {splitTime}
+                            </p>
+                          );
+                        })}
+                        {isAssigned && crew && (
+                          <p className="text-xs text-muted-foreground mt-1">
+                            Couloir {crew.lane} - {crew.Crew?.club_name}
+                          </p>
+                        )}
+                      </div>
+                      <div className="flex gap-1">
+                        {isAssigned && (
+                          <Button
+                            size="icon"
+                            variant="ghost"
+                            onClick={async () => {
+                              const assignmentId = assigned[0]?.id;
+                              if (!assignmentId) return;
+
+                              try {
+                                await api.delete(`/timing-assignments/${assignmentId}`);
+                                setAssignments((prev) => ({
+                                  ...prev,
+                                  [timing.id]: [],
+                                }));
+                                await api.put(`/timings/${timing.id}`, { status: "pending" });
+                                setTimings((prev) => prev.map((t) => t.id === timing.id ? { ...t, status: "pending" } : t));
+                                await checkRaceFinished();
+                              } catch (err) {
+                                console.error("Erreur suppression", err);
+                              }
+                            }}
+                          >
+                            ✕
+                          </Button>
+                        )}
+                        <Button
+                          size="icon"
+                          variant="ghost"
+                          onClick={async () => {
+                            try {
+                              await api.put(`/timings/${timing.id}`, { status: "hidden" });
+                              setTimings((prev) => prev.filter((t) => t.id !== timing.id));
+                              await checkRaceFinished();
+                            } catch {}
+                          }}
+                        >
+                          <EyeOff className="w-4 h-4" />
+                        </Button>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </CardContent>
+          </Card>
+        </div>
+      </div>
+    );
+  }
+
   return (
-    <div className="overflow-x-auto border rounded-xl shadow-sm">
-      <table className="min-w-full text-sm text-left table-fixed">
+    <div className="space-y-4">
+      <Button
+        variant="outline"
+        size="sm"
+        onClick={() => setViewMode('list')}
+      >
+        Mode saisie rapide
+      </Button>
+      <div className="overflow-x-auto border rounded-xl shadow-sm">
+        <table className="min-w-full text-sm text-left table-fixed">
         <thead className="bg-muted text-muted-foreground">
           <tr>
             <th className="p-3 w-40 font-semibold">
@@ -428,6 +675,7 @@ export default function TimingTable({
           })}
         </tbody>
       </table>
+      </div>
     </div>
   );
 }
