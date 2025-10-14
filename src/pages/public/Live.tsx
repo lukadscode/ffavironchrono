@@ -84,18 +84,6 @@ export default function Live() {
           prev.map((race) => {
             if (race.id !== race_id) return race;
 
-            const raceStartTimings = startTimingsMap[race_id] || {};
-            const startTime = raceStartTimings[crew_id];
-            const absoluteTime = parseInt(time_ms);
-
-            let relativeTime = time_ms;
-            if (startTime && !isNaN(absoluteTime)) {
-              relativeTime = (absoluteTime - startTime).toString();
-              console.log('🔔 Calcul temps relatif:', { absoluteTime, startTime, relativeTime });
-            } else {
-              console.warn('⚠️ Pas de temps de départ pour crew', crew_id, 'dans race', race_id);
-            }
-
             return {
               ...race,
               crews: race.crews.map((crew) => {
@@ -113,7 +101,7 @@ export default function Live() {
                       timing_point_id,
                       timing_point_label,
                       distance_m,
-                      time_ms: relativeTime,
+                      time_ms,
                       order_index,
                     },
                   ].sort((a, b) => a.order_index - b.order_index),
@@ -134,22 +122,10 @@ export default function Live() {
           prev.map((race) => {
             if (race.id !== race_id) return race;
 
-            const raceStartTimings = startTimingsMap[race_id] || {};
-            const startTime = raceStartTimings[crew_id];
-            const absoluteTime = parseInt(final_time);
-
-            let relativeTime = final_time;
-            if (startTime && !isNaN(absoluteTime)) {
-              relativeTime = (absoluteTime - startTime).toString();
-              console.log('🏁 Calcul temps final relatif:', { absoluteTime, startTime, relativeTime });
-            } else {
-              console.warn('⚠️ Pas de temps de départ pour crew', crew_id, 'dans race', race_id);
-            }
-
             return {
               ...race,
               crews: race.crews.map((crew) =>
-                crew.crew_id === crew_id ? { ...crew, final_time: relativeTime } : crew
+                crew.crew_id === crew_id ? { ...crew, final_time } : crew
               ),
             };
           })
@@ -160,7 +136,7 @@ export default function Live() {
     return () => {
       socket.emit("leavePublicEvent", { event_id: eventId });
     };
-  }, [eventId, startTimingsMap]);
+  }, [eventId]);
 
   useEffect(() => {
     const fetchData = async () => {
@@ -327,7 +303,13 @@ export default function Live() {
   }, [eventId]);
 
   const formatTime = (ms: string | number) => {
-    const diffMs = parseInt(ms.toString(), 10);
+    const msStr = ms.toString();
+
+    if (msStr.includes(':')) {
+      return msStr;
+    }
+
+    const diffMs = parseInt(msStr, 10);
     if (isNaN(diffMs) || diffMs < 0) return "N/A";
 
     const totalSeconds = Math.floor(diffMs / 1000);
