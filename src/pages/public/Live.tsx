@@ -60,7 +60,7 @@ export default function Live() {
 
     socket.on(
       "raceIntermediateUpdate",
-      ({
+      async ({
         race_id,
         crew_id,
         timing_point_id,
@@ -77,6 +77,8 @@ export default function Live() {
         time_ms: string;
         order_index: number;
       }) => {
+        console.log('🔔 raceIntermediateUpdate reçu:', { race_id, crew_id, timing_point_id, time_ms });
+
         setRaces((prev) =>
           prev.map((race) => {
             if (race.id !== race_id) return race;
@@ -113,6 +115,8 @@ export default function Live() {
     socket.on(
       "raceFinalUpdate",
       ({ race_id, crew_id, final_time }: { race_id: string; crew_id: string; final_time: string }) => {
+        console.log('🏁 raceFinalUpdate reçu:', { race_id, crew_id, final_time });
+
         setRaces((prev) =>
           prev.map((race) => {
             if (race.id !== race_id) return race;
@@ -185,37 +189,50 @@ export default function Live() {
               }
 
               const lastPointId = sortedPoints[sortedPoints.length - 1]?.id;
+              const startPointId = sortedPoints[0]?.id;
 
-              const raceStartTime = new Date(race.start_time).getTime();
-              console.log(`🏁 Course ${race.name} - start_time:`, race.start_time, 'timestamp:', raceStartTime);
-
-              if (isNaN(raceStartTime)) {
-                console.warn(`⚠️ Course ${race.name} - start_time invalide, impossible de calculer les temps`);
-              }
+              const startTimings: Record<string, number> = {};
 
               for (const assignment of assignments) {
-                if (!assignment.timing?.time_ms) continue;
+                if (!assignment.timing_id || !assignment.crew_id) continue;
 
-                const timingPoint = sortedPoints.find((p: TimingPoint) => p.id === assignment.timing?.timing_point_id);
-                if (!timingPoint) continue;
+                try {
+                  const timingRes = await api.get(`/timings/${assignment.timing_id}`);
+                  const timing = timingRes.data.data;
+                  if (!timing) continue;
 
-                const crewIndex = crews.findIndex((c: any) => c.crew_id === assignment.crew_id);
-                if (crewIndex === -1) continue;
+                  const timingPoint = sortedPoints.find((p: TimingPoint) => p.id === timing.timing_point_id);
+                  if (!timingPoint) continue;
 
-                const absoluteTime = parseInt(assignment.timing.time_ms);
-                const time_ms = isNaN(raceStartTime) ? absoluteTime : absoluteTime - raceStartTime;
-                console.log(`⏱️ Crew ${assignment.crew_id} - Point ${timingPoint.label}: absolu=${absoluteTime}, relatif=${time_ms}ms`);
+                  const crewIndex = crews.findIndex((c: any) => c.crew_id === assignment.crew_id);
+                  if (crewIndex === -1) continue;
 
-                if (timingPoint.id === lastPointId) {
-                  crews[crewIndex].final_time = time_ms.toString();
-                } else {
-                  crews[crewIndex].intermediate_times.push({
-                    timing_point_id: timingPoint.id,
-                    timing_point_label: timingPoint.label,
-                    distance_m: timingPoint.distance_m,
-                    time_ms: time_ms.toString(),
-                    order_index: timingPoint.order_index,
-                  });
+                  const absoluteTime = new Date(timing.timestamp).getTime();
+
+                  if (timingPoint.id === startPointId) {
+                    startTimings[assignment.crew_id] = absoluteTime;
+                    continue;
+                  }
+
+                  const startTime = startTimings[assignment.crew_id];
+                  if (!startTime) continue;
+
+                  const time_ms = absoluteTime - startTime;
+                  console.log(`⏱️ Crew ${assignment.crew_id} - Point ${timingPoint.label}: absolu=${absoluteTime}, start=${startTime}, relatif=${time_ms}ms`);
+
+                  if (timingPoint.id === lastPointId) {
+                    crews[crewIndex].final_time = time_ms.toString();
+                  } else {
+                    crews[crewIndex].intermediate_times.push({
+                      timing_point_id: timingPoint.id,
+                      timing_point_label: timingPoint.label,
+                      distance_m: timingPoint.distance_m,
+                      time_ms: time_ms.toString(),
+                      order_index: timingPoint.order_index,
+                    });
+                  }
+                } catch (err) {
+                  console.error(`Erreur chargement timing ${assignment.timing_id}`, err);
                 }
               }
 
@@ -251,13 +268,13 @@ export default function Live() {
   }, [eventId]);
 
   const formatTime = (ms: string | number) => {
-    const totalMs = Math.abs(parseInt(ms.toString(), 10));
-    if (isNaN(totalMs) || totalMs < 0) return "N/A";
+    const diffMs = parseInt(ms.toString(), 10);
+    if (isNaN(diffMs) || diffMs < 0) return "N/A";
 
-    const totalSeconds = Math.floor(totalMs / 1000);
+    const totalSeconds = Math.floor(diffMs / 1000);
     const minutes = Math.floor(totalSeconds / 60);
     const seconds = totalSeconds % 60;
-    const milliseconds = totalMs % 1000;
+    const milliseconds = diffMs % 1000;
 
     return `${minutes}:${seconds.toString().padStart(2, "0")}.${milliseconds.toString().padStart(3, "0")}`;
   };
