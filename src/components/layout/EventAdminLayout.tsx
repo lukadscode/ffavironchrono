@@ -14,6 +14,8 @@ import {
   Moon,
   ChevronLeft,
   ChevronRight,
+  Gavel,
+  Activity,
 } from "lucide-react";
 
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -36,6 +38,8 @@ const navItems = [
   { to: "racePhases", label: "Phases", icon: Flag },
   { to: "timingPoint", label: "Points", icon: Timer },
   { to: "timing", label: "Chrono", icon: Timer },
+  { to: "arbitres", label: "Arbitres", icon: Gavel },
+  { to: "indoor", label: "Indoor", icon: Activity },
 ];
 
 export default function EventAdminLayout() {

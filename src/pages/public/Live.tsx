@@ -1,6 +1,6 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { useParams } from "react-router-dom";
-import api from "@/lib/axios";
+import { publicApi } from "@/lib/axios";
 import { initSocket, getSocket } from "@/lib/socket";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import dayjs from "dayjs";
@@ -43,7 +43,7 @@ export default function Live() {
   const [races, setRaces] = useState<LiveRace[]>([]);
   const [timingPoints, setTimingPoints] = useState<TimingPoint[]>([]);
   const [loading, setLoading] = useState(true);
-  const [startTimingsMap, setStartTimingsMap] = useState<Record<string, Record<string, number>>>({});
+  const timingPointsRef = useRef<TimingPoint[]>([]);
 
   useEffect(() => {
     if (!eventId) return;
@@ -54,9 +54,14 @@ export default function Live() {
     socket.emit("joinPublicEvent", { event_id: eventId });
 
     socket.on("raceStatusUpdate", ({ race_id, status }: { race_id: string; status: string }) => {
-      setRaces((prev) =>
-        prev.map((race) => (race.id === race_id ? { ...race, status } : race))
-      );
+      setRaces((prev) => {
+        // Si la course passe en officiel, la retirer du live
+        if (status === "official") {
+          return prev.filter((race) => race.id !== race_id);
+        }
+        // Sinon, mettre à jour le statut
+        return prev.map((race) => (race.id === race_id ? { ...race, status } : race));
+      });
     });
 
     socket.on(
@@ -67,7 +72,8 @@ export default function Live() {
         timing_point_id,
         timing_point_label,
         distance_m,
-        time_ms,
+        time_ms, // Conservé pour rétrocompatibilité
+        relative_time_ms, // ← Priorité : temps relatif calculé par l'API
         order_index,
       }: {
         race_id: string;
@@ -75,14 +81,25 @@ export default function Live() {
         timing_point_id: string;
         timing_point_label: string;
         distance_m: number;
-        time_ms: string;
+        time_ms?: string; // Optionnel maintenant
+        relative_time_ms: number | null; // ← Maintenant toujours présent
         order_index: number;
       }) => {
-        console.log('🔔 raceIntermediateUpdate reçu:', { race_id, crew_id, timing_point_id, time_ms });
+        console.log('🔔 raceIntermediateUpdate reçu:', { race_id, crew_id, timing_point_id, relative_time_ms });
 
         setRaces((prev) =>
           prev.map((race) => {
             if (race.id !== race_id) return race;
+
+            // Utiliser la ref pour accéder aux timingPoints à jour
+            const currentPoints = timingPointsRef.current;
+            const lastPoint = currentPoints[currentPoints.length - 1];
+            const isLastPoint = timing_point_id === lastPoint?.id;
+
+            // Utiliser relative_time_ms en priorité (calculé par l'API), sinon time_ms (rétrocompatibilité)
+            const relativeTime = relative_time_ms !== null && relative_time_ms !== undefined 
+              ? relative_time_ms.toString() 
+              : time_ms || "0";
 
             return {
               ...race,
@@ -93,6 +110,24 @@ export default function Live() {
                   (t) => t.timing_point_id !== timing_point_id
                 );
 
+                // Si c'est le dernier point, mettre à jour final_time
+                if (isLastPoint) {
+                  return {
+                    ...crew,
+                    final_time: relativeTime,
+                    intermediate_times: [
+                      ...existingTimes,
+                      {
+                        timing_point_id,
+                        timing_point_label,
+                        distance_m,
+                        time_ms: relativeTime,
+                        order_index,
+                      },
+                    ].sort((a, b) => a.order_index - b.order_index),
+                  };
+                }
+
                 return {
                   ...crew,
                   intermediate_times: [
@@ -101,7 +136,7 @@ export default function Live() {
                       timing_point_id,
                       timing_point_label,
                       distance_m,
-                      time_ms,
+                      time_ms: relativeTime,
                       order_index,
                     },
                   ].sort((a, b) => a.order_index - b.order_index),
@@ -115,8 +150,23 @@ export default function Live() {
 
     socket.on(
       "raceFinalUpdate",
-      ({ race_id, crew_id, final_time }: { race_id: string; crew_id: string; final_time: string }) => {
-        console.log('🏁 raceFinalUpdate reçu:', { race_id, crew_id, final_time });
+      ({ 
+        race_id, 
+        crew_id, 
+        final_time, // Conservé pour rétrocompatibilité
+        relative_time_ms // ← Priorité : temps relatif calculé par l'API
+      }: { 
+        race_id: string; 
+        crew_id: string; 
+        final_time?: string; // Optionnel maintenant
+        relative_time_ms: number | null; // ← Maintenant toujours présent
+      }) => {
+        console.log('🏁 raceFinalUpdate reçu:', { race_id, crew_id, relative_time_ms });
+
+        // Utiliser relative_time_ms en priorité (calculé par l'API), sinon final_time (rétrocompatibilité)
+        const finalTime = relative_time_ms !== null && relative_time_ms !== undefined
+          ? relative_time_ms.toString()
+          : final_time || "0";
 
         setRaces((prev) =>
           prev.map((race) => {
@@ -125,7 +175,7 @@ export default function Live() {
             return {
               ...race,
               crews: race.crews.map((crew) =>
-                crew.crew_id === crew_id ? { ...crew, final_time } : crew
+                crew.crew_id === crew_id ? { ...crew, final_time: finalTime } : crew
               ),
             };
           })
@@ -142,8 +192,8 @@ export default function Live() {
     const fetchData = async () => {
       try {
         const [racesRes, timingPointsRes] = await Promise.all([
-          api.get(`/races/event/${eventId}`),
-          api.get(`/timing-points/event/${eventId}`)
+          publicApi.get(`/races/event/${eventId}`),
+          publicApi.get(`/timing-points/event/${eventId}`)
         ]);
 
         const allRaces = racesRes.data.data || [];
@@ -153,22 +203,13 @@ export default function Live() {
 
         const sortedPoints = points.sort((a: TimingPoint, b: TimingPoint) => a.order_index - b.order_index);
         setTimingPoints(sortedPoints);
+        timingPointsRef.current = sortedPoints; // Mettre à jour la ref
 
-        const sorted = allRaces.sort((a: any, b: any) => (a.race_number || 0) - (b.race_number || 0));
+        // Filtrer les courses officielles (ne pas les afficher en live)
+        const nonOfficialRaces = allRaces.filter((r: any) => r.status !== "official");
+        const sorted = nonOfficialRaces.sort((a: any, b: any) => (a.race_number || 0) - (b.race_number || 0));
         const upcoming = sorted.slice(0, 6);
         console.log('🔝 6 premières courses:', upcoming);
-
-        let allTimingsMap: Record<string, any> = {};
-        try {
-          const timingsRes = await api.get(`/timings/event/${eventId}`);
-          const allTimings = timingsRes.data.data || [];
-          allTimings.forEach((timing: any) => {
-            allTimingsMap[timing.id] = timing;
-          });
-          console.log('⏱️ Timings chargés:', Object.keys(allTimingsMap).length);
-        } catch (err) {
-          console.error('Erreur chargement timings:', err);
-        }
 
         const enriched = await Promise.all(
           upcoming.map(async (race: any) => {
@@ -186,7 +227,8 @@ export default function Live() {
             console.log(`🚣 Course ${race.name} - ${crews.length} équipages:`, crews);
 
             try {
-              const assignmentsRes = await api.get(`/timing-assignments/race/${race.id}`);
+              // L'API retourne maintenant relative_time_ms directement dans les assignments
+              const assignmentsRes = await publicApi.get(`/timing-assignments/race/${race.id}`);
               const assignments = assignmentsRes.data.data || [];
 
               if (!assignments || assignments.length === 0) {
@@ -204,44 +246,48 @@ export default function Live() {
               const lastPointId = sortedPoints[sortedPoints.length - 1]?.id;
               const startPointId = sortedPoints[0]?.id;
 
-              const raceStartTimings: Record<string, number> = {};
-
+              // Utiliser relative_time_ms directement depuis l'API
+              // L'API retourne assignment.relative_time_ms et assignment.timing (enrichi)
               for (const assignment of assignments) {
                 if (!assignment.timing_id || !assignment.crew_id) continue;
 
-                const timing = allTimingsMap[assignment.timing_id];
-                if (!timing) continue;
-
-                const timingPoint = sortedPoints.find((p: TimingPoint) => p.id === timing.timing_point_id);
-                if (!timingPoint) continue;
-
-                const absoluteTime = new Date(timing.timestamp).getTime();
-
-                if (timingPoint.id === startPointId) {
-                  raceStartTimings[assignment.crew_id] = absoluteTime;
+                // L'API retourne assignment.timing avec toutes les infos (timing_point_id, etc.)
+                const timing = assignment.timing;
+                if (!timing) {
+                  console.warn(`⚠️ Timing non trouvé dans assignment ${assignment.id}`);
+                  continue;
                 }
-              }
 
-              setStartTimingsMap((prev) => ({
-                ...prev,
-                [race.id]: raceStartTimings,
-              }));
-
-              for (const assignment of assignments) {
-                if (!assignment.timing_id || !assignment.crew_id) continue;
-
-                const timing = allTimingsMap[assignment.timing_id];
-                if (!timing) continue;
-
-                const timingPoint = sortedPoints.find((p: TimingPoint) => p.id === timing.timing_point_id);
-                if (!timingPoint) continue;
+                // Utiliser le TimingPoint depuis assignment.timing.TimingPoint si disponible
+                const timingPoint = timing.TimingPoint 
+                  ? {
+                      id: timing.TimingPoint.id,
+                      label: timing.TimingPoint.label,
+                      distance_m: timing.TimingPoint.distance_m,
+                      order_index: timing.TimingPoint.order_index,
+                    }
+                  : sortedPoints.find((p: TimingPoint) => p.id === timing.timing_point_id);
+                
+                if (!timingPoint) {
+                  console.warn(`⚠️ TimingPoint ${timing.timing_point_id} non trouvé`);
+                  continue;
+                }
 
                 const crewIndex = crews.findIndex((c: any) => c.crew_id === assignment.crew_id);
-                if (crewIndex === -1) continue;
+                if (crewIndex === -1) {
+                  console.warn(`⚠️ Crew ${assignment.crew_id} non trouvé dans les crews`);
+                  continue;
+                }
 
-                const absoluteTime = new Date(timing.timestamp).getTime();
-                const startTime = raceStartTimings[assignment.crew_id];
+                // Utiliser relative_time_ms de l'API (priorité à assignment.relative_time_ms, puis timing.relative_time_ms)
+                const relativeTimeMs = assignment.relative_time_ms ?? timing.relative_time_ms;
+                
+                if (relativeTimeMs === null || relativeTimeMs === undefined) {
+                  console.warn(`⚠️ Pas de relative_time_ms pour crew ${assignment.crew_id} au point ${timingPoint.label}`);
+                  continue;
+                }
 
+                // Point de départ : temps = 0
                 if (timingPoint.id === startPointId) {
                   crews[crewIndex].intermediate_times.push({
                     timing_point_id: timingPoint.id,
@@ -253,19 +299,14 @@ export default function Live() {
                   continue;
                 }
 
-                if (!startTime) continue;
-
-                const time_ms = absoluteTime - startTime;
-                console.log(`⏱️ Crew ${assignment.crew_id} - Point ${timingPoint.label}: absolu=${absoluteTime}, start=${startTime}, relatif=${time_ms}ms`);
-
                 if (timingPoint.id === lastPointId) {
-                  crews[crewIndex].final_time = time_ms.toString();
+                  crews[crewIndex].final_time = relativeTimeMs.toString();
                 } else {
                   crews[crewIndex].intermediate_times.push({
                     timing_point_id: timingPoint.id,
                     timing_point_label: timingPoint.label,
                     distance_m: timingPoint.distance_m,
-                    time_ms: time_ms.toString(),
+                    time_ms: relativeTimeMs.toString(),
                     order_index: timingPoint.order_index,
                   });
                 }
@@ -290,8 +331,10 @@ export default function Live() {
         );
 
         const validRaces = enriched.filter(r => r !== undefined);
-        console.log('✅ Courses valides après enrichissement:', validRaces.length, validRaces);
-        setRaces(validRaces);
+        // Filtrer les courses officielles (ne pas les afficher en live)
+        const nonOfficialValidRaces = validRaces.filter((r) => r.status !== "official");
+        console.log('✅ Courses valides après enrichissement:', nonOfficialValidRaces.length, nonOfficialValidRaces);
+        setRaces(nonOfficialValidRaces);
       } catch (err) {
         console.error("Erreur chargement données live", err);
       } finally {
@@ -305,12 +348,20 @@ export default function Live() {
   const formatTime = (ms: string | number) => {
     const msStr = ms.toString();
 
+    // Si c'est déjà formaté (contient ':'), retourner tel quel
     if (msStr.includes(':')) {
       return msStr;
     }
 
     const diffMs = parseInt(msStr, 10);
-    if (isNaN(diffMs) || diffMs < 0) return "N/A";
+    if (isNaN(diffMs) || diffMs < 0) return "-";
+
+    // Si le temps est trop grand (probablement un timestamp absolu), retourner N/A
+    // Un temps de course normal ne devrait pas dépasser 30 minutes (1800000ms)
+    if (diffMs > 1800000) {
+      console.warn('Temps suspect (trop grand):', diffMs, 'ms');
+      return "-";
+    }
 
     const totalSeconds = Math.floor(diffMs / 1000);
     const minutes = Math.floor(totalSeconds / 60);
@@ -320,6 +371,22 @@ export default function Live() {
     return `${minutes}:${seconds.toString().padStart(2, "0")}.${milliseconds.toString().padStart(3, "0")}`;
   };
 
+  const formatTimeDifference = (ms: number) => {
+    if (ms === 0) return "0.000";
+    const absMs = Math.abs(ms);
+    const totalSeconds = Math.floor(absMs / 1000);
+    const seconds = totalSeconds % 60;
+    const minutes = Math.floor(totalSeconds / 60);
+    const milliseconds = absMs % 1000;
+    
+    const sign = ms < 0 ? "-" : "+";
+    
+    if (minutes > 0) {
+      return `${sign}${minutes}:${seconds.toString().padStart(2, "0")}.${milliseconds.toString().padStart(3, "0")}`;
+    }
+    return `${sign}${seconds}.${milliseconds.toString().padStart(3, "0")}`;
+  };
+
   const getStatusBadge = (status: string) => {
     switch (status) {
       case "not_started":
@@ -327,6 +394,7 @@ export default function Live() {
       case "in_progress":
         return <span className="px-3 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-700 animate-pulse">En cours</span>;
       case "unofficial":
+      case "non_official":
         return <span className="px-3 py-1 rounded-full text-xs font-medium bg-yellow-100 text-yellow-700">Non officiel</span>;
       case "official":
         return <span className="px-3 py-1 rounded-full text-xs font-medium bg-green-100 text-green-700">Officiel</span>;
@@ -347,96 +415,191 @@ export default function Live() {
     <div className="space-y-6">
       <h2 className="text-2xl font-bold text-slate-900">Live - Courses en cours</h2>
 
-      {races.map((race) => (
-        <Card key={race.id}>
-          <CardHeader className="bg-slate-50">
-            <div className="flex items-center justify-between">
-              <CardTitle className="text-lg">
-                {race.race_number > 0 ? `Course ${race.race_number} - ` : ""}{race.name}
-              </CardTitle>
-              <div className="flex items-center gap-3">
-                <span className="text-sm text-muted-foreground">
-                  {dayjs(race.start_time).format("HH:mm")}
-                </span>
-                {getStatusBadge(race.status)}
+      {races.map((race) => {
+        // Trier les équipages par temps final (classement en temps réel)
+        // Si pas de temps final, garder l'ordre du couloir
+        const sortedCrews = [...race.crews].sort((a, b) => {
+          const aTime = a.final_time ? parseInt(a.final_time, 10) : null;
+          const bTime = b.final_time ? parseInt(b.final_time, 10) : null;
+          
+          // Si les deux ont un temps final, trier par temps croissant
+          if (aTime !== null && bTime !== null) {
+            return aTime - bTime;
+          }
+          // Si seul a a un temps, a vient avant
+          if (aTime !== null) return -1;
+          // Si seul b a un temps, b vient avant
+          if (bTime !== null) return 1;
+          // Sinon, garder l'ordre du couloir
+          return a.lane - b.lane;
+        });
+
+        // Trouver le temps du leader pour chaque timing point
+        const getLeaderTimeForPoint = (pointId: string) => {
+          const lastPointId = timingPoints[timingPoints.length - 1]?.id;
+          if (pointId === lastPointId) {
+            // Pour le dernier point, utiliser final_time
+            const leader = sortedCrews.find(c => c.final_time !== null);
+            return leader?.final_time ? parseInt(leader.final_time, 10) : null;
+          } else {
+            // Pour les points intermédiaires, trouver le meilleur temps
+            const times = sortedCrews
+              .map(crew => {
+                const intermediate = crew.intermediate_times.find(t => t.timing_point_id === pointId);
+                return intermediate?.time_ms ? parseInt(intermediate.time_ms, 10) : null;
+              })
+              .filter((t): t is number => t !== null)
+              .sort((a, b) => a - b);
+            return times.length > 0 ? times[0] : null;
+          }
+        };
+
+        // Calculer le classement pour chaque équipage
+        const crewsWithPosition: (LiveCrew & { position: number })[] = [];
+        let currentPosition = 1;
+        
+        sortedCrews.forEach((crew, index) => {
+          // Si ce n'est pas le premier et que le temps est différent du précédent, incrémenter la position
+          if (index > 0) {
+            const prevCrew = sortedCrews[index - 1];
+            const prevTime = prevCrew.final_time ? parseInt(prevCrew.final_time, 10) : null;
+            const currentTime = crew.final_time ? parseInt(crew.final_time, 10) : null;
+            
+            // Si les deux ont un temps et qu'ils sont différents, incrémenter la position
+            if (prevTime !== null && currentTime !== null && prevTime !== currentTime) {
+              currentPosition = index + 1;
+            }
+            // Si le précédent n'avait pas de temps mais celui-ci en a, c'est la première position avec temps
+            else if (prevTime === null && currentTime !== null) {
+              currentPosition = 1;
+            }
+            // Si aucun n'a de temps, garder la position basée sur l'index
+            else if (prevTime === null && currentTime === null) {
+              currentPosition = index + 1;
+            }
+            // Sinon, même temps = même position
+          }
+          
+          crewsWithPosition.push({ ...crew, position: currentPosition });
+        });
+
+        return (
+          <Card key={race.id}>
+            <CardHeader className="bg-slate-50">
+              <div className="flex items-center justify-between">
+                <CardTitle className="text-lg">
+                  {race.race_number > 0 ? `Course ${race.race_number} - ` : ""}{race.name}
+                </CardTitle>
+                <div className="flex items-center gap-3">
+                  <span className="text-sm text-muted-foreground">
+                    {dayjs(race.start_time).format("HH:mm")}
+                  </span>
+                  {getStatusBadge(race.status)}
+                </div>
               </div>
-            </div>
-          </CardHeader>
-          <CardContent className="pt-6">
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="border-b">
-                    <th className="text-left py-2 px-3 font-semibold">Coul.</th>
-                    <th className="text-left py-2 px-3 font-semibold min-w-[140px]">Club</th>
-                    {timingPoints.map((point) => (
-                      <th key={point.id} className="text-center py-2 px-3 font-semibold">
-                        <div className="text-xs">{point.label}</div>
-                        <div className="text-[10px] text-muted-foreground font-normal">
-                          {point.distance_m}m
-                        </div>
-                      </th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {race.crews.length === 0 && (
-                    <tr>
-                      <td colSpan={timingPoints.length + 2} className="py-6 text-center text-muted-foreground">
-                        Aucun équipage pour cette course
-                      </td>
-                    </tr>
-                  )}
-                  {race.crews.map((crew) => {
-                    const isFinished = crew.final_time !== null;
-                    return (
-                      <tr key={crew.crew_id} className="border-b hover:bg-slate-50">
-                        <td className="py-3 px-3 font-medium">{crew.lane}</td>
-                        <td className="py-3 px-3">
-                          <div>
-                            <p className="font-medium text-sm">{crew.club_name}</p>
-                            <p className="text-xs text-muted-foreground">{crew.club_code}</p>
+            </CardHeader>
+            <CardContent className="pt-6">
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b">
+                      {sortedCrews.some(c => c.final_time !== null) && (
+                        <th className="text-left py-2 px-3 font-semibold">Class.</th>
+                      )}
+                      <th className="text-left py-2 px-3 font-semibold">Coul.</th>
+                      <th className="text-left py-2 px-3 font-semibold min-w-[140px]">Club</th>
+                      {timingPoints.map((point) => (
+                        <th key={point.id} className="text-center py-2 px-3 font-semibold">
+                          <div className="text-xs">{point.label}</div>
+                          <div className="text-[10px] text-muted-foreground font-normal">
+                            {point.distance_m}m
                           </div>
+                        </th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {crewsWithPosition.length === 0 && (
+                      <tr>
+                        <td colSpan={timingPoints.length + (sortedCrews.some(c => c.final_time !== null) ? 3 : 2)} className="py-6 text-center text-muted-foreground">
+                          Aucun équipage pour cette course
                         </td>
-                        {timingPoints.map((point, index) => {
-                          const isLastPoint = index === timingPoints.length - 1;
-                          let timeToDisplay = null;
-
-                          if (isLastPoint && crew.final_time) {
-                            timeToDisplay = crew.final_time;
-                          } else {
-                            const intermediate = crew.intermediate_times.find(
-                              (t) => t.timing_point_id === point.id
-                            );
-                            if (intermediate) {
-                              timeToDisplay = intermediate.time_ms;
-                            }
-                          }
-
-                          return (
-                            <td
-                              key={point.id}
-                              className={`py-3 px-3 text-center font-mono text-sm ${
-                                isLastPoint && timeToDisplay ? "font-bold text-green-600" : ""
-                              }`}
-                            >
-                              {timeToDisplay ? (
-                                formatTime(timeToDisplay)
-                              ) : (
-                                <span className="text-muted-foreground">-</span>
-                              )}
-                            </td>
-                          );
-                        })}
                       </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-          </CardContent>
-        </Card>
-      ))}
+                    )}
+                    {crewsWithPosition.map((crew) => {
+                      const hasFinalTime = sortedCrews.some(c => c.final_time !== null);
+
+                      return (
+                        <tr
+                          key={crew.crew_id}
+                          className="border-b hover:bg-slate-50"
+                        >
+                          {hasFinalTime && (
+                            <td className="py-3 px-3 font-bold">
+                              {crew.position}
+                            </td>
+                          )}
+                          <td className="py-3 px-3 font-medium">{crew.lane}</td>
+                          <td className="py-3 px-3">
+                            <div>
+                              <p className="font-medium text-sm">{crew.club_name}</p>
+                              <p className="text-xs text-muted-foreground">{crew.club_code}</p>
+                            </div>
+                          </td>
+                          {timingPoints.map((point, index) => {
+                            const isLastPoint = index === timingPoints.length - 1;
+                            let timeToDisplay = null;
+
+                            if (isLastPoint && crew.final_time) {
+                              timeToDisplay = crew.final_time;
+                            } else {
+                              const intermediate = crew.intermediate_times.find(
+                                (t) => t.timing_point_id === point.id
+                              );
+                              if (intermediate) {
+                                timeToDisplay = intermediate.time_ms;
+                              }
+                            }
+
+                            // Calculer l'écart pour ce point
+                            const leaderTimeForPoint = getLeaderTimeForPoint(point.id);
+                            const crewTimeForPoint = timeToDisplay ? parseInt(timeToDisplay, 10) : null;
+                            const timeDifference = leaderTimeForPoint !== null && crewTimeForPoint !== null
+                              ? crewTimeForPoint - leaderTimeForPoint
+                              : null;
+
+                            return (
+                              <td
+                                key={point.id}
+                                className={`py-3 px-3 text-center font-mono text-sm ${
+                                  isLastPoint && timeToDisplay ? "font-bold text-green-600" : ""
+                                }`}
+                              >
+                                {timeToDisplay ? (
+                                  <div>
+                                    <div>{formatTime(timeToDisplay)}</div>
+                                    {timeDifference !== null && timeDifference !== 0 && (
+                                      <div className="text-xs text-muted-foreground mt-1 font-mono">
+                                        {formatTimeDifference(timeDifference)}
+                                      </div>
+                                    )}
+                                  </div>
+                                ) : (
+                                  <span className="text-muted-foreground">-</span>
+                                )}
+                              </td>
+                            );
+                          })}
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </CardContent>
+          </Card>
+        );
+      })}
 
       {races.length === 0 && (
         <p className="text-center text-muted-foreground py-12">Aucune course à afficher</p>

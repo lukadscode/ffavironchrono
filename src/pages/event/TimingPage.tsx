@@ -11,10 +11,26 @@ import {
   SelectItem,
   SelectContent,
 } from "@/components/ui/select";
+import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
 import dayjs from "dayjs";
 import TimingTable from "@/components/timing/TimingTable";
 import DebugTimings from "@/components/timing/DebugTimings";
+import {
+  Timer,
+  Clock,
+  Users,
+  Play,
+  Bug,
+  MapPin,
+  Trophy,
+  CheckCircle2,
+  Circle,
+  AlertCircle,
+  Loader2,
+  ChevronRight,
+  ChevronLeft,
+} from "lucide-react";
 
 type Race = {
   id: string;
@@ -45,6 +61,9 @@ type Timing = {
   manual_entry: boolean;
   status: string;
   timing_point_id: string;
+  relative_time_ms?: number | null;
+  crew_id?: string | null;
+  race_id?: string | null;
 };
 
 type Assignment = {
@@ -54,16 +73,44 @@ type Assignment = {
 };
 
 const getStatusBadge = (status: string) => {
-  const statusConfig: Record<string, { label: string; color: string }> = {
-    not_started: { label: "Non démarrée", color: "bg-gray-100 text-gray-700" },
-    in_progress: { label: "En cours", color: "bg-blue-100 text-blue-700" },
-    unofficial: { label: "Non officiel", color: "bg-yellow-100 text-yellow-700" },
-    official: { label: "Officiel", color: "bg-green-100 text-green-700" },
+  const statusConfig: Record<
+    string,
+    { label: string; color: string; icon: any; bgColor: string }
+  > = {
+    not_started: {
+      label: "Non démarrée",
+      color: "text-gray-700",
+      icon: Circle,
+      bgColor: "bg-gray-100 border-gray-300",
+    },
+    in_progress: {
+      label: "En cours",
+      color: "text-blue-700",
+      icon: Play,
+      bgColor: "bg-blue-100 border-blue-300",
+    },
+    non_official: {
+      label: "Non officiel",
+      color: "text-yellow-700",
+      icon: AlertCircle,
+      bgColor: "bg-yellow-100 border-yellow-300",
+    },
+    official: {
+      label: "Officiel",
+      color: "text-green-700",
+      icon: CheckCircle2,
+      bgColor: "bg-green-100 border-green-300",
+    },
   };
 
   const config = statusConfig[status] || statusConfig.not_started;
+  const Icon = config.icon;
+
   return (
-    <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${config.color}`}>
+    <span
+      className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold border ${config.bgColor} ${config.color}`}
+    >
+      <Icon className="w-3.5 h-3.5" />
       {config.label}
     </span>
   );
@@ -76,13 +123,17 @@ export default function TimingPage() {
   const [races, setRaces] = useState<Race[]>([]);
   const [selectedRaceId, setSelectedRaceId] = useState<string | null>(null);
   const [timings, setTimings] = useState<Timing[]>([]);
-  const [assignments, setAssignments] = useState<Record<string, { id: string; crew_id: string }[]>>({});
+  const [assignments, setAssignments] = useState<
+    Record<string, { id: string; crew_id: string }[]>
+  >({});
   const [serverTimeOffset, setServerTimeOffset] = useState(0);
   const [liveTime, setLiveTime] = useState<string>("");
   const [debugMode, setDebugMode] = useState(false);
   const [viewerCount, setViewerCount] = useState(0);
   const [timingPoints, setTimingPoints] = useState<TimingPoint[]>([]);
-  const [currentTimingPoint, setCurrentTimingPoint] = useState<TimingPoint | null>(null);
+  const [currentTimingPoint, setCurrentTimingPoint] =
+    useState<TimingPoint | null>(null);
+  const [isManualTimingLoading, setIsManualTimingLoading] = useState(false);
 
   const socketRef = useRef<any>(null);
 
@@ -101,7 +152,13 @@ export default function TimingPage() {
 
     socket.on(
       "timingPointViewerCount",
-      ({ timing_point_id, count }: { timing_point_id: string; count: number }) => {
+      ({
+        timing_point_id,
+        count,
+      }: {
+        timing_point_id: string;
+        count: number;
+      }) => {
         if (timing_point_id === timingPointId) {
           setViewerCount((prev) => {
             if (count > prev) {
@@ -140,19 +197,34 @@ export default function TimingPage() {
       });
     });
 
+    socket.on(
+      "timingAssigned",
+      async ({
+        timing_id,
+        crew_id,
+      }: {
+        timing_id: string;
+        crew_id: string;
+      }) => {
+        // Recharger les assignments depuis l'API pour avoir les IDs corrects
+        try {
+          await fetchAssignments();
+        } catch (err) {
+          console.error("Erreur rechargement assignments après WebSocket", err);
+          // Fallback: ajouter sans ID (sera corrigé au prochain fetchAssignments)
+          setAssignments((prev) => {
+            const existing = prev[timing_id] || [];
+            const alreadyAssigned = existing.some((a) => a.crew_id === crew_id);
+            if (alreadyAssigned) return prev;
 
-    socket.on("timingAssigned", ({ timing_id, crew_id }: { timing_id: string; crew_id: string }) => {
-      setAssignments((prev) => {
-        const existing = prev[timing_id] || [];
-        const alreadyAssigned = existing.some((a) => a.crew_id === crew_id);
-        if (alreadyAssigned) return prev;
-
-        return {
-          ...prev,
-          [timing_id]: [...existing, { id: "", crew_id }],
-        };
-      });
-    });
+            return {
+              ...prev,
+              [timing_id]: [...existing, { id: "", crew_id }],
+            };
+          });
+        }
+      }
+    );
 
     fetchTimings();
     fetchAssignments();
@@ -208,18 +280,22 @@ export default function TimingPage() {
         RaceCrews: (race.race_crews || []).map((rc: any) => ({
           id: rc.id,
           lane: rc.lane,
-          Crew: rc.crew ? {
-            id: rc.crew.id,
-            club_name: rc.crew.club_name
-          } : null
-        }))
+          Crew: rc.crew
+            ? {
+                id: rc.crew.id,
+                club_name: rc.crew.club_name,
+              }
+            : null,
+        })),
       }));
-      const sorted = mapped.sort((a: Race, b: Race) => a.race_number - b.race_number);
+      const sorted = mapped.sort(
+        (a: Race, b: Race) => a.race_number - b.race_number
+      );
       setRaces(sorted);
 
       if (!selectedRaceId && sorted.length > 0) {
-        const autoSelectRace = sorted.find((r: Race) =>
-          r.status === "in_progress" || r.status === "not_started"
+        const autoSelectRace = sorted.find(
+          (r: Race) => r.status === "in_progress" || r.status === "not_started"
         );
         if (autoSelectRace) {
           setSelectedRaceId(autoSelectRace.id);
@@ -239,7 +315,7 @@ export default function TimingPage() {
       const res = await api.get(`/timing-assignments/race/${selectedRaceId}`);
       const mapped: Record<string, { id: string; crew_id: string }[]> = {};
 
-      res.data.data.forEach((a: Assignment) => {
+      res.data.data.forEach((a: any) => {
         if (!mapped[a.timing_id]) {
           mapped[a.timing_id] = [];
         }
@@ -258,10 +334,21 @@ export default function TimingPage() {
 
   const fetchTimings = async () => {
     try {
-      const res = await api.get(`/timings/event/${eventId}`);
-      const filtered = res.data.data.filter((t: any) => t.timing_point_id === timingPointId);
+      if (!selectedRaceId) {
+        setTimings([]);
+        return;
+      }
+
+      const res = await api.get(`/timings/race/${selectedRaceId}`);
+      const allTimings = res.data.data || [];
+
+      const filtered = allTimings.filter(
+        (t: any) => t.timing_point_id === timingPointId
+      );
+
       setTimings(filtered);
-    } catch {
+    } catch (err) {
+      console.error("Erreur chargement timings:", err);
       toast({
         title: "Erreur",
         description: "Impossible de charger les timings",
@@ -286,6 +373,7 @@ export default function TimingPage() {
   };
 
   const handleManualTiming = async () => {
+    setIsManualTimingLoading(true);
     const timestamp = new Date(Date.now() + serverTimeOffset).toISOString();
     try {
       const res = await api.post("/timings", {
@@ -299,13 +387,19 @@ export default function TimingPage() {
         if (exists) return prev;
         return [...prev, res.data.data];
       });
-      toast({ title: "Timing ajouté", description: timestamp });
-    } catch {
+      toast({
+        title: "Timing enregistré",
+        description: `Timing manuel ajouté à ${dayjs(timestamp).format("HH:mm:ss.SSS")}`,
+      });
+    } catch (err: any) {
+      console.error("Erreur ajout timing:", err);
       toast({
         title: "Erreur",
         description: "Impossible d'enregistrer le timing",
         variant: "destructive",
       });
+    } finally {
+      setIsManualTimingLoading(false);
     }
   };
 
@@ -318,16 +412,18 @@ export default function TimingPage() {
         });
       }
     });
-    Object.values(assignments).flat().forEach(({ crew_id }) => {
-      if (!map[crew_id]) {
-        for (const race of races) {
-          if (race.RaceCrews?.some((rc) => rc.Crew?.id === crew_id)) {
-            map[crew_id] = race.name;
-            break;
+    Object.values(assignments)
+      .flat()
+      .forEach(({ crew_id }) => {
+        if (!map[crew_id]) {
+          for (const race of races) {
+            if (race.RaceCrews?.some((rc) => rc.Crew?.id === crew_id)) {
+              map[crew_id] = race.name;
+              break;
+            }
           }
         }
-      }
-    });
+      });
     return map;
   }, [races, assignments]);
 
@@ -336,7 +432,9 @@ export default function TimingPage() {
   }, [races, selectedRaceId]);
 
   const crewIdsInSelectedRace = useMemo(() => {
-    return selectedRace?.RaceCrews?.map((rc) => rc.Crew?.id).filter(Boolean) ?? [];
+    return (
+      selectedRace?.RaceCrews?.map((rc) => rc.Crew?.id).filter(Boolean) ?? []
+    );
   }, [selectedRace]);
 
   const visibleTimings = useMemo(() => {
@@ -352,74 +450,256 @@ export default function TimingPage() {
 
   const hiddenTimings = timings.filter((timing) => timing.status === "hidden");
 
+  const isStartPoint = currentTimingPoint?.order_index === 1;
+  const isFinishPoint =
+    timingPoints.length > 0 &&
+    currentTimingPoint?.order_index === timingPoints.length;
+
+  const stats = useMemo(() => {
+    const totalTimings = visibleTimings.length;
+    const assignedTimings = visibleTimings.filter(
+      (t) => assignments[t.id] && assignments[t.id].length > 0
+    ).length;
+    const totalCrews = selectedRace?.RaceCrews?.length || 0;
+    const finishedCrews = new Set(
+      Object.values(assignments)
+        .flat()
+        .map((a) => a.crew_id)
+        .filter((id) => crewIdsInSelectedRace.includes(id))
+    ).size;
+
+    return {
+      totalTimings,
+      assignedTimings,
+      totalCrews,
+      finishedCrews,
+      progress: totalCrews > 0 ? (finishedCrews / totalCrews) * 100 : 0,
+    };
+  }, [visibleTimings, assignments, selectedRace, crewIdsInSelectedRace]);
+
+  // Trouver la course suivante et précédente
+  const { nextRace, previousRace } = useMemo(() => {
+    if (!selectedRaceId || races.length === 0) {
+      return { nextRace: null, previousRace: null };
+    }
+
+    const currentIndex = races.findIndex((r) => r.id === selectedRaceId);
+    if (currentIndex === -1) {
+      return { nextRace: null, previousRace: null };
+    }
+
+    return {
+      nextRace: currentIndex < races.length - 1 ? races[currentIndex + 1] : null,
+      previousRace: currentIndex > 0 ? races[currentIndex - 1] : null,
+    };
+  }, [races, selectedRaceId]);
+
+  const handleNextRace = () => {
+    if (nextRace) {
+      setSelectedRaceId(nextRace.id);
+      toast({
+        title: "Course suivante",
+        description: `Passage à la course #${nextRace.race_number} - ${nextRace.name}`,
+      });
+    }
+  };
+
+  const handlePreviousRace = () => {
+    if (previousRace) {
+      setSelectedRaceId(previousRace.id);
+      toast({
+        title: "Course précédente",
+        description: `Retour à la course #${previousRace.race_number} - ${previousRace.name}`,
+      });
+    }
+  };
+
   return (
-    <div className="flex flex-col gap-6 max-w-7xl mx-auto p-4">
-      <Card className="shadow-md border">
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2 text-lg md:text-xl">
-            🎯 Chronométrage {currentTimingPoint && (
-              <>
-                – <span className="text-blue-600">{currentTimingPoint.label}</span>
-                <span className="text-sm font-normal text-muted-foreground">
-                  ({currentTimingPoint.distance_m}m)
-                </span>
-                {currentTimingPoint.order_index === 1 && (
-                  <span className="ml-2 px-2 py-1 bg-green-100 text-green-800 text-xs font-semibold rounded">
-                    DÉPART
-                  </span>
-                )}
-                {timingPoints.length > 0 && currentTimingPoint.order_index === timingPoints.length && (
-                  <span className="ml-2 px-2 py-1 bg-red-100 text-red-800 text-xs font-semibold rounded">
-                    ARRIVÉE
-                  </span>
-                )}
-              </>
-            )}
-            <span className="ml-auto text-sm font-mono text-muted-foreground">
-              🧍 {viewerCount} poste{viewerCount > 1 ? "s" : ""}
-            </span>
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="grid gap-4 md:grid-cols-2">
-          <div className="flex flex-col gap-2">
-            <Select onValueChange={setSelectedRaceId} value={selectedRaceId || undefined}>
-              <SelectTrigger className="w-full">
-                <SelectValue placeholder="Sélectionner une course" />
-              </SelectTrigger>
-              <SelectContent>
-                {races.map((r) => (
-                  <SelectItem key={r.id} value={r.id}>
-                    <div className="flex items-center justify-between w-full gap-3">
-                      <span>#{r.race_number} – {r.name}</span>
-                      {getStatusBadge(r.status)}
-                    </div>
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+    <div className="space-y-6 max-w-7xl mx-auto p-4">
+      {/* Header compact */}
+      <div className="relative overflow-hidden rounded-xl bg-gradient-to-br from-emerald-600 via-emerald-700 to-emerald-800 text-white p-4 shadow-lg">
+        <div className="absolute inset-0 bg-[url('data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNjAiIGhlaWdodD0iNjAiIHZpZXdCb3g9IjAgMCA2MCA2MCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48ZyBmaWxsPSJub25lIiBmaWxsLXJ1bGU9ImV2ZW5vZGQiPjxnIGZpbGw9IiNmZmYiIGZpbGwtb3BhY2l0eT0iMC4xIj48cGF0aCBkPSJNMzYgMzRWMjJIMjR2MTJIMTJ2MTJIMjR2MTJIMzZWMzR6Ii8+PC9nPjwvZz48L3N2Zz4=')] opacity-20"></div>
+        <div className="relative z-10 flex items-center justify-between">
+          <div className="flex items-center gap-4">
+            <Timer className="w-6 h-6" />
+            <div>
+              <h1 className="text-xl font-bold mb-1">
+                {currentTimingPoint ? currentTimingPoint.label : "Chronométrage"}
+              </h1>
+              {currentTimingPoint && (
+                <div className="flex items-center gap-2 text-sm text-emerald-100">
+                  <MapPin className="w-3.5 h-3.5" />
+                  <span>{currentTimingPoint.distance_m}m</span>
+                  {isStartPoint && (
+                    <span className="ml-2 px-2 py-0.5 rounded-full text-xs font-bold bg-green-500 text-white">
+                      DÉPART
+                    </span>
+                  )}
+                  {isFinishPoint && (
+                    <span className="ml-2 px-2 py-0.5 rounded-full text-xs font-bold bg-red-500 text-white">
+                      ARRIVÉE
+                    </span>
+                  )}
+                </div>
+              )}
+            </div>
+          </div>
+          <div className="flex items-center gap-4">
             {selectedRace && (
-              <div className="flex items-center gap-2 text-sm">
-                <span className="text-muted-foreground">Statut:</span>
-                {getStatusBadge(selectedRace.status)}
+              <div className="bg-white/20 backdrop-blur-sm rounded-lg px-3 py-2 border border-white/30">
+                <div className="text-xs text-emerald-100 mb-0.5">Progression</div>
+                <div className="text-lg font-bold">
+                  {stats.finishedCrews}/{stats.totalCrews}
+                </div>
               </div>
             )}
-          </div>
-          <div className="flex flex-col gap-2 w-full">
-            <div className="px-3 py-1 rounded-md bg-muted font-mono text-sm text-center">
-              {liveTime}
+            <div className="flex items-center gap-2 bg-white/20 backdrop-blur-sm rounded-lg px-3 py-2 border border-white/30">
+              <Users className="w-4 h-4" />
+              <div>
+                <div className="text-xs text-emerald-100">Postes</div>
+                <div className="text-lg font-bold">{viewerCount}</div>
+              </div>
             </div>
-            <div className="flex gap-2">
-              <Button className="w-full" size="lg" onClick={handleManualTiming}>
-                ⏱️ Stop Timing
-              </Button>
-              <Button variant="outline" onClick={() => setDebugMode((prev) => !prev)}>
-                {debugMode ? "Quitter Debug" : "🛠️ Debug"}
-              </Button>
+          </div>
+        </div>
+      </div>
+
+      {/* Contrôles */}
+      <Card className="shadow-md border-2">
+        <CardContent className="p-6">
+          <div className="grid gap-6 md:grid-cols-2">
+            {/* Sélection de course */}
+            <div className="space-y-3">
+              <Label className="text-base font-semibold flex items-center gap-2">
+                <Trophy className="w-5 h-5 text-emerald-600" />
+                Sélectionner une course
+              </Label>
+              <div className="flex gap-2">
+                <Button
+                  variant="outline"
+                  size="icon"
+                  className="h-12 w-12 flex-shrink-0"
+                  onClick={handlePreviousRace}
+                  disabled={!previousRace}
+                  title={previousRace ? `Course précédente: #${previousRace.race_number}` : "Aucune course précédente"}
+                >
+                  <ChevronLeft className="w-5 h-5" />
+                </Button>
+                <Select
+                  onValueChange={setSelectedRaceId}
+                  value={selectedRaceId || undefined}
+                  className="flex-1"
+                >
+                  <SelectTrigger className="w-full h-12 text-base">
+                    <SelectValue placeholder="Choisir une course..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {races.map((r) => (
+                      <SelectItem key={r.id} value={r.id}>
+                        <div className="flex items-center justify-between w-full gap-4">
+                          <span className="font-semibold">
+                            #{r.race_number} – {r.name}
+                          </span>
+                          {getStatusBadge(r.status)}
+                        </div>
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <Button
+                  variant="outline"
+                  size="icon"
+                  className="h-12 w-12 flex-shrink-0"
+                  onClick={handleNextRace}
+                  disabled={!nextRace}
+                  title={nextRace ? `Course suivante: #${nextRace.race_number}` : "Aucune course suivante"}
+                >
+                  <ChevronRight className="w-5 h-5" />
+                </Button>
+              </div>
+              {selectedRace && (
+                <div className="flex items-center justify-between p-3 bg-slate-50 rounded-lg border">
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm font-medium text-muted-foreground">
+                      Statut de la course:
+                    </span>
+                    {getStatusBadge(selectedRace.status)}
+                  </div>
+                  {nextRace && (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={handleNextRace}
+                      className="text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50"
+                    >
+                      Course suivante
+                      <ChevronRight className="w-4 h-4 ml-1" />
+                    </Button>
+                  )}
+                </div>
+              )}
+            </div>
+
+            {/* Horloge et contrôles */}
+            <div className="space-y-3">
+              <Label className="text-base font-semibold flex items-center gap-2">
+                <Clock className="w-5 h-5 text-emerald-600" />
+                Horloge serveur
+              </Label>
+              <div className="relative">
+                <div className="px-6 py-4 rounded-lg bg-gradient-to-br from-slate-900 to-slate-800 text-white font-mono text-3xl text-center border-2 border-slate-700 shadow-lg">
+                  {liveTime || (
+                    <div className="flex items-center justify-center gap-2">
+                      <Loader2 className="w-6 h-6 animate-spin" />
+                      <span className="text-lg">Synchronisation...</span>
+                    </div>
+                  )}
+                </div>
+              </div>
+              <div className="flex gap-2">
+                <Button
+                  className="flex-1 h-12 text-base font-semibold"
+                  size="lg"
+                  onClick={handleManualTiming}
+                  disabled={isManualTimingLoading}
+                >
+                  {isManualTimingLoading ? (
+                    <>
+                      <Loader2 className="w-5 h-5 mr-2 animate-spin" />
+                      Enregistrement...
+                    </>
+                  ) : (
+                    <>
+                      <Play className="w-5 h-5 mr-2" />
+                      Stop Timing
+                    </>
+                  )}
+                </Button>
+                <Button
+                  variant="outline"
+                  size="lg"
+                  className="h-12"
+                  onClick={() => setDebugMode((prev) => !prev)}
+                >
+                  {debugMode ? (
+                    <>
+                      <CheckCircle2 className="w-5 h-5 mr-2" />
+                      Quitter Debug
+                    </>
+                  ) : (
+                    <>
+                      <Bug className="w-5 h-5 mr-2" />
+                      Debug
+                    </>
+                  )}
+                </Button>
+              </div>
             </div>
           </div>
         </CardContent>
       </Card>
 
+      {/* Tableau de timing */}
       {selectedRace && selectedRaceId && timingPointId && (
         <TimingTable
           race={selectedRace}
@@ -437,8 +717,13 @@ export default function TimingPage() {
         />
       )}
 
+      {/* Mode debug */}
       {debugMode && (
-        <DebugTimings hiddenTimings={hiddenTimings} setTimings={setTimings} toast={toast} />
+        <DebugTimings
+          hiddenTimings={hiddenTimings}
+          setTimings={setTimings}
+          toast={toast}
+        />
       )}
     </div>
   );

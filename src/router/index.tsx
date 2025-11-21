@@ -1,11 +1,11 @@
 import { Navigate, createBrowserRouter, RouterProvider } from "react-router-dom";
-import Login from "@/pages/Login";
 import Register from "@/pages/Register";
 import ProtectedRoute from "@/router/ProtectedRoute";
 import Logout from "@/pages/Logout";
 import DashboardLayout from "@/components/layout/DashboardLayout";
 import DashboardHome from "@/pages/dashboard/DashboardHome";
 import EventsPage from "@/pages/dashboard/EventsPage";
+import EventsManagementPage from "@/pages/dashboard/EventsManagementPage";
 import ProfilePage from "@/pages/dashboard/ProfilePage";
 import EventAdminLayout from "@/components/layout/EventAdminLayout";
 import ParticipantsPage from "@/pages/event/ParticipantsPage";
@@ -21,21 +21,31 @@ import TimingPointsPage from "@/pages/event/TimingPointsPage";
 import RacePhasesPage from "@/pages/races/RacePhasesPage";
 import TimingOverviewPage from "@/pages/timing/TimingOverviewPage";
 import RacePhaseDetailPage from "@/pages/races/RacePhaseDetailPage";
+import ArbitresPage from "@/pages/event/ArbitresPage";
+import IndoorPage from "@/pages/event/IndoorPage";
+import IndoorRaceDetailPage from "@/pages/event/IndoorRaceDetailPage";
 import EventsList from "@/pages/public/EventsList";
 import PublicEvent from "@/pages/public/PublicEvent";
 import Live from "@/pages/public/Live";
 import Startlist from "@/pages/public/Startlist";
 import Results from "@/pages/public/Results";
+import HomePage from "@/pages/HomePage";
+import AdminLogin from "@/pages/AdminLogin";
+import AdminRedirect from "@/pages/AdminRedirect";
 
 const router = createBrowserRouter([
-  { path: "/", element: <Navigate to="/public/events" replace /> },
-  { path: "/login", element: <Login /> },
+  { path: "/", element: <HomePage /> },
   { path: "/register", element: <Register /> },
   { path: "/logout", element: <Logout /> },
+  
+  // Routes admin
+  { path: "/admin", element: <AdminRedirect /> },
+  { path: "/admin/login", element: <AdminLogin /> },
 
+  // Route publique pour compatibilité (redirige vers l'accueil)
   {
     path: "/public/events",
-    element: <EventsList />,
+    element: <Navigate to="/" replace />,
   },
 
   {
@@ -59,6 +69,7 @@ const router = createBrowserRouter([
     children: [
       { path: "", element: <DashboardHome /> },
       { path: "events", element: <EventsPage /> },
+      { path: "events-management", element: <EventsManagementPage /> },
       { path: "profile", element: <ProfilePage /> },
     ],
   },
@@ -84,12 +95,15 @@ const router = createBrowserRouter([
       { path: "racePhases", element: <RacePhasesPage /> },
       { path: "timingPoint", element: <TimingPointsPage /> },
       { path: "racePhases/:phaseId", element: <RacePhaseDetailPage /> },
+      { path: "arbitres", element: <ArbitresPage /> },
+      { path: "indoor", element: <IndoorPage /> },
+      { path: "indoor/:raceId", element: <IndoorRaceDetailPage /> },
     ],
   },
 
   {
     path: "*",
-    element: <Navigate to="/dashboard" replace />,
+    element: <Navigate to="/" replace />,
   },
 ]);
 

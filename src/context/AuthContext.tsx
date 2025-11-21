@@ -34,8 +34,18 @@ export const AuthProvider = ({ children }: any) => {
       fetchUserProfile()
         .then((res) => {
           console.log("✅ Profil utilisateur chargé :", res?.data);
+          console.log("👤 Données utilisateur (user) :", res?.data?.user);
+          console.log("📋 Rôle utilisateur (user.role) :", res?.data?.user?.role);
+          console.log("📅 Événements (events) :", res?.data?.events);
+          if (res?.data?.events && res.data.events.length > 0) {
+            console.log("🎯 Rôles par événement :", res.data.events.map((e: any) => ({ eventId: e.id, eventName: e.name, role: e.role })));
+          }
           // Combine user et events ensemble
           setUser({
+            ...res.data.user,
+            events: res.data.events,
+          });
+          console.log("💾 Utilisateur final stocké :", {
             ...res.data.user,
             events: res.data.events,
           });

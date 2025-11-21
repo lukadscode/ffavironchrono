@@ -74,7 +74,7 @@ api.interceptors.response.use(
       } catch (refreshErr) {
         isRefreshing = false;
         localStorage.removeItem("authTokens");
-        window.location.href = "/login"; // ⏱ déconnexion automatique
+        window.location.href = "/admin/login"; // ⏱ déconnexion automatique
         return Promise.reject(refreshErr);
       }
     }
@@ -82,5 +82,13 @@ api.interceptors.response.use(
     return Promise.reject(error);
   }
 );
+
+// Instance axios publique (sans authentification) pour les pages publiques
+export const publicApi = axios.create({
+  baseURL: API_URL,
+  headers: {
+    "Content-Type": "application/json",
+  },
+});
 
 export default api;

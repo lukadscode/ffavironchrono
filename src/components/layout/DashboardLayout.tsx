@@ -1,16 +1,23 @@
 import { Outlet, NavLink } from "react-router-dom";
 import { Sheet, SheetTrigger, SheetContent } from "@/components/ui/sheet";
-import { Menu, LogOut, Home, Calendar, User } from "lucide-react";
+import { Menu, LogOut, Home, Calendar, User, Settings } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/context/AuthContext";
 import { cn } from "@/lib/utils"; // utile pour combiner les classes conditionnelles
 
 export default function DashboardLayout() {
-  const { logout } = useAuth();
+  const { logout, user } = useAuth();
+
+  // Vérifier si l'utilisateur est admin ou superadmin
+  const isAdmin = user?.role === "admin" || user?.role === "superadmin";
 
   const navLinks = [
     { to: "/dashboard", label: "Accueil", icon: Home },
     { to: "/dashboard/profile", label: "Profil", icon: User },
+    // Afficher le lien de gestion des événements seulement pour les admins
+    ...(isAdmin
+      ? [{ to: "/dashboard/events-management", label: "Gestion événements", icon: Settings }]
+      : []),
   ];
 
   const NavItem = ({ to, label, icon: Icon }: { to: string; label: string; icon: any }) => (

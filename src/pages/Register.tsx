@@ -36,7 +36,7 @@ export default function Register() {
         title: "Inscription réussie",
         description: "Vous pouvez maintenant vous connecter.",
       });
-      navigate("/login");
+      navigate("/admin/login");
     } catch {
       toast({
         title: "Erreur à l'inscription",
@@ -103,7 +103,7 @@ export default function Register() {
 
           <p className="text-sm text-center text-muted-foreground mt-4">
             Vous avez déjà un compte ?{" "}
-            <a href="/login" className="underline hover:text-primary">
+            <a href="/admin/login" className="underline hover:text-primary">
               Se connecter
             </a>
           </p>

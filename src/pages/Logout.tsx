@@ -8,7 +8,7 @@ export default function Logout() {
 
   useEffect(() => {
     logout();
-    navigate("/login");
+    navigate("/admin/login");
   }, [logout, navigate]);
 
   return null; // ou une animation/spinner si tu veux

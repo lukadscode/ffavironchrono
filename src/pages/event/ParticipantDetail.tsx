@@ -5,7 +5,31 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
+import {
+  User,
+  Building2,
+  Award,
+  Users,
+  ArrowLeft,
+  Save,
+  Trash2,
+  Loader2,
+  Edit,
+  AlertTriangle,
+  Mail,
+  Hash,
+  Calendar,
+} from "lucide-react";
+import dayjs from "dayjs";
 
 export default function ParticipantDetailsPage() {
   const { participantId, eventId } = useParams();
@@ -13,16 +37,46 @@ export default function ParticipantDetailsPage() {
   const { toast } = useToast();
   const [participant, setParticipant] = useState<any>(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [isSaving, setIsSaving] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [isEditing, setIsEditing] = useState(false);
 
   useEffect(() => {
     async function fetchData() {
+      if (!participantId) {
+        setError("ID de participant manquant");
+        setLoading(false);
+        return;
+      }
+
       try {
+        console.log("🔍 Récupération du participant:", participantId);
         const res = await api.get(`/participants/${participantId}`);
-        setParticipant(res.data.data);
-      } catch (err) {
+        console.log("✅ Réponse API participant:", res.data);
+        
+        const participantData = res.data.data || res.data;
+        
+        if (!participantData) {
+          setError("Participant introuvable");
+          setLoading(false);
+          return;
+        }
+
+        setParticipant(participantData);
+        setError(null);
+      } catch (err: any) {
+        console.error("❌ Erreur chargement participant:", err);
+        const errorMessage =
+          err?.response?.data?.message ||
+          err?.response?.data?.error ||
+          "Impossible de charger le participant";
+        
+        setError(errorMessage);
         toast({
           title: "Erreur",
-          description: "Impossible de charger le participant.",
+          description: errorMessage,
           variant: "destructive",
         });
       } finally {
@@ -30,101 +84,464 @@ export default function ParticipantDetailsPage() {
       }
     }
     fetchData();
-  }, [participantId]);
+  }, [participantId, toast]);
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setParticipant({ ...participant, [e.target.name]: e.target.value });
   };
 
   const handleUpdate = async () => {
+    if (!participantId) return;
+
+    setIsSaving(true);
     try {
       await api.put(`/participants/${participantId}`, participant);
-      toast({ title: "Participant mis à jour avec succès." });
-    } catch (err) {
-      toast({ title: "Erreur de mise à jour", variant: "destructive" });
+      setIsEditing(false);
+      toast({
+        title: "Succès",
+        description: "Participant mis à jour avec succès",
+      });
+    } catch (err: any) {
+      console.error("Erreur mise à jour:", err);
+      const errorMessage =
+        err?.response?.data?.message ||
+        err?.response?.data?.error ||
+        "Erreur lors de la mise à jour";
+      
+      toast({
+        title: "Erreur",
+        description: errorMessage,
+        variant: "destructive",
+      });
+    } finally {
+      setIsSaving(false);
     }
   };
 
   const handleDelete = async () => {
+    if (!participantId) return;
+
+    setIsDeleting(true);
     try {
       await api.delete(`/participants/${participantId}`);
-      toast({ title: "Participant supprimé." });
+      toast({
+        title: "Succès",
+        description: "Participant supprimé avec succès",
+      });
       navigate(`/event/${eventId}/participants`);
-    } catch (err) {
-      toast({ title: "Erreur lors de la suppression", variant: "destructive" });
+    } catch (err: any) {
+      console.error("Erreur suppression:", err);
+      const errorMessage =
+        err?.response?.data?.message ||
+        err?.response?.data?.error ||
+        "Erreur lors de la suppression";
+      
+      toast({
+        title: "Erreur",
+        description: errorMessage,
+        variant: "destructive",
+      });
+    } finally {
+      setIsDeleting(false);
+      setDeleteDialogOpen(false);
     }
   };
 
-  if (loading) return <p>Chargement...</p>;
-  if (!participant) return <p>Participant introuvable</p>;
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center py-20">
+        <div className="text-center">
+          <Loader2 className="w-12 h-12 animate-spin text-blue-600 mx-auto mb-4" />
+          <p className="text-muted-foreground">Chargement du participant...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (error || !participant) {
+    return (
+      <Card>
+        <CardContent className="py-12 text-center">
+          <p className="text-destructive font-semibold text-lg mb-4">
+            {error || "Participant introuvable"}
+          </p>
+          {eventId && (
+            <Button
+              variant="outline"
+              onClick={() => navigate(`/event/${eventId}/participants`)}
+            >
+              <ArrowLeft className="w-4 h-4 mr-2" />
+              Retour à la liste
+            </Button>
+          )}
+        </CardContent>
+      </Card>
+    );
+  }
+
+  // Gérer les équipages - vérifier différentes structures possibles
+  const crewParticipants = participant.crew_participants ||
+                           participant.CrewParticipants ||
+                           participant.crewParticipants ||
+                           [];
 
   return (
-    <div className="space-y-8">
-      <Card>
-        <CardHeader>
-          <CardTitle>
-            Fiche participant : {participant.last_name} {participant.first_name}
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div>
-            <Label>Nom</Label>
-            <Input name="last_name" value={participant.last_name} onChange={handleChange} />
-          </div>
-          <div>
-            <Label>Prénom</Label>
-            <Input name="first_name" value={participant.first_name} onChange={handleChange} />
-          </div>
-          <div>
-            <Label>Licence</Label>
-            <Input name="license_number" value={participant.license_number} onChange={handleChange} />
-          </div>
-          <div>
-            <Label>Sexe</Label>
-            <Input name="gender" value={participant.gender} onChange={handleChange} />
-          </div>
-          <div>
-            <Label>Club</Label>
-            <Input name="club_name" value={participant.club_name} onChange={handleChange} />
+    <div className="space-y-6">
+      {/* Header avec gradient */}
+      <div className="relative overflow-hidden rounded-xl bg-gradient-to-br from-purple-600 via-purple-700 to-purple-800 text-white p-6 shadow-lg">
+        <div className="absolute inset-0 bg-[url('data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNjAiIGhlaWdodD0iNjAiIHZpZXdCb3g9IjAgMCA2MCA2MCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48ZyBmaWxsPSJub25lIiBmaWxsLXJ1bGU9ImV2ZW5vZGQiPjxnIGZpbGw9IiNmZmYiIGZpbGwtb3BhY2l0eT0iMC4xIj48cGF0aCBkPSJNMzYgMzRWMjJIMjR2MTJIMTJ2MTJIMjR2MTJIMzZWMzR6Ii8+PC9nPjwvZz48L3N2Zz4=')] opacity-20"></div>
+        
+        <div className="relative z-10">
+          <div className="flex items-start justify-between mb-4">
+            <div className="flex-1">
+              <div className="flex items-center gap-3 mb-2">
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="text-white hover:bg-white/20"
+                  onClick={() => eventId && navigate(`/event/${eventId}/participants`)}
+                >
+                  <ArrowLeft className="w-5 h-5" />
+                </Button>
+                <h1 className="text-3xl font-bold">
+                  {participant.last_name} {participant.first_name}
+                </h1>
+              </div>
+              {participant.license_number && (
+                <p className="text-purple-100 text-lg">Licence: {participant.license_number}</p>
+              )}
+            </div>
+            <div className="text-right">
+              {participant.gender && (
+                <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-white/20 backdrop-blur-md border border-white/30">
+                  <User className="w-5 h-5" />
+                  <span className="font-semibold">{participant.gender}</span>
+                </div>
+              )}
+            </div>
           </div>
 
-          <div className="flex gap-4 mt-6">
-            <Button onClick={handleUpdate}>Enregistrer</Button>
-            <Button variant="destructive" onClick={handleDelete}>
-              Supprimer
-            </Button>
+          {crewParticipants.length > 0 && (
+            <div className="mt-4 pt-4 border-t border-white/20">
+              <div className="flex items-center gap-2 text-purple-100">
+                <Users className="w-4 h-4" />
+                <span className="text-sm">
+                  {crewParticipants.length} équipage{crewParticipants.length > 1 ? 's' : ''}
+                </span>
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Informations du participant */}
+      <Card>
+        <CardHeader>
+          <div className="flex items-center justify-between">
+            <CardTitle className="flex items-center gap-2">
+              <User className="w-5 h-5" />
+              Informations personnelles
+            </CardTitle>
+            {!isEditing && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setIsEditing(true)}
+              >
+                <Edit className="w-4 h-4 mr-2" />
+                Modifier
+              </Button>
+            )}
           </div>
+        </CardHeader>
+        <CardContent>
+          {isEditing ? (
+            <div className="space-y-4">
+              <div className="grid md:grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="last_name">Nom *</Label>
+                  <Input
+                    id="last_name"
+                    name="last_name"
+                    value={participant.last_name || ""}
+                    onChange={handleChange}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="first_name">Prénom *</Label>
+                  <Input
+                    id="first_name"
+                    name="first_name"
+                    value={participant.first_name || ""}
+                    onChange={handleChange}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="license_number">Numéro de licence</Label>
+                  <Input
+                    id="license_number"
+                    name="license_number"
+                    value={participant.license_number || ""}
+                    onChange={handleChange}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="gender">Sexe</Label>
+                  <Input
+                    id="gender"
+                    name="gender"
+                    value={participant.gender || ""}
+                    onChange={handleChange}
+                    placeholder="Homme, Femme, etc."
+                  />
+                </div>
+                <div className="space-y-2 md:col-span-2">
+                  <Label htmlFor="club_name">Club</Label>
+                  <Input
+                    id="club_name"
+                    name="club_name"
+                    value={participant.club_name || ""}
+                    onChange={handleChange}
+                  />
+                </div>
+                {participant.email && (
+                  <div className="space-y-2 md:col-span-2">
+                    <Label htmlFor="email">Email</Label>
+                    <Input
+                      id="email"
+                      name="email"
+                      type="email"
+                      value={participant.email || ""}
+                      onChange={handleChange}
+                      disabled
+                    />
+                  </div>
+                )}
+              </div>
+              <div className="flex gap-3 pt-4 border-t">
+                <Button
+                  variant="outline"
+                  onClick={() => setIsEditing(false)}
+                  disabled={isSaving}
+                >
+                  Annuler
+                </Button>
+                <Button onClick={handleUpdate} disabled={isSaving}>
+                  {isSaving ? (
+                    <>
+                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                      Enregistrement...
+                    </>
+                  ) : (
+                    <>
+                      <Save className="w-4 h-4 mr-2" />
+                      Enregistrer
+                    </>
+                  )}
+                </Button>
+              </div>
+            </div>
+          ) : (
+            <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
+              <div className="space-y-1">
+                <Label className="text-sm text-muted-foreground flex items-center gap-2">
+                  <User className="w-4 h-4" />
+                  Nom complet
+                </Label>
+                <p className="text-lg font-semibold">
+                  {participant.last_name} {participant.first_name}
+                </p>
+              </div>
+              {participant.license_number && (
+                <div className="space-y-1">
+                  <Label className="text-sm text-muted-foreground flex items-center gap-2">
+                    <Hash className="w-4 h-4" />
+                    Numéro de licence
+                  </Label>
+                  <p className="text-lg font-mono font-semibold">{participant.license_number}</p>
+                </div>
+              )}
+              {participant.gender && (
+                <div className="space-y-1">
+                  <Label className="text-sm text-muted-foreground flex items-center gap-2">
+                    <User className="w-4 h-4" />
+                    Sexe
+                  </Label>
+                  <p className="text-lg font-semibold">{participant.gender}</p>
+                </div>
+              )}
+              {participant.club_name && (
+                <div className="space-y-1">
+                  <Label className="text-sm text-muted-foreground flex items-center gap-2">
+                    <Building2 className="w-4 h-4" />
+                    Club
+                  </Label>
+                  <p className="text-lg font-semibold">{participant.club_name}</p>
+                </div>
+              )}
+              {participant.email && (
+                <div className="space-y-1">
+                  <Label className="text-sm text-muted-foreground flex items-center gap-2">
+                    <Mail className="w-4 h-4" />
+                    Email
+                  </Label>
+                  <p className="text-lg">{participant.email}</p>
+                </div>
+              )}
+            </div>
+          )}
         </CardContent>
       </Card>
 
-      {/* CREW BLOCKS */}
-      {participant.CrewParticipants?.length > 0 && (
-        <div className="space-y-4">
-          {participant.CrewParticipants.map((cp: any) => {
-            const crew = cp.Crew;
-            const category = crew?.category;
-            return (
-              <Card
-                key={cp.id}
-                onClick={() => navigate(`/event/${eventId}/crews/${crew.id}`)}
-                className="cursor-pointer hover:bg-muted transition-colors"
-              >
-                <CardHeader>
-                  <CardTitle>
-                    Équipage : {crew?.club_name ?? "Inconnu"}
-                  </CardTitle>
-                </CardHeader>
-                <CardContent className="text-sm space-y-1 text-muted-foreground">
-                  <p>Catégorie : {category?.label ?? "—"} ({category?.code ?? "—"})</p>
-                  <p>Club code : {crew?.club_code ?? "—"}</p>
-                  <p>Poste dans le bateau : {cp.seat_position ?? "—"}</p>
-                  <p>{cp.is_coxswain ? "Rôle : Barreur / Cox" : "Rôle : Rameur"}</p>
-                </CardContent>
-              </Card>
-            );
-          })}
-        </div>
+      {/* Équipages */}
+      {crewParticipants.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Users className="w-5 h-5" />
+              Équipages ({crewParticipants.length})
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="grid gap-4 md:grid-cols-2">
+              {crewParticipants.map((cp: any) => {
+                const crew = cp.crew || cp.Crew;
+                const category = crew?.category;
+                const event = crew?.Event;
+                
+                return (
+                  <Card
+                    key={cp.id}
+                    className="cursor-pointer hover:shadow-lg transition-all duration-200 border-2 hover:border-blue-500"
+                    onClick={() => navigate(`/event/${eventId}/crews/${crew?.id}`)}
+                  >
+                    <CardContent className="p-5">
+                      <div className="flex items-start justify-between mb-4">
+                        <div className="flex-1">
+                          <h3 className="font-semibold text-lg mb-1 flex items-center gap-2">
+                            <Building2 className="w-4 h-4 text-blue-600" />
+                            {crew?.club_name || "Club inconnu"}
+                          </h3>
+                          {crew?.club_code && (
+                            <p className="text-sm text-muted-foreground">Code: {crew.club_code}</p>
+                          )}
+                        </div>
+                        <div className="flex-shrink-0 w-10 h-10 rounded-full bg-gradient-to-br from-blue-500 to-blue-600 flex items-center justify-center text-white font-bold text-sm shadow-md">
+                          {cp.seat_position || "—"}
+                        </div>
+                      </div>
+
+                      <div className="space-y-2">
+                        {category && (
+                          <div className="flex items-center gap-2">
+                            <Award className="w-4 h-4 text-muted-foreground" />
+                            <div>
+                              <p className="text-sm font-medium">{category.label || category.code}</p>
+                              {category.code && category.code !== category.label && (
+                                <p className="text-xs text-muted-foreground">{category.code}</p>
+                              )}
+                            </div>
+                          </div>
+                        )}
+
+                        <div className="flex items-center gap-2 text-sm">
+                          <Users className="w-4 h-4 text-muted-foreground" />
+                          <span className="text-muted-foreground">
+                            {cp.is_coxswain ? (
+                              <span className="font-medium text-orange-600">Barreur / Cox</span>
+                            ) : (
+                              <span>Rameur - Place {cp.seat_position}</span>
+                            )}
+                          </span>
+                        </div>
+
+                        {event && (
+                          <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                            <Calendar className="w-4 h-4" />
+                            <span className="line-clamp-1">{event.name}</span>
+                          </div>
+                        )}
+                      </div>
+                    </CardContent>
+                  </Card>
+                );
+              })}
+            </div>
+          </CardContent>
+        </Card>
       )}
+
+      {/* Actions */}
+      <div className="flex justify-end gap-3 pt-4 border-t">
+        <Button
+          variant="outline"
+          onClick={() => eventId && navigate(`/event/${eventId}/participants`)}
+        >
+          <ArrowLeft className="w-4 h-4 mr-2" />
+          Retour
+        </Button>
+        <Button
+          variant="destructive"
+          onClick={() => setDeleteDialogOpen(true)}
+        >
+          <Trash2 className="w-4 h-4 mr-2" />
+          Supprimer
+        </Button>
+      </div>
+
+      {/* Modal de confirmation de suppression */}
+      <Dialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-red-600">
+              <AlertTriangle className="w-5 h-5" />
+              Confirmer la suppression
+            </DialogTitle>
+            <DialogDescription className="pt-4">
+              <div className="space-y-3">
+                <p className="font-semibold text-foreground">
+                  Êtes-vous sûr de vouloir supprimer le participant{" "}
+                  <span className="text-red-600">
+                    {participant.last_name} {participant.first_name}
+                  </span>
+                  ?
+                </p>
+                <div className="bg-red-50 border border-red-200 rounded-lg p-4">
+                  <p className="text-sm text-red-800">
+                    ⚠️ Cette action est irréversible. Le participant sera retiré de tous les équipages auxquels il est associé.
+                  </p>
+                </div>
+              </div>
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setDeleteDialogOpen(false)}
+              disabled={isDeleting}
+            >
+              Annuler
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={handleDelete}
+              disabled={isDeleting}
+            >
+              {isDeleting ? (
+                <>
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  Suppression...
+                </>
+              ) : (
+                <>
+                  <Trash2 className="w-4 h-4 mr-2" />
+                  Supprimer définitivement
+                </>
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

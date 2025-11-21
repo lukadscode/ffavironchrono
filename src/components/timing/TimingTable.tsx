@@ -29,6 +29,9 @@ type Props = {
     id: string;
     timestamp: string;
     status: string;
+    relative_time_ms?: number | null;
+    crew_id?: string | null;
+    race_id?: string | null;
   }[];
   assignments: Record<string, { id: string; crew_id: string }[]>;
   setAssignments: React.Dispatch<
@@ -58,7 +61,6 @@ export default function TimingTable({
   timingPoints,
   eventId,
 }: Props) {
-  const [startTimings, setStartTimings] = React.useState<Record<string, Record<string, string>>>({});
   const [viewMode, setViewMode] = React.useState<'grid' | 'list'>('grid');
   const [laneInput, setLaneInput] = React.useState('');
 
@@ -136,12 +138,13 @@ export default function TimingTable({
 
       console.log(`🏁 Crews finis: ${finishedCrews.size}/${totalCrews}`, Array.from(finishedCrews));
 
+      // Vérifier que tous les couloirs ont un temps assigné au point d'arrivée
       if (finishedCrews.size === totalCrews && currentRace.status === "in_progress") {
-        console.log("🎉 Passage en finished");
-        await api.patch(`/races/${selectedRaceId}`, { status: "finished" });
-      } else if (finishedCrews.size < totalCrews && currentRace.status === "finished") {
-        console.log("↩️ Retour en in_progress");
-        await api.patch(`/races/${selectedRaceId}`, { status: "in_progress" });
+        console.log("🎉 Tous les équipages ont terminé, passage en non_official");
+        await api.put(`/races/${selectedRaceId}`, { status: "non_official" });
+      } else if (finishedCrews.size < totalCrews && (currentRace.status === "non_official" || currentRace.status === "finished")) {
+        console.log("↩️ Retour en in_progress (tous les équipages n'ont pas encore terminé)");
+        await api.put(`/races/${selectedRaceId}`, { status: "in_progress" });
       } else {
         console.log("⏸️ Aucune action nécessaire", {
           condition1: `${finishedCrews.size} === ${totalCrews}`,
@@ -153,63 +156,52 @@ export default function TimingTable({
     }
   };
 
-  React.useEffect(() => {
-    if (isStartPoint || !startPoint) return;
+  // Plus besoin de charger les timings de départ, l'API fournit directement relative_time_ms
 
-    const fetchStartTimings = async () => {
-      try {
-        const res = await api.get(`/timings/event/${eventId}`);
-        const allTimings = res.data.data;
-
-        const startTimingsMap: Record<string, Record<string, string>> = {};
-
-        for (const crewId of crewIdsInSelectedRace) {
-          const assignmentsRes = await api.get(`/timing-assignments/crew/${crewId}`);
-          const crewAssignments = assignmentsRes.data.data;
-
-          const startAssignment = crewAssignments.find(
-            (a: any) => allTimings.some(
-              (t: any) => t.id === a.timing_id && t.timing_point_id === startPoint.id
-            )
-          );
-
-          if (startAssignment) {
-            const startTiming = allTimings.find((t: any) => t.id === startAssignment.timing_id);
-            if (startTiming) {
-              if (!startTimingsMap[race.id]) startTimingsMap[race.id] = {};
-              startTimingsMap[race.id][crewId] = startTiming.timestamp;
-            }
-          }
-        }
-
-        setStartTimings(startTimingsMap);
-      } catch (err) {
-        console.error('Erreur chargement timings de départ:', err);
-      }
-    };
-
-    fetchStartTimings();
-  }, [race.id, crewIdsInSelectedRace, isStartPoint, startPoint, eventId]);
-
-  const calculateSplitTime = (currentTimestamp: string, crewId: string): string | null => {
-    if (isStartPoint) return null;
-
-    const startTimestamp = startTimings[race.id]?.[crewId];
-    if (!startTimestamp) return null;
-
-    const start = new Date(startTimestamp).getTime();
-    const current = new Date(currentTimestamp).getTime();
-    const diffMs = current - start;
-
-    if (diffMs < 0) return null;
-
-    const totalSeconds = Math.floor(diffMs / 1000);
+  const formatRelativeTime = (relativeTimeMs: number | null | undefined): string | null => {
+    if (relativeTimeMs === null || relativeTimeMs === undefined) return null;
+    
+    const totalSeconds = Math.floor(relativeTimeMs / 1000);
     const minutes = Math.floor(totalSeconds / 60);
     const seconds = totalSeconds % 60;
-    const ms = diffMs % 1000;
+    const ms = relativeTimeMs % 1000;
 
     return `${minutes}:${seconds.toString().padStart(2, '0')}.${ms.toString().padStart(3, '0')}`;
   };
+
+  const formatTimeDifference = (ms: number) => {
+    if (ms === 0) return "0.000";
+    const absMs = Math.abs(ms);
+    const totalSeconds = Math.floor(absMs / 1000);
+    const seconds = totalSeconds % 60;
+    const minutes = Math.floor(totalSeconds / 60);
+    const milliseconds = absMs % 1000;
+    
+    const sign = ms < 0 ? "-" : "+";
+    
+    if (minutes > 0) {
+      return `${sign}${minutes}:${seconds.toString().padStart(2, "0")}.${milliseconds.toString().padStart(3, "0")}`;
+    }
+    return `${sign}${seconds}.${milliseconds.toString().padStart(3, "0")}`;
+  };
+
+  // Calculer le leader (meilleur temps) pour ce timing point
+  const getLeaderTime = React.useMemo(() => {
+    if (isStartPoint) return null; // Pas de leader au départ
+    
+    const timingsWithRelativeTime = visibleTimings
+      .filter(t => t.relative_time_ms !== null && t.relative_time_ms !== undefined)
+      .map(t => t.relative_time_ms!);
+    
+    console.log('🔍 Timings avec relative_time_ms:', timingsWithRelativeTime.length, 'sur', visibleTimings.length);
+    console.log('🔍 Visible timings:', visibleTimings.map(t => ({ id: t.id, relative_time_ms: t.relative_time_ms })));
+    
+    if (timingsWithRelativeTime.length === 0) return null;
+    
+    const leader = Math.min(...timingsWithRelativeTime);
+    console.log('🏆 Leader calculé:', leader);
+    return leader;
+  }, [visibleTimings, isStartPoint]);
 
   const handleLaneInputSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -379,15 +371,18 @@ export default function TimingTable({
                         <span className="font-mono text-sm">
                           {dayjs(timing.timestamp).format("HH:mm:ss.SSS")}
                         </span>
-                        {!isStartPoint && assigned.length > 0 && assigned.map((a) => {
-                          const splitTime = calculateSplitTime(timing.timestamp, a.crew_id);
-                          if (!splitTime) return null;
-                          return (
-                            <p key={a.crew_id} className={`font-bold text-lg ${isFinishPoint ? 'text-red-600' : 'text-blue-600'}`}>
-                              {splitTime}
+                        {!isStartPoint && timing.relative_time_ms !== null && timing.relative_time_ms !== undefined && (
+                          <div>
+                            <p className={`font-bold text-lg ${isFinishPoint ? 'text-red-600' : 'text-blue-600'}`}>
+                              {formatRelativeTime(timing.relative_time_ms) || '-'}
                             </p>
-                          );
-                        })}
+                            {getLeaderTime !== null && (
+                              <p className="text-xs text-muted-foreground mt-1 font-mono">
+                                {formatTimeDifference(timing.relative_time_ms - getLeaderTime)}
+                              </p>
+                            )}
+                          </div>
+                        )}
                         {isAssigned && crew && (
                           <p className="text-xs text-muted-foreground mt-1">
                             Couloir {crew.lane} - {crew.Crew?.club_name}
@@ -493,15 +488,26 @@ export default function TimingTable({
                     <span className="text-xs text-muted-foreground">
                       {dayjs(timing.timestamp).format("HH:mm:ss.SSS")}
                     </span>
-                    {!isStartPoint && assigned.length > 0 && assigned.map((a) => {
-                      const splitTime = calculateSplitTime(timing.timestamp, a.crew_id);
-                      if (!splitTime) return null;
-                      return (
-                        <span key={a.crew_id} className={`text-sm font-bold ${isFinishPoint ? 'text-red-600' : 'text-blue-600'}`}>
-                          {splitTime}
-                        </span>
-                      );
-                    })}
+                    {!isStartPoint && (
+                      <>
+                        {timing.relative_time_ms !== null && timing.relative_time_ms !== undefined ? (
+                          <div className="flex flex-col gap-1">
+                            <span className={`text-sm font-bold ${isFinishPoint ? 'text-red-600' : 'text-blue-600'}`}>
+                              {formatRelativeTime(timing.relative_time_ms) || '-'}
+                            </span>
+                            {getLeaderTime !== null && (
+                              <span className="text-xs text-muted-foreground font-mono">
+                                {formatTimeDifference(timing.relative_time_ms - getLeaderTime)}
+                              </span>
+                            )}
+                          </div>
+                        ) : (
+                          <span className="text-xs text-orange-500 italic">
+                            Temps relatif en attente...
+                          </span>
+                        )}
+                      </>
+                    )}
                   </div>
                 </td>
 
@@ -509,7 +515,8 @@ export default function TimingTable({
                   .sort((a, b) => a.lane - b.lane)
                   .map((rc) => {
                     const isChecked = assigned.some((a) => a.crew_id === rc.Crew?.id);
-                    const assignmentId = assigned.find((a) => a.crew_id === rc.Crew?.id)?.id;
+                    const assignment = assigned.find((a) => a.crew_id === rc.Crew?.id);
+                    const assignmentId = assignment?.id;
 
                     return (
                       <td key={rc.id} className="p-2 text-center">
@@ -553,9 +560,35 @@ export default function TimingTable({
                               await checkRaceStarted();
                               await checkRaceFinished();
                             } else {
-                              if (!assignmentId) return;
+                              // Si assignmentId n'est pas trouvé, essayer de le récupérer depuis l'API
+                              let idToDelete = assignmentId;
+                              
+                              if (!idToDelete) {
+                                console.warn('⚠️ assignmentId manquant, tentative de récupération depuis l\'API', { timing_id: timing.id, crew_id: rc.Crew?.id, assigned });
+                                
+                                try {
+                                  const assignmentsRes = await api.get(`/timing-assignments/race/${selectedRaceId}`);
+                                  const allAssignments = assignmentsRes.data.data || [];
+                                  const matchingAssignment = allAssignments.find(
+                                    (a: any) => a.timing_id === timing.id && a.crew_id === rc.Crew?.id
+                                  );
+                                  
+                                  if (matchingAssignment?.id) {
+                                    idToDelete = matchingAssignment.id;
+                                    console.log('✅ assignmentId récupéré depuis l\'API:', idToDelete);
+                                  } else {
+                                    console.error('❌ Impossible de trouver l\'assignment à supprimer', { timing_id: timing.id, crew_id: rc.Crew?.id });
+                                    return;
+                                  }
+                                } catch (err) {
+                                  console.error('❌ Erreur lors de la récupération de l\'assignment:', err);
+                                  return;
+                                }
+                              }
 
-                              await api.delete(`/timing-assignments/${assignmentId}`);
+                              console.log('🗑️ Suppression assignation:', { assignmentId: idToDelete, timing_id: timing.id, crew_id: rc.Crew?.id });
+
+                              await api.delete(`/timing-assignments/${idToDelete}`);
 
                               const remaining = assigned.filter((a) => a.crew_id !== rc.Crew?.id);
 
