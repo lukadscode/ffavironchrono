@@ -15,6 +15,7 @@ import EventOverviewPage from "@/pages/event/EventOverviewPage";
 import ParticipantDetail from "@/pages/event/ParticipantDetail";
 import CrewList from "@/pages/crews/CrewList";
 import CrewDetail from "@/pages/crews/CrewDetail";
+import CrewWizardPage from "@/pages/crews/CrewWizardPage";
 import DistancesPage from "@/pages/event/DistancesPage";
 import EventPermissionsPage from "@/pages/event/EventPermissionsPage";
 import TimingPointsPage from "@/pages/event/TimingPointsPage";
@@ -32,6 +33,7 @@ import Results from "@/pages/public/Results";
 import HomePage from "@/pages/HomePage";
 import AdminLogin from "@/pages/AdminLogin";
 import AdminRedirect from "@/pages/AdminRedirect";
+import WebSocketTestPage from "@/pages/websocket/WebSocketTestPage";
 
 const router = createBrowserRouter([
   { path: "/", element: <HomePage /> },
@@ -71,6 +73,7 @@ const router = createBrowserRouter([
       { path: "events", element: <EventsPage /> },
       { path: "events-management", element: <EventsManagementPage /> },
       { path: "profile", element: <ProfilePage /> },
+      { path: "websocket-test", element: <WebSocketTestPage /> },
     ],
   },
 
@@ -86,6 +89,7 @@ const router = createBrowserRouter([
       { path: "participants", element: <ParticipantsPage /> },
       { path: "participants/:participantId", element: <ParticipantDetail /> },
       { path: "crews", element: <CrewList /> },
+      { path: "crews/new", element: <CrewWizardPage /> },
       { path: "crews/:crewId", element: <CrewDetail /> },
       { path: "races", element: <RacesPage /> },
       { path: "timing", element: <TimingOverviewPage /> },

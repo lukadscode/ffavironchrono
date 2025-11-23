@@ -24,6 +24,7 @@ import {
   ArrowRight,
   LayoutGrid,
   Table as TableIcon,
+  Plus,
 } from "lucide-react";
 
 export default function CrewList() {
@@ -190,25 +191,34 @@ export default function CrewList() {
                 className="pl-10"
               />
             </div>
-            <div className="flex gap-2 border rounded-lg p-1 bg-muted">
+            <div className="flex gap-2">
               <Button
-                variant={viewMode === "cards" ? "default" : "ghost"}
-                size="sm"
-                onClick={() => setViewMode("cards")}
-                className="flex-1"
+                onClick={() => navigate(`/event/${eventId}/crews/new`)}
+                className="bg-blue-600 hover:bg-blue-700"
               >
-                <LayoutGrid className="w-4 h-4 mr-2" />
-                Cartes
+                <Plus className="w-4 h-4 mr-2" />
+                Nouvel équipage
               </Button>
-              <Button
-                variant={viewMode === "table" ? "default" : "ghost"}
-                size="sm"
-                onClick={() => setViewMode("table")}
-                className="flex-1"
-              >
-                <TableIcon className="w-4 h-4 mr-2" />
-                Tableau
-              </Button>
+              <div className="flex gap-2 border rounded-lg p-1 bg-muted">
+                <Button
+                  variant={viewMode === "cards" ? "default" : "ghost"}
+                  size="sm"
+                  onClick={() => setViewMode("cards")}
+                  className="flex-1"
+                >
+                  <LayoutGrid className="w-4 h-4 mr-2" />
+                  Cartes
+                </Button>
+                <Button
+                  variant={viewMode === "table" ? "default" : "ghost"}
+                  size="sm"
+                  onClick={() => setViewMode("table")}
+                  className="flex-1"
+                >
+                  <TableIcon className="w-4 h-4 mr-2" />
+                  Tableau
+                </Button>
+              </div>
             </div>
           </div>
         </CardContent>
