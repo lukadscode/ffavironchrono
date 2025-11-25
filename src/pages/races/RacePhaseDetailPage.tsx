@@ -17,11 +17,38 @@ import {
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import clsx from "clsx";
+import { X } from "lucide-react";
 import RaceFormDialog from "@/components/races/RaceFormDialog";
 import PhaseResultsPanel from "@/components/races/PhaseResultsPanel";
 
 // === Config par défaut ===
 const DEFAULT_SLOT_MINUTES = 8;
+
+interface Participant {
+  id: string;
+  first_name: string;
+  last_name: string;
+  license_number?: string;
+}
+
+interface CrewParticipant {
+  id: string;
+  participant_id: string;
+  is_coxswain: boolean;
+  seat_position: number;
+  participant: Participant;
+}
+
+interface Category {
+  id: string;
+  label?: string;
+  distance_id?: string;
+  distance?: {
+    id: string;
+    meters: number;
+    label?: string;
+  };
+}
 
 interface Crew {
   id: string;
@@ -29,6 +56,8 @@ interface Crew {
   club_code: string;
   category_id: string;
   category_label?: string;
+  category?: Category;
+  crew_participants?: CrewParticipant[];
 }
 
 interface RaceCrew {
@@ -45,6 +74,14 @@ interface Race {
   status?: string;
   start_time?: string; // ISO UTC
   race_number?: number; // ordre
+  distance_id?: string;
+  distance?: {
+    id: string;
+    meters: number;
+    is_relay?: boolean;
+    relay_count?: number;
+    label?: string; // Label formaté depuis l'API (ex: "8x250m" ou "2000m")
+  };
   crews: RaceCrew[];
 }
 
@@ -123,6 +160,74 @@ interface RacePhase {
   order_index: number;
 }
 
+// Fonction pour obtenir la distance d'un crew (via catégorie ou course)
+// Note: Ces fonctions sont définies après les interfaces pour être utilisées à la fois dans le composant principal et dans TimelineRace
+function getCrewDistance(crew: Crew, race?: Race): number | null {
+  // Priorité 1: distance via la catégorie du crew
+  if (crew.category?.distance?.meters) {
+    return crew.category.distance.meters;
+  }
+  if (crew.category?.distance_id && crew.category?.distance?.meters) {
+    return crew.category.distance.meters;
+  }
+  // Priorité 2: distance via la course
+  if (race?.distance?.meters) {
+    return race.distance.meters;
+  }
+  if (race?.distance_id && race?.distance?.meters) {
+    return race.distance.meters;
+  }
+  return null;
+}
+
+// Fonction pour vérifier que tous les crews ont la même distance
+function validateRaceDistances(race: Race): { isValid: boolean; distance: number | null; error: string | null } {
+  const crewsWithDistance = race.crews
+    .map(rc => ({ crew: rc.crew, distance: getCrewDistance(rc.crew, race) }))
+    .filter(item => item.distance !== null);
+
+  if (crewsWithDistance.length === 0) {
+    return { isValid: true, distance: null, error: null };
+  }
+
+  const uniqueDistances = new Set(crewsWithDistance.map(item => item.distance));
+  
+  if (uniqueDistances.size > 1) {
+    const distances = Array.from(uniqueDistances).sort((a, b) => (a || 0) - (b || 0));
+    return {
+      isValid: false,
+      distance: null,
+      error: `⚠️ Erreur: Cette course regroupe des équipages avec des distances différentes (${distances.join("m, ")}m). Tous les équipages doivent avoir la même distance.`
+    };
+  }
+
+  return { isValid: true, distance: crewsWithDistance[0].distance, error: null };
+}
+
+// Fonction pour générer le nom de course avec toutes les catégories
+function generateRaceNameWithCategories(race: Race, originalName: string): string {
+  const categoryLabels = new Set<string>();
+  race.crews.forEach(rc => {
+    const label = rc.crew.category?.label || rc.crew.category_label;
+    if (label) {
+      categoryLabels.add(label);
+    }
+  });
+
+  if (categoryLabels.size === 0) {
+    return originalName;
+  }
+
+  const categoriesList = Array.from(categoryLabels).sort().join(", ");
+  
+  // Si le nom original ne contient pas déjà toutes les catégories, on les ajoute
+  if (categoryLabels.size > 1 || !originalName.includes(categoriesList)) {
+    return `${originalName} [${categoriesList}]`;
+  }
+
+  return originalName;
+}
+
 export default function RacePhaseDetailPage() {
   const { eventId, phaseId } = useParams();
   const { toast } = useToast();
@@ -155,7 +260,37 @@ export default function RacePhaseDetailPage() {
   const fetchCrews = async () => {
     try {
       const res = await api.get(`/crews/event/${eventId}`);
-      setCrews(res.data.data);
+      const crewsData = res.data.data || [];
+      
+      // Enrichir chaque crew avec ses participants
+      const crewsWithParticipants = await Promise.all(
+        crewsData.map(async (crew: any) => {
+          try {
+            // Récupérer les détails complets du crew (incluant les participants)
+            const crewDetailRes = await api.get(`/crews/${crew.id}`);
+            const crewDetail = crewDetailRes.data.data || crewDetailRes.data;
+            
+            // Retourner le crew avec ses participants
+            return {
+              ...crew,
+              crew_participants: crewDetail.crew_participants || 
+                               crewDetail.CrewParticipants || 
+                               crewDetail.crewParticipants || 
+                               crew.crew_participants || 
+                               [],
+            };
+          } catch (err) {
+            console.error(`Erreur chargement participants pour crew ${crew.id}:`, err);
+            // Si erreur, retourner le crew sans participants
+            return {
+              ...crew,
+              crew_participants: crew.crew_participants || [],
+            };
+          }
+        })
+      );
+      
+      setCrews(crewsWithParticipants);
     } catch {
       toast({ title: "Erreur chargement équipages", variant: "destructive" });
     }
@@ -175,7 +310,13 @@ export default function RacePhaseDetailPage() {
 
       const sorted = racesWithCrews.sort((a,b) => (a.race_number||0) - (b.race_number||0));
 
-      // Pré-remplir l'heure de départ initiale
+      // Restaurer l'intervalle par défaut depuis localStorage ou utiliser la valeur par défaut
+      const savedSlotMinutes = localStorage.getItem(`phase_${phaseId}_slotMinutes`);
+      if (savedSlotMinutes) {
+        setSlotMinutes(Number(savedSlotMinutes));
+      }
+
+      // Pré-remplir l'heure de départ initiale depuis les courses existantes
       const existing = sorted
         .map(r => r.start_time ? new Date(r.start_time) : null)
         .filter((d): d is Date => !!d)
@@ -183,13 +324,64 @@ export default function RacePhaseDetailPage() {
       if (existing.length) {
         setFirstStartLocal(toLocalInputValue(existing[0]));
       } else {
-        const d = new Date(); d.setHours(9,0,0,0); setFirstStartLocal(toLocalInputValue(d));
+        // Restaurer depuis localStorage ou utiliser la valeur par défaut
+        const savedFirstStart = localStorage.getItem(`phase_${phaseId}_firstStartLocal`);
+        if (savedFirstStart) {
+          setFirstStartLocal(savedFirstStart);
+        } else {
+          const d = new Date(); d.setHours(9,0,0,0); 
+          setFirstStartLocal(toLocalInputValue(d));
+        }
       }
 
-      // gaps par défaut
-      const defaultGaps: Record<string, number> = {};
-      sorted.forEach(r => { defaultGaps[r.id] = sorted.length ? slotMinutes : DEFAULT_SLOT_MINUTES; });
-      setGapsByRaceId(defaultGaps);
+      // Calculer les gaps réels entre les courses depuis les start_time
+      const calculatedGaps: Record<string, number> = {};
+      for (let i = 0; i < sorted.length - 1; i++) {
+        const current = sorted[i];
+        const next = sorted[i + 1];
+        if (current.start_time && next.start_time) {
+          const currentTime = new Date(current.start_time).getTime();
+          const nextTime = new Date(next.start_time).getTime();
+          const diffMinutes = Math.round((nextTime - currentTime) / (1000 * 60));
+          if (diffMinutes > 0) {
+            calculatedGaps[current.id] = diffMinutes;
+          }
+        }
+      }
+
+      // Restaurer les gaps depuis localStorage s'ils existent, sinon utiliser les gaps calculés ou l'intervalle par défaut
+      const savedGaps = localStorage.getItem(`phase_${phaseId}_gaps`);
+      let finalGaps: Record<string, number> = {};
+      
+      if (savedGaps) {
+        try {
+          const parsed = JSON.parse(savedGaps);
+          // Vérifier que les gaps sauvegardés correspondent aux courses actuelles
+          sorted.forEach((r, idx) => {
+            if (idx < sorted.length - 1) {
+              // Utiliser le gap sauvegardé s'il existe pour cette course, sinon le gap calculé, sinon l'intervalle par défaut
+              finalGaps[r.id] = parsed[r.id] || calculatedGaps[r.id] || (savedSlotMinutes ? Number(savedSlotMinutes) : DEFAULT_SLOT_MINUTES);
+            }
+          });
+        } catch {
+          // Si erreur de parsing, utiliser les gaps calculés
+          const defaultSlot = savedSlotMinutes ? Number(savedSlotMinutes) : DEFAULT_SLOT_MINUTES;
+          sorted.forEach((r, idx) => {
+            if (idx < sorted.length - 1) {
+              finalGaps[r.id] = calculatedGaps[r.id] || defaultSlot;
+            }
+          });
+        }
+      } else {
+        // Pas de gaps sauvegardés, utiliser les gaps calculés ou l'intervalle par défaut
+        const defaultSlot = savedSlotMinutes ? Number(savedSlotMinutes) : DEFAULT_SLOT_MINUTES;
+        sorted.forEach((r, idx) => {
+          if (idx < sorted.length - 1) {
+            finalGaps[r.id] = calculatedGaps[r.id] || defaultSlot;
+          }
+        });
+      }
+      setGapsByRaceId(finalGaps);
 
       setRaces(sorted);
     } catch {
@@ -286,11 +478,31 @@ export default function RacePhaseDetailPage() {
       await Promise.all(
         withTimes.map((r, idx) => api.put(`/races/${r.id}`, { race_number: idx + 1, start_time: r.start_time, name: r.name }))
       );
+      
+      // Sauvegarder l'intervalle par défaut et les gaps dans localStorage
+      if (phaseId) {
+        localStorage.setItem(`phase_${phaseId}_slotMinutes`, String(slotMinutes));
+        localStorage.setItem(`phase_${phaseId}_firstStartLocal`, firstStartLocal);
+        localStorage.setItem(`phase_${phaseId}_gaps`, JSON.stringify(gapsByRaceId));
+      }
+      
       toast({ title: "Ordre, horaires et noms mis à jour." });
       setRaces(withTimes);
     } catch {
       toast({ title: "Erreur lors de la mise à jour de l'ordre", variant: "destructive" });
       fetchRaces();
+    }
+  };
+
+  const handleDeleteRace = async (raceId: string) => {
+    try {
+      await api.delete(`/races/${raceId}`);
+      setRaces((prev) => prev.filter((r) => r.id !== raceId));
+      toast({ title: "Série supprimée." });
+      // Recharger les courses pour mettre à jour l'ordre
+      await fetchRaces();
+    } catch {
+      toast({ title: "Erreur lors de la suppression", variant: "destructive" });
     }
   };
 
@@ -323,7 +535,33 @@ export default function RacePhaseDetailPage() {
       const race = races.find((r) => r.id === targetRaceId);
       const occupant = race?.crews?.find((c) => c.lane === targetLane) || null;
 
+      // Validation de distance si on ajoute un nouveau crew
       if (a.type === "crew" && a.crewId) {
+        const newCrew = crews.find((c) => c.id === a.crewId);
+        if (newCrew && race) {
+          // Vérifier si la course a déjà des crews
+          const existingCrews = race.crews.filter(rc => rc.crew && rc.id !== occupant?.id);
+          if (existingCrews.length > 0) {
+            // Vérifier que la distance du nouveau crew correspond
+            const newCrewDistance = getCrewDistance(newCrew, race);
+            const existingDistances = existingCrews
+              .map(rc => getCrewDistance(rc.crew, race))
+              .filter(d => d !== null);
+            
+            if (newCrewDistance !== null && existingDistances.length > 0) {
+              const uniqueDistances = new Set([...existingDistances, newCrewDistance]);
+              if (uniqueDistances.size > 1) {
+                toast({ 
+                  title: "Erreur : distances incompatibles", 
+                  description: "Impossible d'ajouter cet équipage car sa distance ne correspond pas à celle des autres équipages de cette course.",
+                  variant: "destructive" 
+                });
+                return;
+              }
+            }
+          }
+        }
+        
         if (occupant) await api.delete(`/race-crews/${occupant.id}`);
         await api.post(`/race-crews`, { race_id: targetRaceId, crew_id: a.crewId, lane: targetLane });
         toast({ title: "Équipage affecté." });
@@ -332,6 +570,31 @@ export default function RacePhaseDetailPage() {
       if (a.type === "raceCrew" && a.raceCrewId && a.crewId) {
         const movingSameSpot = a.fromRaceId === targetRaceId && a.fromLane === targetLane;
         if (!movingSameSpot) {
+          const movingCrew = races.find(r => r.id === a.fromRaceId)?.crews.find(rc => rc.id === a.raceCrewId)?.crew;
+          
+          // Validation de distance lors du déplacement
+          if (movingCrew && race) {
+            const existingCrews = race.crews.filter(rc => rc.crew && rc.id !== occupant?.id && rc.id !== a.raceCrewId);
+            if (existingCrews.length > 0) {
+              const movingCrewDistance = getCrewDistance(movingCrew, race);
+              const existingDistances = existingCrews
+                .map(rc => getCrewDistance(rc.crew, race))
+                .filter(d => d !== null);
+              
+              if (movingCrewDistance !== null && existingDistances.length > 0) {
+                const uniqueDistances = new Set([...existingDistances, movingCrewDistance]);
+                if (uniqueDistances.size > 1) {
+                  toast({ 
+                    title: "Erreur : distances incompatibles", 
+                    description: "Impossible de déplacer cet équipage car sa distance ne correspond pas à celle des autres équipages de cette course.",
+                    variant: "destructive" 
+                  });
+                  return;
+                }
+              }
+            }
+          }
+          
           if (!occupant) {
             await api.delete(`/race-crews/${a.raceCrewId}`);
             await api.post(`/race-crews`, { race_id: targetRaceId, crew_id: a.crewId, lane: targetLane });
@@ -420,11 +683,24 @@ export default function RacePhaseDetailPage() {
     const anchor = parseLocalInput(localValue);
     const next = recomputeTimesFrom(races, idx, anchor);
     setRaces(next);
+    
+    // Si c'est la première course, sauvegarder l'heure
+    if (idx === 0 && phaseId) {
+      localStorage.setItem(`phase_${phaseId}_firstStartLocal`, localValue);
+      setFirstStartLocal(localValue);
+    }
   };
 
   const onChangeGapAfter = (raceId: string, minutes: number) => {
     const m = Math.max(1, minutes || 1);
-    setGapsByRaceId(prev => ({ ...prev, [raceId]: m }));
+    setGapsByRaceId(prev => {
+      const updated = { ...prev, [raceId]: m };
+      // Sauvegarder les gaps dans localStorage
+      if (phaseId) {
+        localStorage.setItem(`phase_${phaseId}_gaps`, JSON.stringify(updated));
+      }
+      return updated;
+    });
     const idx = races.findIndex(r => r.id === raceId);
     if (idx < 0 || idx >= races.length - 1) return;
     const current = races[idx];
@@ -525,6 +801,10 @@ export default function RacePhaseDetailPage() {
                     value={firstStartLocal}
                     onChange={(e) => {
                       setFirstStartLocal(e.target.value);
+                      // Sauvegarder dans localStorage
+                      if (phaseId) {
+                        localStorage.setItem(`phase_${phaseId}_firstStartLocal`, e.target.value);
+                      }
                       const next = recomputeTimesFrom(races, 0, parseLocalInput(e.target.value));
                       setRaces(next);
                     }}
@@ -540,6 +820,10 @@ export default function RacePhaseDetailPage() {
                     onChange={(e) => {
                       const m = Math.max(1, Number(e.target.value) || 1);
                       setSlotMinutes(m);
+                      // Sauvegarder dans localStorage
+                      if (phaseId) {
+                        localStorage.setItem(`phase_${phaseId}_slotMinutes`, String(m));
+                      }
                       const applied: Record<string, number> = { ...gapsByRaceId };
                       races.forEach(r => { applied[r.id] = m; });
                       setGapsByRaceId(applied);
@@ -576,6 +860,7 @@ export default function RacePhaseDetailPage() {
                         onTimeChange={(val) => onChangeRaceTime(race.id, val)}
                         onGapChange={(m) => onChangeGapAfter(race.id, m)}
                         gapMinutes={idx === races.length - 1 ? undefined : gap}
+                        onDelete={handleDeleteRace}
                       >
                         {lanes.map((lane) => {
                           const entry = race.crews?.find((c) => c.lane === lane);
@@ -635,6 +920,17 @@ function DraggableCrew({ crew }: { crew: Crew }) {
 
   const style = { transform: CSS.Translate.toString(transform) } as React.CSSProperties;
 
+  const categoryLabel = crew.category?.label || crew.category_label || "Sans catégorie";
+
+  const participants = crew?.crew_participants
+    ?.sort((a, b) => a.seat_position - b.seat_position)
+    .map((cp) => {
+      const firstName = cp.participant?.first_name || "";
+      const lastName = cp.participant?.last_name || "";
+      const displayName = firstName && lastName ? `${firstName} ${lastName}` : lastName || firstName;
+      return { displayName, isCoxswain: cp.is_coxswain };
+    }) || [];
+
   return (
     <div
       ref={setNodeRef}
@@ -642,12 +938,25 @@ function DraggableCrew({ crew }: { crew: Crew }) {
       {...attributes}
       {...listeners}
       className={clsx(
-        "text-sm border rounded px-2 py-1 cursor-move select-none",
+        "border rounded px-2 py-1 cursor-move select-none",
         isDragging ? "opacity-60 ring-2 ring-gray-400" : "",
         "bg-white text-gray-800 border-gray-300"
       )}
     >
-      {crew.club_name} ({crew.category_label})
+      <div className="space-y-0.5">
+        <div className="text-sm font-medium">{crew.club_name}</div>
+        <div className="text-xs text-blue-600 font-semibold">{categoryLabel}</div>
+        {participants.length > 0 && (
+          <div className="text-[10px] text-gray-600 space-y-0.5 mt-1">
+            {participants.map((p, idx) => (
+              <div key={idx} className={clsx("truncate", p.isCoxswain && "font-semibold")}>
+                {p.displayName}
+                {p.isCoxswain && <span className="text-gray-500 ml-0.5">(B)</span>}
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
     </div>
   );
 }
@@ -665,6 +974,15 @@ function DroppableLane({ lane, raceId, entry }: { lane: number; raceId: string; 
 
   const style = { transform: CSS.Translate.toString(transform) } as React.CSSProperties;
 
+  const participants = entry?.crew?.crew_participants
+    ?.sort((a, b) => a.seat_position - b.seat_position)
+    .map((cp) => {
+      const firstName = cp.participant?.first_name || "";
+      const lastName = cp.participant?.last_name || "";
+      const displayName = firstName && lastName ? `${firstName} ${lastName}` : lastName || firstName;
+      return { displayName, isCoxswain: cp.is_coxswain };
+    }) || [];
+
   return (
     <div
       ref={(el) => { setDropRef(el); setDragRef(el); }}
@@ -672,17 +990,35 @@ function DroppableLane({ lane, raceId, entry }: { lane: number; raceId: string; 
       {...(entry ? attributes : {})}
       {...(entry ? listeners : {})}
       className={clsx(
-        "flex justify-between items-center px-3 py-1 rounded-md text-xs transition-colors select-none",
+        "px-3 py-1 rounded-md text-xs transition-colors select-none",
         isOver ? "ring-2 ring-gray-400" : "",
         entry ? "bg-gray-200 text-gray-900" : "bg-gray-100 italic text-gray-500",
         isDragging ? "opacity-70" : ""
       )}
       title={entry ? entry.crew?.club_name : undefined}
     >
-      <span className="font-semibold">L{lane}</span>
-      <span className={clsx("truncate max-w-[200px] text-right", entry ? "px-2 py-0.5 rounded" : "")}>
-        {entry ? entry.crew?.club_name : "(vide)"}
-      </span>
+      <div className="flex justify-between items-start gap-2">
+        <span className="font-semibold">L{lane}</span>
+        <div className="flex-1 text-right min-w-0">
+          {entry ? (
+            <div className="space-y-0.5">
+              <div className="font-medium truncate">{entry.crew?.club_name}</div>
+              {participants.length > 0 && (
+                <div className="text-[10px] text-gray-600 space-y-0.5">
+                  {participants.map((p, idx) => (
+                    <div key={idx} className={clsx("truncate", p.isCoxswain && "font-semibold")}>
+                      {p.displayName}
+                      {p.isCoxswain && <span className="text-gray-500 ml-0.5">(B)</span>}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          ) : (
+            <span className="italic">(vide)</span>
+          )}
+        </div>
+      </div>
     </div>
   );
 }
@@ -694,6 +1030,7 @@ function TimelineRace({
   onTimeChange,
   onGapChange,
   gapMinutes,
+  onDelete,
 }: {
   race: Race;
   timeLabel: string;
@@ -701,9 +1038,13 @@ function TimelineRace({
   onTimeChange: (localValue: string) => void;
   onGapChange: (minutes: number) => void;
   gapMinutes?: number;
+  onDelete: (raceId: string) => void;
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: race.id });
   const style = { transform: CSS.Transform.toString(transform), transition } as React.CSSProperties;
+
+  const validation = validateRaceDistances(race);
+  const displayName = validation.isValid ? generateRaceNameWithCategories(race, race.name) : race.name;
 
   const datetimeForInput = (() => {
     if (!race.start_time) return "";
@@ -718,17 +1059,32 @@ function TimelineRace({
   })();
 
   return (
-    <div ref={setNodeRef} style={style} className={clsx("relative border-2 rounded-lg p-3 space-y-3 bg-white shadow-sm", isDragging ? "opacity-70 ring-2 ring-blue-400 shadow-lg" : "hover:border-gray-300")}>
+    <div ref={setNodeRef} style={style} className={clsx("relative border-2 rounded-lg p-3 space-y-3 bg-white shadow-sm", isDragging ? "opacity-70 ring-2 ring-blue-400 shadow-lg" : "hover:border-gray-300", !validation.isValid && "border-red-300 bg-red-50")}>
       <div className="absolute -left-[11px] top-4 w-4 h-4 rounded-full bg-blue-500 border-3 border-white shadow-md" />
 
       <div className="flex items-center justify-between gap-2">
-        <div className="font-semibold text-sm flex items-center gap-2">
-          <span className="inline-flex items-center text-xs px-2 py-1 rounded-md bg-blue-100 text-blue-700 font-mono font-bold">{timeLabel}</span>
-          <span className="text-gray-900">{race.name}</span>
+        <div className="font-semibold text-sm flex items-center gap-2 flex-1 min-w-0">
+          <span className="inline-flex items-center text-xs px-2 py-1 rounded-md bg-blue-100 text-blue-700 font-mono font-bold flex-shrink-0">{timeLabel}</span>
+          <div className="flex-1 min-w-0">
+            <div className="text-gray-900 truncate">{displayName}</div>
+            {validation.error && (
+              <div className="text-xs text-red-600 font-medium mt-1">{validation.error}</div>
+            )}
+          </div>
         </div>
-        <button {...attributes} {...listeners} className="text-sm px-3 py-1.5 border-2 border-dashed border-gray-300 rounded-md bg-gray-50 hover:bg-gray-100 hover:border-gray-400 transition-colors cursor-grab active:cursor-grabbing" title="Glisser pour réordonner" aria-label="Glisser pour réordonner">
-          ⋮⋮
-        </button>
+        <div className="flex items-center gap-2 flex-shrink-0">
+          <button
+            onClick={() => onDelete(race.id)}
+            className="text-red-500 hover:text-red-600 transition-colors p-1.5 rounded-md hover:bg-red-50"
+            aria-label="Supprimer la série"
+            title="Supprimer la série"
+          >
+            <X className="w-4 h-4" />
+          </button>
+          <button {...attributes} {...listeners} className="text-sm px-3 py-1.5 border-2 border-dashed border-gray-300 rounded-md bg-gray-50 hover:bg-gray-100 hover:border-gray-400 transition-colors cursor-grab active:cursor-grabbing" title="Glisser pour réordonner" aria-label="Glisser pour réordonner">
+            ⋮⋮
+          </button>
+        </div>
       </div>
 
       {gapMinutes !== undefined && (

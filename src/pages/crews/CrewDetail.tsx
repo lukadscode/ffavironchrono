@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo } from "react";
 import { useParams } from "react-router-dom";
 import api from "@/lib/axios";
 import { Input } from "@/components/ui/input";
@@ -15,7 +15,8 @@ import {
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { Trash2, Plus, User } from "lucide-react";
+import { Trash2, Plus, User, Search, UserPlus } from "lucide-react";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useNavigate } from "react-router-dom";
 import dayjs from "dayjs";
 
@@ -117,13 +118,22 @@ export default function CrewDetail() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [participants, setParticipants] = useState<any[]>([]);
+  const [existingParticipants, setExistingParticipants] = useState<any[]>([]);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [showIntranetSearch, setShowIntranetSearch] = useState(false);
+  const [intranetLicenseNumber, setIntranetLicenseNumber] = useState("");
+  const [loadingIntranetSearch, setLoadingIntranetSearch] = useState(false);
+  const [showNewParticipantForm, setShowNewParticipantForm] = useState(false);
   const [newParticipant, setNewParticipant] = useState({
     first_name: "",
     last_name: "",
     license_number: "",
     club_name: "",
+    gender: "",
+    email: "",
   });
   const [isSaving, setIsSaving] = useState(false);
+  const [isAddingParticipant, setIsAddingParticipant] = useState(false);
 
   useEffect(() => {
     async function fetchCrew() {
@@ -183,11 +193,32 @@ export default function CrewDetail() {
       }
     }
     fetchCrew();
-  }, [crewId, toast]);
+    if (eventId) {
+      fetchParticipants();
+    }
+  }, [crewId, eventId, toast]);
 
-  const handleDragEnd = (event: any) => {
+  const fetchParticipants = async () => {
+    if (!eventId) return;
+    try {
+      const res = await api.get(`/participants/event/${eventId}`);
+      const participantsData = res.data.data ?? [];
+      setExistingParticipants(participantsData);
+    } catch (err) {
+      console.error("Erreur chargement participants:", err);
+    }
+  };
+
+  // Calculer les places disponibles
+  const maxSeats = crew?.category?.boat_seats || 0;
+  const hasCoxswain = crew?.category?.has_coxswain || false;
+  const requiredParticipants = maxSeats + (hasCoxswain ? 1 : 0);
+  const currentParticipantsCount = participants.length;
+  const canAddParticipant = crew && maxSeats > 0 && currentParticipantsCount < requiredParticipants;
+
+  const handleDragEnd = async (event: any) => {
     const { active, over } = event;
-    if (!over || active.id === over.id) return;
+    if (!over || active.id === over.id || !crewId) return;
 
     const oldIndex = participants.findIndex((p) => p.id === active.id);
     const newIndex = participants.findIndex((p) => p.id === over.id);
@@ -195,32 +226,246 @@ export default function CrewDetail() {
       ...p,
       seat_position: index + 1,
     }));
+    
+    // Mettre à jour l'état local immédiatement pour un feedback visuel
     setParticipants(reordered);
+    
+    // Enregistrer automatiquement via l'API
+    try {
+      const seats = reordered.map((p) => ({
+        id: p.id,
+        seat_position: p.seat_position,
+        is_coxswain: p.is_coxswain || false,
+      }));
+
+      await api.put(`/crews/${crewId}/seats`, {
+        seats,
+      });
+
+      // Recharger pour s'assurer que tout est à jour
+      const res = await api.get(`/crews/${crewId}`);
+      const crewData = res.data.data || res.data;
+      const crewParticipants = crewData.crew_participants || 
+                               crewData.CrewParticipants || 
+                               crewData.crewParticipants || 
+                               [];
+      
+      const sortedParticipants = [...crewParticipants].sort(
+        (a: any, b: any) => (a.seat_position || 0) - (b.seat_position || 0)
+      );
+      
+      setParticipants(sortedParticipants);
+    } catch (err: any) {
+      console.error("Erreur enregistrement ordre:", err);
+      // En cas d'erreur, restaurer l'ordre précédent
+      setParticipants(participants);
+      toast({
+        title: "Erreur",
+        description: err?.response?.data?.message || "Impossible d'enregistrer l'ordre",
+        variant: "destructive",
+      });
+    }
   };
 
-  const handleAddParticipant = () => {
-    const id = crypto.randomUUID();
-    const seat_position = participants.length + 1;
-    const newP = {
-      id,
-      seat_position,
-      is_coxswain: false,
-      participant: { ...newParticipant },
-      isNew: true,
-    };
-    setParticipants([...participants, newP]);
-    setNewParticipant({ first_name: "", last_name: "", license_number: "", club_name: "" });
-    toast({
-      title: "Participant ajouté",
-      description: "N'oubliez pas d'enregistrer vos modifications",
+  const filteredParticipants = useMemo(() => {
+    if (!searchQuery.trim()) return [];
+    const query = searchQuery.toLowerCase();
+    return existingParticipants.filter((p) => {
+      const fullName = `${p.first_name} ${p.last_name}`.toLowerCase();
+      const license = (p.license_number || "").toLowerCase();
+      const club = (p.club_name || "").toLowerCase();
+      return fullName.includes(query) || license.includes(query) || club.includes(query);
     });
+  }, [existingParticipants, searchQuery]);
+
+  const handleSearchIntranet = async () => {
+    if (!intranetLicenseNumber.trim()) return;
+    setLoadingIntranetSearch(true);
+    try {
+      const res = await api.get(`/participants/intranet/${intranetLicenseNumber.trim()}`);
+      const participantData = res.data.data || res.data;
+      if (participantData) {
+        handleAddExistingParticipant(participantData);
+        setIntranetLicenseNumber("");
+        setShowIntranetSearch(false);
+      } else {
+        toast({
+          title: "Participant introuvable",
+          description: "Aucun participant trouvé avec ce numéro de licence",
+          variant: "destructive",
+        });
+      }
+    } catch (err: any) {
+      toast({
+        title: "Erreur",
+        description: err?.response?.data?.message || "Impossible de rechercher sur l'intranet",
+        variant: "destructive",
+      });
+    } finally {
+      setLoadingIntranetSearch(false);
+    }
   };
 
-  const handleRemove = (id: string) => {
-    setParticipants(participants.filter((p) => p.id !== id).map((p, index) => ({
-      ...p,
-      seat_position: index + 1,
-    })));
+  const handleAddExistingParticipant = async (participant: any) => {
+    if (!canAddParticipant || !crewId) {
+      toast({
+        title: "Limite atteinte",
+        description: `L'équipage est complet (${requiredParticipants} participants maximum)`,
+        variant: "destructive",
+      });
+      return;
+    }
+    
+    const seat_position = participants.length + 1;
+    
+    try {
+      // Enregistrer immédiatement via l'API
+      await api.post(`/crews/${crewId}/seats`, {
+        participant_id: participant.id,
+        seat_position,
+        is_coxswain: false,
+      });
+
+      // Recharger les données pour avoir la structure complète
+      const res = await api.get(`/crews/${crewId}`);
+      const crewData = res.data.data || res.data;
+      const crewParticipants = crewData.crew_participants || 
+                               crewData.CrewParticipants || 
+                               crewData.crewParticipants || 
+                               [];
+      
+      const sortedParticipants = [...crewParticipants].sort(
+        (a: any, b: any) => (a.seat_position || 0) - (b.seat_position || 0)
+      );
+      
+      setParticipants(sortedParticipants);
+      setSearchQuery("");
+      setShowIntranetSearch(false);
+      setIntranetLicenseNumber("");
+      
+      toast({
+        title: "Participant ajouté",
+        description: "Le participant a été ajouté avec succès",
+      });
+    } catch (err: any) {
+      console.error("Erreur ajout participant:", err);
+      toast({
+        title: "Erreur",
+        description: err?.response?.data?.message || "Impossible d'ajouter le participant",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const handleAddNewParticipant = async () => {
+    if (!canAddParticipant || !crewId) {
+      toast({
+        title: "Limite atteinte",
+        description: `L'équipage est complet (${requiredParticipants} participants maximum)`,
+        variant: "destructive",
+      });
+      return;
+    }
+    if (!newParticipant.first_name || !newParticipant.last_name) {
+      toast({
+        title: "Erreur",
+        description: "Le prénom et le nom sont requis",
+        variant: "destructive",
+      });
+      return;
+    }
+    
+    const seat_position = participants.length + 1;
+    
+    try {
+      setIsAddingParticipant(true);
+      
+      // Enregistrer immédiatement via l'API avec création du participant
+      await api.post(`/crews/${crewId}/seats`, {
+        new_participant: {
+          first_name: newParticipant.first_name,
+          last_name: newParticipant.last_name,
+          license_number: newParticipant.license_number || undefined,
+          club_name: newParticipant.club_name || undefined,
+          gender: newParticipant.gender || undefined,
+          email: newParticipant.email || undefined,
+        },
+        seat_position,
+        is_coxswain: false,
+      });
+
+      // Recharger les données pour avoir la structure complète
+      const res = await api.get(`/crews/${crewId}`);
+      const crewData = res.data.data || res.data;
+      const crewParticipants = crewData.crew_participants || 
+                               crewData.CrewParticipants || 
+                               crewData.crewParticipants || 
+                               [];
+      
+      const sortedParticipants = [...crewParticipants].sort(
+        (a: any, b: any) => (a.seat_position || 0) - (b.seat_position || 0)
+      );
+      
+      setParticipants(sortedParticipants);
+      setNewParticipant({
+        first_name: "",
+        last_name: "",
+        license_number: "",
+        club_name: "",
+        gender: "",
+        email: "",
+      });
+      setShowNewParticipantForm(false);
+      
+      toast({
+        title: "Participant ajouté",
+        description: "Le participant a été créé et ajouté avec succès",
+      });
+    } catch (err: any) {
+      console.error("Erreur ajout participant:", err);
+      toast({
+        title: "Erreur",
+        description: err?.response?.data?.message || "Impossible d'ajouter le participant",
+        variant: "destructive",
+      });
+    } finally {
+      setIsAddingParticipant(false);
+    }
+  };
+
+  const handleRemove = async (id: string) => {
+    if (!crewId) return;
+    
+    try {
+      // Supprimer immédiatement via l'API
+      await api.delete(`/crews/${crewId}/seats/${id}`);
+      
+      // Recharger les données pour avoir la structure complète
+      const res = await api.get(`/crews/${crewId}`);
+      const crewData = res.data.data || res.data;
+      const crewParticipants = crewData.crew_participants || 
+                               crewData.CrewParticipants || 
+                               crewData.crewParticipants || 
+                               [];
+      
+      const sortedParticipants = [...crewParticipants].sort(
+        (a: any, b: any) => (a.seat_position || 0) - (b.seat_position || 0)
+      );
+      
+      setParticipants(sortedParticipants);
+      
+      toast({
+        title: "Participant supprimé",
+        description: "Le participant a été retiré de l'équipage",
+      });
+    } catch (err: any) {
+      console.error("Erreur suppression participant:", err);
+      toast({
+        title: "Erreur",
+        description: err?.response?.data?.message || "Impossible de supprimer le participant",
+        variant: "destructive",
+      });
+    }
   };
 
   const handleSave = async () => {
@@ -228,35 +473,35 @@ export default function CrewDetail() {
 
     setIsSaving(true);
     try {
-      const existing = participants.filter((p) => !p.isNew).map((p) => ({
+      // Sauvegarder uniquement les changements de position (drag & drop)
+      const seats = participants.map((p) => ({
         id: p.id,
         seat_position: p.seat_position,
+        is_coxswain: p.is_coxswain || false,
       }));
 
-      const created = participants
-        .filter((p) => p.isNew)
-        .map((p) => {
-          // Gérer les deux structures possibles (participant ou Participant)
-          const participantData = p.participant || p.Participant || {};
-          return {
-            first_name: participantData.first_name,
-            last_name: participantData.last_name,
-            license_number: participantData.license_number,
-            club_name: participantData.club_name,
-            seat_position: p.seat_position,
-            is_coxswain: p.is_coxswain,
-          };
-        });
-
       await api.put(`/crews/${crewId}/seats`, {
-        seats: existing,
-        new: created,
+        seats,
       });
 
       toast({
         title: "Succès",
-        description: "Modifications enregistrées avec succès",
+        description: "Ordre des participants enregistré avec succès",
       });
+      
+      // Recharger pour s'assurer que tout est à jour
+      const res = await api.get(`/crews/${crewId}`);
+      const crewData = res.data.data || res.data;
+      const crewParticipants = crewData.crew_participants || 
+                               crewData.CrewParticipants || 
+                               crewData.crewParticipants || 
+                               [];
+      
+      const sortedParticipants = [...crewParticipants].sort(
+        (a: any, b: any) => (a.seat_position || 0) - (b.seat_position || 0)
+      );
+      
+      setParticipants(sortedParticipants);
     } catch (err: any) {
       console.error("Erreur enregistrement:", err);
       const errorMessage = 
@@ -429,85 +674,327 @@ export default function CrewDetail() {
         </CardContent>
       </Card>
 
-      {/* Formulaire d'ajout */}
-      <Card className="border-dashed border-2">
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Plus className="w-5 h-5" />
-            Ajouter un participant
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4">
-            <div className="space-y-2">
-              <Label htmlFor="first_name">Prénom *</Label>
-              <Input
-                id="first_name"
-                placeholder="Prénom"
-                value={newParticipant.first_name}
-                onChange={(e) => setNewParticipant((p) => ({ ...p, first_name: e.target.value }))}
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="last_name">Nom *</Label>
-              <Input
-                id="last_name"
-                placeholder="Nom"
-                value={newParticipant.last_name}
-                onChange={(e) => setNewParticipant((p) => ({ ...p, last_name: e.target.value }))}
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="license_number">Licence</Label>
-              <Input
-                id="license_number"
-                placeholder="Numéro de licence"
-                value={newParticipant.license_number}
-                onChange={(e) => setNewParticipant((p) => ({ ...p, license_number: e.target.value }))}
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="club_name">Club</Label>
-              <Input
-                id="club_name"
-                placeholder="Nom du club"
-                value={newParticipant.club_name}
-                onChange={(e) => setNewParticipant((p) => ({ ...p, club_name: e.target.value }))}
-              />
-            </div>
-          </div>
-          <Button
-            onClick={handleAddParticipant}
-            variant="outline"
-            className="w-full sm:w-auto"
-            disabled={!newParticipant.first_name || !newParticipant.last_name}
-          >
-            <Plus className="w-4 h-4 mr-2" />
-            Ajouter le participant
-          </Button>
-        </CardContent>
-      </Card>
+      {/* Formulaire d'ajout - Affiché seulement si nécessaire */}
+      {canAddParticipant && (
+        <div className="space-y-4">
+          {/* Badge de progression */}
+          {crew?.category && (
+            <Card className="bg-blue-50 border-blue-200">
+              <CardContent className="pt-6">
+                <div className="flex items-center justify-between mb-2">
+                  <p className="text-sm font-semibold text-blue-900">
+                    Participants requis pour cette catégorie
+                  </p>
+                  <div className="flex items-center gap-2">
+                    <span
+                      className={`text-lg font-bold ${
+                        currentParticipantsCount === requiredParticipants
+                          ? "text-green-600"
+                          : "text-blue-600"
+                      }`}
+                    >
+                      {currentParticipantsCount}/{requiredParticipants}
+                    </span>
+                  </div>
+                </div>
+                <div className="space-y-1 text-sm text-blue-800">
+                  <p>
+                    • <strong>{maxSeats}</strong> participant{maxSeats > 1 ? "s" : ""} rameur{maxSeats > 1 ? "s" : ""}
+                  </p>
+                  {hasCoxswain && (
+                    <p>
+                      • <strong>1</strong> barreur
+                    </p>
+                  )}
+                </div>
+                {currentParticipantsCount < requiredParticipants && (
+                  <div className="mt-3 pt-3 border-t border-blue-200">
+                    <p className="text-sm text-blue-700">
+                      ⚠️ Il reste{" "}
+                      <strong>{requiredParticipants - currentParticipantsCount}</strong> participant
+                      {requiredParticipants - currentParticipantsCount > 1 ? "s" : ""} à ajouter
+                    </p>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          )}
 
-      {/* Bouton d'enregistrement */}
+          {/* Recherche de participants existants */}
+          <Card className="border-dashed">
+            <CardHeader>
+              <CardTitle className="text-sm flex items-center gap-2">
+                <Search className="w-4 h-4" />
+                Rechercher un participant existant
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground w-4 h-4" />
+                <Input
+                  placeholder="Rechercher par nom, licence ou club..."
+                  value={searchQuery}
+                  onChange={(e) => {
+                    setSearchQuery(e.target.value);
+                    setShowIntranetSearch(false);
+                  }}
+                  className="pl-10"
+                />
+              </div>
+              
+              {searchQuery && filteredParticipants.length > 0 && (
+                <div className="max-h-48 overflow-y-auto space-y-2">
+                  {filteredParticipants.map((p) => (
+                    <div
+                      key={p.id}
+                      className="flex items-center justify-between p-3 border rounded-lg hover:bg-slate-50 cursor-pointer"
+                      onClick={() => handleAddExistingParticipant(p)}
+                    >
+                      <div>
+                        <p className="font-semibold">
+                          {p.first_name} {p.last_name}
+                        </p>
+                        <p className="text-sm text-muted-foreground">
+                          {p.license_number && `Licence: ${p.license_number} • `}
+                          {p.club_name}
+                        </p>
+                      </div>
+                      <Button size="sm" variant="outline">
+                        <UserPlus className="w-4 h-4 mr-2" />
+                        Ajouter
+                      </Button>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {searchQuery && filteredParticipants.length === 0 && !showIntranetSearch && (
+                <div className="text-center py-6 space-y-4">
+                  <div className="text-muted-foreground">
+                    <p className="font-medium mb-2">Aucun résultat trouvé</p>
+                    <p className="text-sm">Essayez une autre recherche ou :</p>
+                  </div>
+                  <div className="flex flex-col sm:flex-row gap-3 justify-center">
+                    <Button
+                      variant="outline"
+                      onClick={() => {
+                        setShowIntranetSearch(true);
+                        setSearchQuery("");
+                      }}
+                      className="flex items-center gap-2"
+                    >
+                      <Search className="w-4 h-4" />
+                      Rechercher sur l'intranet
+                    </Button>
+                    <Button
+                      variant="default"
+                      onClick={() => {
+                        setShowNewParticipantForm(true);
+                        setSearchQuery("");
+                      }}
+                      className="flex items-center gap-2"
+                    >
+                      <UserPlus className="w-4 h-4" />
+                      Créer un nouveau participant
+                    </Button>
+                  </div>
+                </div>
+              )}
+
+              {showIntranetSearch && (
+                <div className="space-y-3 p-4 border rounded-lg bg-blue-50">
+                  <div className="flex items-center justify-between mb-2">
+                    <Label className="text-sm font-semibold">Recherche sur l'intranet</Label>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => {
+                        setShowIntranetSearch(false);
+                        setIntranetLicenseNumber("");
+                      }}
+                    >
+                      ✕
+                    </Button>
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="intranet_license">Numéro de licence *</Label>
+                    <div className="flex gap-2">
+                      <Input
+                        id="intranet_license"
+                        placeholder="Ex: 123456"
+                        value={intranetLicenseNumber}
+                        onChange={(e) => setIntranetLicenseNumber(e.target.value)}
+                        onKeyDown={(e) => e.key === "Enter" && handleSearchIntranet()}
+                      />
+                      <Button
+                        onClick={handleSearchIntranet}
+                        disabled={loadingIntranetSearch || !intranetLicenseNumber.trim()}
+                      >
+                        {loadingIntranetSearch ? (
+                          <Loader2 className="w-4 h-4 animate-spin" />
+                        ) : (
+                          <Search className="w-4 h-4" />
+                        )}
+                      </Button>
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                      Recherche le participant sur l'intranet avec son numéro de licence
+                    </p>
+                  </div>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* Créer un nouveau participant */}
+          <Card className="border-dashed">
+            <CardHeader>
+              <div className="flex items-center justify-between">
+                <CardTitle className="text-sm flex items-center gap-2">
+                  <UserPlus className="w-4 h-4" />
+                  Créer un nouveau participant
+                </CardTitle>
+                {!showNewParticipantForm && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setShowNewParticipantForm(true)}
+                  >
+                    <UserPlus className="w-4 h-4 mr-2" />
+                    Afficher le formulaire
+                  </Button>
+                )}
+              </div>
+            </CardHeader>
+            {showNewParticipantForm && (
+              <CardContent className="space-y-4">
+                <div className="grid md:grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label>
+                      Prénom <span className="text-red-500">*</span>
+                    </Label>
+                    <Input
+                      value={newParticipant.first_name}
+                      onChange={(e) =>
+                        setNewParticipant({ ...newParticipant, first_name: e.target.value })
+                      }
+                      placeholder="Prénom"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>
+                      Nom <span className="text-red-500">*</span>
+                    </Label>
+                    <Input
+                      value={newParticipant.last_name}
+                      onChange={(e) =>
+                        setNewParticipant({ ...newParticipant, last_name: e.target.value })
+                      }
+                      placeholder="Nom"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Numéro de licence</Label>
+                    <Input
+                      value={newParticipant.license_number}
+                      onChange={(e) =>
+                        setNewParticipant({
+                          ...newParticipant,
+                          license_number: e.target.value,
+                        })
+                      }
+                      placeholder="Licence"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Club</Label>
+                    <Input
+                      value={newParticipant.club_name}
+                      onChange={(e) =>
+                        setNewParticipant({ ...newParticipant, club_name: e.target.value })
+                      }
+                      placeholder="Club"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Genre</Label>
+                    <Select
+                      value={newParticipant.gender}
+                      onValueChange={(value) =>
+                        setNewParticipant({ ...newParticipant, gender: value })
+                      }
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Sélectionner le genre" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="Homme">Homme</SelectItem>
+                        <SelectItem value="Femme">Femme</SelectItem>
+                        <SelectItem value="Mixte">Mixte</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-2 md:col-span-2">
+                    <Label>Email</Label>
+                    <Input
+                      type="email"
+                      value={newParticipant.email}
+                      onChange={(e) =>
+                        setNewParticipant({ ...newParticipant, email: e.target.value })
+                      }
+                      placeholder="user@example.com"
+                    />
+                  </div>
+                </div>
+                <div className="flex gap-2">
+                  <Button
+                    variant="outline"
+                    onClick={() => {
+                      setShowNewParticipantForm(false);
+                      setNewParticipant({
+                        first_name: "",
+                        last_name: "",
+                        license_number: "",
+                        club_name: "",
+                        gender: "",
+                        email: "",
+                      });
+                    }}
+                    className="flex-1"
+                  >
+                    Annuler
+                  </Button>
+                  <Button
+                    onClick={handleAddNewParticipant}
+                    disabled={!newParticipant.first_name || !newParticipant.last_name || isAddingParticipant}
+                    className="flex-1"
+                  >
+                    {isAddingParticipant ? (
+                      <>
+                        <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                        Ajout...
+                      </>
+                    ) : (
+                      <>
+                        <UserPlus className="w-4 h-4 mr-2" />
+                        Ajouter le participant
+                      </>
+                    )}
+                  </Button>
+                </div>
+              </CardContent>
+            )}
+          </Card>
+        </div>
+      )}
+
+      {/* Bouton retour */}
       <div className="flex justify-end gap-3 pt-4 border-t">
         <Button
           variant="outline"
           onClick={() => eventId && navigate(`/event/${eventId}/crews`)}
         >
-          Annuler
-        </Button>
-        <Button onClick={handleSave} disabled={isSaving} className="min-w-[140px]">
-          {isSaving ? (
-            <>
-              <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-              Enregistrement...
-            </>
-          ) : (
-            <>
-              <Save className="w-4 h-4 mr-2" />
-              Enregistrer
-            </>
-          )}
+          Retour
         </Button>
       </div>
     </div>

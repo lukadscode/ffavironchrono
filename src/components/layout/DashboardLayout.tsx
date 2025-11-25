@@ -1,6 +1,6 @@
 import { Outlet, NavLink } from "react-router-dom";
 import { Sheet, SheetTrigger, SheetContent } from "@/components/ui/sheet";
-import { Menu, LogOut, Home, Calendar, User, Settings } from "lucide-react";
+import { Menu, LogOut, Home, Calendar, User, Settings, Trophy } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/context/AuthContext";
 import { cn } from "@/lib/utils"; // utile pour combiner les classes conditionnelles
@@ -10,6 +10,7 @@ export default function DashboardLayout() {
 
   // Vérifier si l'utilisateur est admin ou superadmin
   const isAdmin = user?.role === "admin" || user?.role === "superadmin";
+  const isSuperAdmin = user?.role === "superadmin";
 
   const navLinks = [
     { to: "/dashboard", label: "Accueil", icon: Home },
@@ -18,6 +19,10 @@ export default function DashboardLayout() {
     ...(isAdmin
       ? [{ to: "/dashboard/events-management", label: "Gestion événements", icon: Settings }]
       : []),
+    // Afficher le lien de gestion des templates de scoring seulement pour les superadmins
+    ...(isSuperAdmin
+      ? [{ to: "/dashboard/scoring-templates", label: "Templates de scoring", icon: Trophy }]
+      : []),
   ];
 
   const NavItem = ({ to, label, icon: Icon }: { to: string; label: string; icon: any }) => (
@@ -25,8 +30,10 @@ export default function DashboardLayout() {
       to={to}
       className={({ isActive }) =>
         cn(
-          "flex items-center gap-3 px-4 py-2 rounded-lg transition-colors hover:bg-muted",
-          isActive ? "bg-muted font-semibold text-primary" : "text-muted-foreground"
+          "flex items-center gap-3 px-4 py-2 rounded-lg transition-colors",
+          isActive 
+            ? "bg-muted font-semibold text-foreground" 
+            : "text-foreground hover:bg-muted"
         )
       }
     >

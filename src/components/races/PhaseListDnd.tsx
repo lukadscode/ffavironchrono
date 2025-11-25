@@ -18,6 +18,7 @@ interface Props {
   phases: Phase[];
   onReorder: (phases: Phase[]) => void;
   onDelete: (id: string) => Promise<void>;
+  onEdit: (id: string, name: string, order: number) => Promise<void>;
   eventId: string;
   enableCrewDrag?: boolean;
 }
@@ -26,6 +27,7 @@ export default function PhaseListDnd({
   phases,
   onReorder,
   onDelete,
+  onEdit,
   eventId,
   enableCrewDrag = false,
 }: Props) {
@@ -57,6 +59,7 @@ export default function PhaseListDnd({
                     key={phase.id}
                     phase={phase}
                     onDelete={onDelete}
+                    onEdit={onEdit}
                     eventId={eventId}
                     enableCrewDrag={enableCrewDrag}
                 />

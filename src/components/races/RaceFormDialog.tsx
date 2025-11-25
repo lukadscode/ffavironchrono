@@ -22,8 +22,10 @@ interface RaceFormDialogProps {
 
 interface Distance {
   id: string;
-  label: string;
+  label?: string; // Label formaté depuis l'API (ex: "8x250m" ou "2000m")
   meters: number;
+  is_relay?: boolean;
+  relay_count?: number;
 }
 
 export default function RaceFormDialog({ phaseId, eventId, onSuccess }: RaceFormDialogProps) {
@@ -105,11 +107,18 @@ export default function RaceFormDialog({ phaseId, eventId, onSuccess }: RaceForm
                 <SelectValue placeholder="Distance" />
               </SelectTrigger>
               <SelectContent>
-                {distances.map((dist) => (
-                  <SelectItem key={dist.id} value={dist.id}>
-                    {dist.label} ({dist.meters} m)
-                  </SelectItem>
-                ))}
+                {distances.map((dist) => {
+                  // Utiliser le label formaté de l'API s'il existe, sinon construire
+                  const displayLabel = dist.label || 
+                    (dist.is_relay && dist.relay_count 
+                      ? `${dist.relay_count}x${dist.meters}m`
+                      : `${dist.meters}m`);
+                  return (
+                    <SelectItem key={dist.id} value={dist.id}>
+                      {displayLabel}
+                    </SelectItem>
+                  );
+                })}
               </SelectContent>
             </Select>
           </div>

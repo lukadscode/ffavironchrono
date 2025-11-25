@@ -68,19 +68,19 @@ export default function HomePage() {
           <div className="max-w-4xl mx-auto text-center">
             <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-white/10 backdrop-blur-md border border-white/20 mb-6">
               <Timer className="w-5 h-5" />
-              <span className="text-sm font-medium">Système de Chronométrage Professionnel</span>
+              <span className="text-sm font-medium">FFAviron - Résultats des compétitions</span>
             </div>
             
             <h1 className="text-5xl md:text-6xl lg:text-7xl font-bold mb-6 leading-tight">
-              Chronométrage
+              Suivez les résultats
               <span className="block bg-gradient-to-r from-blue-200 to-cyan-200 bg-clip-text text-transparent">
-                d'Excellence
+                des compétitions
               </span>
             </h1>
             
             <p className="text-xl md:text-2xl text-blue-100 mb-8 max-w-2xl mx-auto leading-relaxed">
-              Suivez les compétitions d'aviron en temps réel. Résultats précis, classements instantanés, 
-              chronométrage de pointe pour chaque course.
+              Consultez les résultats, les classements et suivez en direct toutes les compétitions d'aviron organisées 
+              par la Fédération Française d'Aviron.
             </p>
 
             <div className="flex flex-wrap items-center justify-center gap-6 mt-12">

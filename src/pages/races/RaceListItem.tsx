@@ -17,6 +17,21 @@ const getCategoryColor = (label: string) => {
   return colors[hash % colors.length];
 };
 
+interface Participant {
+  id: string;
+  first_name: string;
+  last_name: string;
+  license_number?: string;
+}
+
+interface CrewParticipant {
+  id: string;
+  participant_id: string;
+  is_coxswain: boolean;
+  seat_position: number;
+  participant: Participant;
+}
+
 interface CrewEntry {
   id: string;
   lane: number;
@@ -25,6 +40,7 @@ interface CrewEntry {
     club_code: string;
     category_id: string;
     category_label?: string;
+    crew_participants?: CrewParticipant[];
   };
 }
 
@@ -133,6 +149,15 @@ export default function RaceListItem({ race, onDelete, refresh, enableCrewDrag =
         data: { raceId: race.id, lane: laneNum },
       });
 
+      const participants = entry?.crew?.crew_participants
+        ?.sort((a, b) => a.seat_position - b.seat_position)
+        .map((cp) => {
+          const firstName = cp.participant?.first_name || "";
+          const lastName = cp.participant?.last_name || "";
+          const displayName = firstName && lastName ? `${firstName} ${lastName}` : lastName || firstName;
+          return { displayName, isCoxswain: cp.is_coxswain };
+        }) || [];
+
       return (
         <div
           key={laneNum}
@@ -143,12 +168,32 @@ export default function RaceListItem({ race, onDelete, refresh, enableCrewDrag =
           {...(entry ? attributes : {})}
           {...(entry ? listeners : {})}
           className={clsx(
-            "flex justify-between items-center px-3 py-1 rounded-md text-xs",
+            "px-3 py-1 rounded-md text-xs",
             entry ? "bg-white text-gray-800 cursor-grab" : "bg-gray-50 italic text-gray-400"
           )}
         >
-          <span className="font-semibold">L{laneNum}</span>
-          <span className="truncate max-w-[160px] text-right">{entry?.crew?.club_name || "(vide)"}</span>
+          <div className="flex justify-between items-start gap-2">
+            <span className="font-semibold">L{laneNum}</span>
+            <div className="flex-1 text-right min-w-0">
+              {entry ? (
+                <div className="space-y-0.5">
+                  <div className="font-medium truncate">{entry.crew?.club_name}</div>
+                  {participants.length > 0 && (
+                    <div className="text-[10px] text-gray-600 space-y-0.5">
+                      {participants.map((p, idx) => (
+                        <div key={idx} className={clsx("truncate", p.isCoxswain && "font-semibold")}>
+                          {p.displayName}
+                          {p.isCoxswain && <span className="text-gray-500 ml-0.5">(B)</span>}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <span className="italic">(vide)</span>
+              )}
+            </div>
+          </div>
         </div>
       );
     })}

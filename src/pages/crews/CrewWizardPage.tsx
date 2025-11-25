@@ -12,6 +12,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { ScrollArea } from "@/components/ui/scroll-area";
 import { Checkbox } from "@/components/ui/checkbox";
 import { useToast } from "@/hooks/use-toast";
 import {
@@ -63,6 +64,20 @@ type CrewParticipant = {
   participantId?: string; // ID du participant existant
 };
 
+interface Club {
+  nom: string;
+  nom_court: string;
+  code: string;
+  etat: string;
+  type: string;
+  logo: string | null;
+  logo_url: string | null;
+  code_region: string | null;
+  nom_region: string | null;
+  code_departement: string | null;
+  nom_departement: string | null;
+}
+
 const STEPS = [
   { id: 1, title: "Informations équipage", icon: Ship },
   { id: 2, title: "Participants", icon: Users },
@@ -78,6 +93,11 @@ export default function CrewWizardPage() {
   const [isSaving, setIsSaving] = useState(false);
   const [categories, setCategories] = useState<Category[]>([]);
   const [existingParticipants, setExistingParticipants] = useState<Participant[]>([]);
+  const [clubs, setClubs] = useState<Club[]>([]);
+  const [loadingClubs, setLoadingClubs] = useState(false);
+  const [selectedClubId, setSelectedClubId] = useState<string>("");
+  const [clubSearchQuery, setClubSearchQuery] = useState<string>("");
+  const [isClubSelectOpen, setIsClubSelectOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [showIntranetSearch, setShowIntranetSearch] = useState(false);
   const [intranetLicenseNumber, setIntranetLicenseNumber] = useState("");
@@ -107,8 +127,31 @@ export default function CrewWizardPage() {
     if (eventId) {
       fetchCategories();
       fetchParticipants();
+      fetchClubs();
     }
   }, [eventId]);
+
+  const fetchClubs = async () => {
+    setLoadingClubs(true);
+    try {
+      const res = await api.get("/clubs");
+      const clubsData = res.data.data || [];
+      // Trier les clubs par nom
+      const sortedClubs = clubsData.sort((a: Club, b: Club) => 
+        a.nom.localeCompare(b.nom)
+      );
+      setClubs(sortedClubs);
+    } catch (err: any) {
+      console.error("Erreur chargement clubs:", err);
+      toast({
+        title: "Erreur",
+        description: "Impossible de charger la liste des clubs. Vous pouvez saisir manuellement.",
+        variant: "destructive",
+      });
+    } finally {
+      setLoadingClubs(false);
+    }
+  };
 
   const fetchCategories = async () => {
     setLoading(true);
@@ -616,34 +659,241 @@ export default function CrewWizardPage() {
                 </p>
               </div>
 
-              <div className="grid md:grid-cols-2 gap-4">
+              <div className="space-y-4">
                 <div className="space-y-2">
-                  <Label htmlFor="club_name">
-                    Nom du club <span className="text-red-500">*</span>
+                  <Label htmlFor="club_select">
+                    Club <span className="text-red-500">*</span>
                   </Label>
-                  <Input
-                    id="club_name"
-                    value={crewData.club_name}
-                    onChange={(e) =>
-                      setCrewData({ ...crewData, club_name: e.target.value })
-                    }
-                    placeholder="Ex: Club Nautique de Paris"
-                  />
+                  {loadingClubs ? (
+                    <div className="flex items-center gap-2 p-3 border rounded-lg">
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                      <span className="text-sm text-muted-foreground">Chargement des clubs...</span>
+                    </div>
+                  ) : (
+                    <div className="space-y-2">
+                      <Select
+                        value={selectedClubId}
+                        open={isClubSelectOpen}
+                        onOpenChange={setIsClubSelectOpen}
+                        onValueChange={(value) => {
+                          if (value === "manual") {
+                            // Mode manuel
+                            setSelectedClubId("manual");
+                            setCrewData({ ...crewData, club_name: "", club_code: "" });
+                            setIsClubSelectOpen(false);
+                          } else {
+                            // Club sélectionné
+                            const club = clubs.find((c) => c.code === value);
+                            if (club) {
+                              setSelectedClubId(club.code);
+                              setCrewData({
+                                ...crewData,
+                                club_name: club.nom,
+                                club_code: club.code,
+                              });
+                              setIsClubSelectOpen(false);
+                              setClubSearchQuery("");
+                            }
+                          }
+                        }}
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder="Sélectionner un club" />
+                        </SelectTrigger>
+                        <SelectContent className="max-h-[500px] p-0">
+                          {/* Zone de recherche */}
+                          <div className="sticky top-0 z-10 bg-background border-b p-2">
+                            <div className="relative">
+                              <Search className="absolute left-2 top-1/2 transform -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                              <Input
+                                placeholder="Rechercher un club..."
+                                value={clubSearchQuery}
+                                onChange={(e) => {
+                                  setClubSearchQuery(e.target.value);
+                                  if (!isClubSelectOpen) {
+                                    setIsClubSelectOpen(true);
+                                  }
+                                }}
+                                className="pl-8"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setIsClubSelectOpen(true);
+                                }}
+                                onFocus={() => setIsClubSelectOpen(true)}
+                              />
+                            </div>
+                          </div>
+                          
+                          {/* Liste filtrée */}
+                          <ScrollArea className="max-h-[400px]">
+                            <div className="p-1">
+                              <SelectItem 
+                                value="manual"
+                                className="cursor-pointer"
+                              >
+                                <div className="flex items-center gap-2">
+                                  <span className="font-medium">Saisie manuelle</span>
+                                </div>
+                              </SelectItem>
+                              
+                              {clubs
+                                .filter((club) => {
+                                  if (!clubSearchQuery) return true;
+                                  const query = clubSearchQuery.toLowerCase();
+                                  return (
+                                    club.nom.toLowerCase().includes(query) ||
+                                    club.nom_court?.toLowerCase().includes(query) ||
+                                    club.code.toLowerCase().includes(query) ||
+                                    club.nom_region?.toLowerCase().includes(query) ||
+                                    club.nom_departement?.toLowerCase().includes(query)
+                                  );
+                                })
+                                .map((club) => (
+                                  <SelectItem 
+                                    key={club.code} 
+                                    value={club.code}
+                                    className="cursor-pointer"
+                                  >
+                                    <div className="flex flex-col py-1">
+                                      <div className="flex items-center gap-2">
+                                        {club.logo_url && (
+                                          <img
+                                            src={club.logo_url}
+                                            alt={club.nom}
+                                            className="w-6 h-6 object-contain rounded"
+                                            onError={(e) => {
+                                              (e.target as HTMLImageElement).style.display = "none";
+                                            }}
+                                          />
+                                        )}
+                                        <span className="font-medium">{club.nom}</span>
+                                      </div>
+                                      <div className="flex items-center gap-2 mt-1">
+                                        {club.nom_court && club.nom_court !== club.nom && (
+                                          <span className="text-xs text-muted-foreground">
+                                            {club.nom_court}
+                                          </span>
+                                        )}
+                                        <span className="text-xs text-muted-foreground">
+                                          {club.code}
+                                        </span>
+                                        {club.nom_region && (
+                                          <span className="text-xs text-muted-foreground">
+                                            • {club.nom_region}
+                                          </span>
+                                        )}
+                                      </div>
+                                    </div>
+                                  </SelectItem>
+                                ))}
+                              
+                              {clubs.filter((club) => {
+                                if (!clubSearchQuery) return false;
+                                const query = clubSearchQuery.toLowerCase();
+                                return (
+                                  club.nom.toLowerCase().includes(query) ||
+                                  club.nom_court?.toLowerCase().includes(query) ||
+                                  club.code.toLowerCase().includes(query) ||
+                                  club.nom_region?.toLowerCase().includes(query) ||
+                                  club.nom_departement?.toLowerCase().includes(query)
+                                );
+                              }).length === 0 && clubSearchQuery && (
+                                <div className="p-4 text-center text-sm text-muted-foreground">
+                                  Aucun club trouvé pour "{clubSearchQuery}"
+                                </div>
+                              )}
+                            </div>
+                          </ScrollArea>
+                        </SelectContent>
+                      </Select>
+                      
+                      {clubSearchQuery && clubs.filter((club) => {
+                        const query = clubSearchQuery.toLowerCase();
+                        return (
+                          club.nom.toLowerCase().includes(query) ||
+                          club.nom_court?.toLowerCase().includes(query) ||
+                          club.code.toLowerCase().includes(query) ||
+                          club.nom_region?.toLowerCase().includes(query) ||
+                          club.nom_departement?.toLowerCase().includes(query)
+                        );
+                      }).length > 0 && (
+                        <p className="text-xs text-muted-foreground">
+                          {clubs.filter((club) => {
+                            const query = clubSearchQuery.toLowerCase();
+                            return (
+                              club.nom.toLowerCase().includes(query) ||
+                              club.nom_court?.toLowerCase().includes(query) ||
+                              club.code.toLowerCase().includes(query) ||
+                              club.nom_region?.toLowerCase().includes(query) ||
+                              club.nom_departement?.toLowerCase().includes(query)
+                            );
+                          }).length} club(s) trouvé(s)
+                        </p>
+                      )}
+                    </div>
+                  )}
                 </div>
 
-                <div className="space-y-2">
-                  <Label htmlFor="club_code">
-                    Code club <span className="text-red-500">*</span>
-                  </Label>
-                  <Input
-                    id="club_code"
-                    value={crewData.club_code}
-                    onChange={(e) =>
-                      setCrewData({ ...crewData, club_code: e.target.value.toUpperCase() })
-                    }
-                    placeholder="Ex: C075001"
-                  />
-                </div>
+                {selectedClubId === "manual" && (
+                  <div className="grid md:grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="club_name">
+                        Nom du club <span className="text-red-500">*</span>
+                      </Label>
+                      <Input
+                        id="club_name"
+                        value={crewData.club_name}
+                        onChange={(e) =>
+                          setCrewData({ ...crewData, club_name: e.target.value })
+                        }
+                        placeholder="Ex: Club Nautique de Paris"
+                      />
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label htmlFor="club_code">
+                        Code club <span className="text-red-500">*</span>
+                      </Label>
+                      <Input
+                        id="club_code"
+                        value={crewData.club_code}
+                        onChange={(e) =>
+                          setCrewData({ ...crewData, club_code: e.target.value.toUpperCase() })
+                        }
+                        placeholder="Ex: C075001"
+                      />
+                    </div>
+                  </div>
+                )}
+
+                {selectedClubId && selectedClubId !== "manual" && crewData.club_code && (
+                  <div className="p-4 border rounded-lg bg-muted/50">
+                    <div className="flex items-start gap-3">
+                      {clubs.find((c) => c.code === crewData.club_code)?.logo_url && (
+                        <img
+                          src={clubs.find((c) => c.code === crewData.club_code)?.logo_url || ""}
+                          alt={crewData.club_name}
+                          className="w-16 h-16 object-contain rounded border"
+                          onError={(e) => {
+                            (e.target as HTMLImageElement).style.display = "none";
+                          }}
+                        />
+                      )}
+                      <div className="flex-1">
+                        <p className="font-semibold text-lg">{crewData.club_name}</p>
+                        <p className="text-sm text-muted-foreground mt-1">Code: {crewData.club_code}</p>
+                        {clubs.find((c) => c.code === crewData.club_code)?.nom_region && (
+                          <p className="text-xs text-muted-foreground mt-2">
+                            {clubs.find((c) => c.code === crewData.club_code)?.nom_region}
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              <div className="grid md:grid-cols-2 gap-4">
 
                 <div className="space-y-2 md:col-span-2">
                   <Label htmlFor="category_id">

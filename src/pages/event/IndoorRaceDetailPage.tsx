@@ -3,9 +3,12 @@ import { useParams, useNavigate } from "react-router-dom";
 import api from "@/lib/axios";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Label } from "@/components/ui/label";
 import dayjs from "dayjs";
-import { ArrowLeft, Download, Upload, FileText, File } from "lucide-react";
+import { ArrowLeft, Download, Upload, FileText, File, AlertTriangle, Save } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import NotificationDisplay from "@/components/notifications/NotificationDisplay";
 
 type Category = {
   id: string;
@@ -56,6 +59,14 @@ type RaceCrew = {
   };
 };
 
+type Distance = {
+  id: string;
+  meters: number;
+  is_relay?: boolean;
+  relay_count?: number;
+  label?: string; // Label formaté depuis l'API (ex: "8x250m" ou "2000m")
+};
+
 type Race = {
   id: string;
   name: string;
@@ -63,6 +74,8 @@ type Race = {
   start_time: string;
   status: string;
   lane_count?: number;
+  distance_id?: string;
+  distance?: Distance;
   race_phase?: {
     id: string;
     name: string;
@@ -89,6 +102,11 @@ export default function IndoorRaceDetailPage() {
   const [race, setRace] = useState<Race | null>(null);
   const [event, setEvent] = useState<Event | null>(null);
   const [distance, setDistance] = useState<number>(500); // Par défaut 500m pour indoor
+  const [raceDistance, setRaceDistance] = useState<Distance | null>(null);
+  const [availableDistances, setAvailableDistances] = useState<Distance[]>([]);
+  const [selectedDistanceId, setSelectedDistanceId] = useState<string>("");
+  const [isSuggestedDistance, setIsSuggestedDistance] = useState(false); // Indique si la distance est suggérée automatiquement
+  const [isSavingDistance, setIsSavingDistance] = useState(false);
   const [loading, setLoading] = useState(true);
   const [isDraggingTxtJson, setIsDraggingTxtJson] = useState(false);
   const [isDraggingPdf, setIsDraggingPdf] = useState(false);
@@ -98,10 +116,113 @@ export default function IndoorRaceDetailPage() {
   useEffect(() => {
     if (raceId && eventId) {
       fetchEvent();
-      fetchRace();
-      fetchDistance();
+      // Charger d'abord les distances, puis la course pour pouvoir suggérer
+      fetchDistances().then(() => {
+        fetchRace();
+      });
+      // fetchDistance est appelé seulement comme fallback si la course n'a pas de distance_id
+      // On le garde pour les anciennes courses qui n'ont pas de distance_id
     }
   }, [raceId, eventId]);
+
+  const fetchDistances = async () => {
+    try {
+      const res = await api.get(`/distances/event/${eventId}`);
+      const distances = res.data.data || [];
+      setAvailableDistances(distances);
+      
+      // Si la course est déjà chargée et n'a pas de distance, suggérer une
+      if (race && !race.distance_id && !race.distance && race.race_crews.length > 0 && !selectedDistanceId) {
+        const suggestedDistanceId = suggestDistanceFromCrews(race.race_crews, distances);
+        if (suggestedDistanceId) {
+          setSelectedDistanceId(suggestedDistanceId);
+          setIsSuggestedDistance(true); // C'est une suggestion automatique
+          console.log(`✅ Distance suggérée pré-sélectionnée (après chargement distances): ${suggestedDistanceId}`);
+        } else {
+          setIsSuggestedDistance(false); // Pas de suggestion trouvée
+        }
+      }
+    } catch (err) {
+      console.error("Erreur chargement distances", err);
+    }
+  };
+
+  // Fonction pour suggérer une distance en fonction des équipages
+  const suggestDistanceFromCrews = (raceCrews: RaceCrew[], availableDistances: Distance[]): string | null => {
+    if (!raceCrews || raceCrews.length === 0 || !availableDistances || availableDistances.length === 0) {
+      return null;
+    }
+
+    // Récupérer les distances des catégories des équipages
+    const crewDistances: { distanceId: string | null; meters: number | null; isRelay: boolean; relayCount: number | null }[] = [];
+    
+    for (const raceCrew of raceCrews) {
+      const crew = raceCrew.crew;
+      // Vérifier si la catégorie a une distance
+      if (crew.category?.distance_id || crew.category?.distance?.id) {
+        const categoryDistanceId = crew.category.distance_id || crew.category.distance?.id;
+        const categoryDistance = crew.category.distance;
+        
+        if (categoryDistance) {
+          crewDistances.push({
+            distanceId: categoryDistanceId || null,
+            meters: categoryDistance.meters || null,
+            isRelay: categoryDistance.is_relay === true || categoryDistance.is_relay === 1,
+            relayCount: categoryDistance.relay_count || null,
+          });
+        }
+      }
+    }
+
+    if (crewDistances.length === 0) {
+      return null;
+    }
+
+    // Compter les occurrences de chaque distance
+    const distanceCounts = new Map<string, number>();
+    
+    for (const crewDist of crewDistances) {
+      if (crewDist.distanceId) {
+        distanceCounts.set(crewDist.distanceId, (distanceCounts.get(crewDist.distanceId) || 0) + 1);
+      }
+    }
+
+    // Trouver la distance la plus fréquente
+    let mostCommonDistanceId: string | null = null;
+    let maxCount = 0;
+    
+    for (const [distanceId, count] of distanceCounts.entries()) {
+      if (count > maxCount) {
+        maxCount = count;
+        mostCommonDistanceId = distanceId;
+      }
+    }
+
+    // Si on trouve une distance fréquente et qu'elle existe dans les distances disponibles
+    if (mostCommonDistanceId && availableDistances.find(d => d.id === mostCommonDistanceId)) {
+      console.log(`💡 Distance suggérée: ${mostCommonDistanceId} (trouvée dans ${maxCount} équipage(s))`);
+      return mostCommonDistanceId;
+    }
+
+    // Sinon, essayer de trouver par correspondance de mètres et is_relay
+    const firstCrewDist = crewDistances[0];
+    if (firstCrewDist.meters !== null) {
+      const matchingDistance = availableDistances.find(d => {
+        const metersMatch = d.meters === firstCrewDist.meters;
+        const relayMatch = (d.is_relay === true || d.is_relay === 1) === firstCrewDist.isRelay;
+        const relayCountMatch = !firstCrewDist.isRelay || d.relay_count === firstCrewDist.relayCount;
+        
+        return metersMatch && relayMatch && relayCountMatch;
+      });
+
+      if (matchingDistance) {
+        console.log(`💡 Distance suggérée par correspondance: ${matchingDistance.id} (${matchingDistance.meters}m, relay: ${matchingDistance.is_relay})`);
+        return matchingDistance.id;
+      }
+    }
+
+    return null;
+  };
 
   const fetchEvent = async () => {
     try {
@@ -113,6 +234,11 @@ export default function IndoorRaceDetailPage() {
   };
 
   const fetchDistance = async () => {
+    // Ne récupérer depuis les timing points que si aucune distance n'a été définie via la course
+    // Cette fonction sert de fallback pour les anciennes courses
+    if (raceDistance) {
+      return; // La distance a déjà été récupérée depuis la course
+    }
     try {
       const res = await api.get(`/timing-points/event/${eventId}`);
       const timingPoints = res.data.data || [];
@@ -139,14 +265,121 @@ export default function IndoorRaceDetailPage() {
       const raceCrewsRes = await api.get(`/race-crews/${raceId}`);
       const raceCrews = raceCrewsRes.data.data || [];
 
+      // Récupérer la distance de la course si elle existe
+      let distanceData: Distance | null = null;
+      
+      // Vérifier si la distance est déjà dans raceData.distance
+      if (raceData.distance) {
+        distanceData = raceData.distance;
+      } else if (raceData.distance_id) {
+        // Sinon, récupérer toutes les distances de l'événement et trouver celle correspondante
+        try {
+          const distancesRes = await api.get(`/distances/event/${eventId}`);
+          const allDistances = distancesRes.data.data || [];
+          distanceData = allDistances.find((d: Distance) => d.id === raceData.distance_id) || null;
+          
+          if (!distanceData) {
+            console.warn(`Distance ${raceData.distance_id} non trouvée dans les distances de l'événement`);
+          }
+        } catch (err) {
+          console.error("Erreur chargement distances", err);
+        }
+      }
+
+      // Mettre à jour l'état de la distance
+      if (distanceData) {
+        console.log("📏 Distance récupérée:", distanceData);
+        setRaceDistance(distanceData);
+        // Utiliser la distance de la course au lieu des timing points
+        // Vérifier is_relay (peut être 0/1 ou true/false selon l'API)
+        const isRelay = distanceData.is_relay === true || distanceData.is_relay === 1;
+        if (isRelay && distanceData.relay_count) {
+          // Pour un relais, la distance totale = meters * relay_count
+          const totalDist = distanceData.meters * distanceData.relay_count;
+          console.log(`🔄 Relais détecté: ${distanceData.relay_count}x${distanceData.meters}m = ${totalDist}m`);
+          setDistance(totalDist);
+        } else {
+          console.log(`📏 Course normale: ${distanceData.meters}m`);
+          setDistance(distanceData.meters);
+        }
+      } else {
+        console.warn("⚠️ Aucune distance trouvée pour la course. distance_id:", raceData.distance_id);
+        // Fallback : utiliser fetchDistance pour récupérer depuis les timing points
+        fetchDistance();
+      }
+
       setRace({
         ...raceData,
+        distance: distanceData || raceData.distance,
         race_crews: raceCrews.sort((a: RaceCrew, b: RaceCrew) => a.lane - b.lane),
       });
+
+      // Mettre à jour la distance sélectionnée dans le formulaire
+      if (distanceData) {
+        setSelectedDistanceId(distanceData.id);
+        setIsSuggestedDistance(false); // Distance existante, pas une suggestion
+      } else if (raceData.distance_id) {
+        setSelectedDistanceId(raceData.distance_id);
+        setIsSuggestedDistance(false); // Distance existante, pas une suggestion
+      } else {
+        // Suggérer une distance en fonction des équipages
+        // Si availableDistances n'est pas encore chargé, attendre un peu et réessayer
+        if (availableDistances.length > 0) {
+          const suggestedDistanceId = suggestDistanceFromCrews(raceCrews, availableDistances);
+          if (suggestedDistanceId) {
+            setSelectedDistanceId(suggestedDistanceId);
+            setIsSuggestedDistance(true); // C'est une suggestion automatique
+            console.log(`✅ Distance suggérée pré-sélectionnée: ${suggestedDistanceId}`);
+          } else {
+            setSelectedDistanceId("");
+            setIsSuggestedDistance(false); // Pas de suggestion trouvée
+          }
+        } else {
+          // Si les distances ne sont pas encore chargées, la suggestion sera faite dans fetchDistances
+          setSelectedDistanceId("");
+          setIsSuggestedDistance(false);
+        }
+      }
     } catch (err) {
       console.error("Erreur chargement course", err);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleSaveDistance = async () => {
+    if (!raceId || !selectedDistanceId) {
+      toast({
+        title: "Erreur",
+        description: "Veuillez sélectionner une distance",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    try {
+      setIsSavingDistance(true);
+      await api.put(`/races/${raceId}`, {
+        distance_id: selectedDistanceId,
+      });
+
+      // Recharger les données de la course
+      await fetchRace();
+      await fetchDistances(); // Recharger aussi les distances au cas où
+
+      toast({
+        title: "Distance enregistrée",
+        description: "La distance de la course a été mise à jour avec succès",
+      });
+    } catch (err: any) {
+      console.error("Erreur sauvegarde distance", err);
+      toast({
+        title: "Erreur",
+        description: err?.response?.data?.message || "Impossible de sauvegarder la distance",
+        variant: "destructive",
+      });
+    } finally {
+      setIsSavingDistance(false);
     }
   };
 
@@ -264,7 +497,7 @@ export default function IndoorRaceDetailPage() {
     handleFileUpload(file, type);
   };
 
-  const generateRac2File = () => {
+  const generateRac2File = async () => {
     if (!race || !event) {
       toast({
         title: "Erreur",
@@ -272,6 +505,32 @@ export default function IndoorRaceDetailPage() {
         variant: "destructive",
       });
       return;
+    }
+
+    // Si la distance n'est pas encore chargée, essayer de la récupérer maintenant
+    let finalRaceDistance = race.distance || raceDistance;
+    if (!finalRaceDistance && race.distance_id && eventId) {
+      try {
+        // Récupérer toutes les distances de l'événement et trouver celle correspondante
+        const distancesRes = await api.get(`/distances/event/${eventId}`);
+        const allDistances = distancesRes.data.data || [];
+        const distanceData = allDistances.find((d: Distance) => d.id === race.distance_id);
+        
+        if (distanceData) {
+          finalRaceDistance = distanceData;
+          setRaceDistance(distanceData);
+          // Mettre à jour la distance si nécessaire
+          if (distanceData.is_relay === true || distanceData.is_relay === 1) {
+            if (distanceData.relay_count && distanceData.meters) {
+              setDistance(distanceData.meters * distanceData.relay_count);
+            }
+          } else if (distanceData.meters) {
+            setDistance(distanceData.meters);
+          }
+        }
+      } catch (err) {
+        console.error("Erreur lors de la récupération de la distance", err);
+      }
     }
 
     // Récupérer le nombre total de couloirs (par défaut 64 pour indoor)
@@ -342,30 +601,130 @@ export default function IndoorRaceDetailPage() {
       }
     }
 
-    // Déterminer le type de course (individual ou team)
-    // Si tous les équipages ont 1 participant, c'est individual, sinon team
-    const allParticipantsCounts = race.race_crews.map(rc => 
-      rc.crew.crew_participants?.length || 0
-    );
-    const isIndividual = allParticipantsCounts.length > 0 && 
-      allParticipantsCounts.every(count => count === 1);
-    const raceType = isIndividual ? "individual" : "team";
+    // Déterminer si c'est un relais - utiliser race.distance, raceDistance, ou finalRaceDistance
+    const currentDistance = race.distance || raceDistance || finalRaceDistance;
+    
+    console.log("🔍 Génération .rac2 - Distance actuelle:", {
+      raceDistance,
+      "race.distance": race.distance,
+      currentDistance,
+      distance,
+    });
+
+    // Si aucune distance n'est trouvée, afficher un avertissement
+    if (!currentDistance && !race.distance_id) {
+      toast({
+        title: "Attention",
+        description: "Aucune distance trouvée pour cette course. Utilisation de la distance par défaut.",
+        variant: "destructive",
+      });
+    }
+
+    // Vérifier is_relay (peut être 0, false, ou absent)
+    const isRelay = currentDistance?.is_relay === true || currentDistance?.is_relay === 1;
+    const relayCount = currentDistance?.relay_count ? Number(currentDistance.relay_count) : null;
+    const relayDistance = currentDistance?.meters ? Number(currentDistance.meters) : distance;
+    
+    console.log("🏁 Paramètres relais:", {
+      isRelay,
+      relayCount,
+      relayDistance,
+      currentDistance,
+      "is_relay value": currentDistance?.is_relay,
+    });
+    
+    // Pour un relais : duration = distance totale (meters * relay_count), split_value = distance d'un relais
+    // Pour une course normale : duration = split_value = distance totale
+    const totalDistance = isRelay && relayCount && relayDistance 
+      ? relayDistance * relayCount 
+      : distance;
+
+    // Déterminer le type de course
+    let raceType: string;
+    if (isRelay) {
+      raceType = "relay";
+    } else {
+      // Si tous les équipages ont 1 participant, c'est individual, sinon team
+      const allParticipantsCounts = race.race_crews.map(rc => 
+        rc.crew.crew_participants?.length || 0
+      );
+      const isIndividual = allParticipantsCounts.length > 0 && 
+        allParticipantsCounts.every(count => count === 1);
+      raceType = isIndividual ? "individual" : "team";
+    }
+
+    // Construire le nom long formaté pour les relais
+    let nameLong = race.name;
+    if (isRelay && currentDistance) {
+      // Utiliser le label formaté de l'API (ex: "8x250m") ou construire
+      const distanceLabel = currentDistance.label || 
+        (relayCount && relayDistance ? `${relayCount}x${relayDistance}m` : race.name);
+      
+      // Ajouter la catégorie si disponible
+      const firstCrew = race.race_crews[0];
+      if (firstCrew?.crew?.category?.label) {
+        nameLong = `${distanceLabel} ${firstCrew.crew.category.label}`;
+      } else {
+        nameLong = distanceLabel;
+      }
+    }
+
+    // Valeurs finales pour le fichier .rac2
+    // Pour un relais: duration = distance totale, split_value = distance d'un relais
+    // Pour une course normale: duration = split_value = distance totale
+    const finalDuration = isRelay && relayCount && relayDistance 
+      ? relayDistance * relayCount 
+      : totalDistance;
+    const finalSplitValue = isRelay && relayDistance 
+      ? relayDistance 
+      : totalDistance;
+
+    console.log("📐 Calculs finaux:", {
+      isRelay,
+      relayCount,
+      relayDistance,
+      finalDuration,
+      finalSplitValue,
+      totalDistance,
+      distance,
+    });
 
     // Construire l'objet rac2
-    const rac2Data = {
+    const rac2Data: any = {
       race_definition: {
-        duration: distance,
+        duration: finalDuration, // Distance totale (ex: 2000 pour 8x250m)
         duration_type: "meters",
         event_name: event.name.toUpperCase(),
-        name_long: race.name,
+        name_long: nameLong,
         name_short: race.id,
         race_id: race.id,
         race_type: raceType,
         boats: boats,
         split_type: "even",
-        split_value: distance,
+        split_value: finalSplitValue, // Distance d'un relais pour les relais (ex: 250), distance totale sinon
+        team_size: 1,
+        handicap_enabled: false,
+        time_cap: 0,
       },
     };
+
+    // Ajouter les champs spécifiques aux relais
+    if (isRelay) {
+      rac2Data.race_definition.display_prompt_at_splits = true;
+      rac2Data.race_definition.sound_horn_at_splits = true;
+    }
+
+    console.log("📋 Fichier .rac2 final:", {
+      isRelay,
+      relayCount,
+      relayDistance,
+      duration: rac2Data.race_definition.duration,
+      split_value: rac2Data.race_definition.split_value,
+      raceType: rac2Data.race_definition.race_type,
+      name_long: rac2Data.race_definition.name_long,
+      display_prompt: rac2Data.race_definition.display_prompt_at_splits,
+      sound_horn: rac2Data.race_definition.sound_horn_at_splits,
+    });
 
     // Convertir en JSON et télécharger
     const jsonContent = JSON.stringify(rac2Data, null, 2);
@@ -404,8 +763,108 @@ export default function IndoorRaceDetailPage() {
     );
   }
 
+  // Vérifier si la course a une distance (après chargement complet)
+  const hasDistance = !loading && race && (race.distance || raceDistance || race.distance_id);
+  
   return (
     <div className="space-y-6">
+      {/* Message d'erreur et formulaire si pas de distance */}
+      {!loading && race && !hasDistance && (
+        <Card className="border-red-200 bg-red-50">
+          <CardContent className="pt-6">
+            <div className="space-y-4">
+              <div className="flex items-start gap-3">
+                <AlertTriangle className="w-5 h-5 text-red-600 mt-0.5 flex-shrink-0" />
+                <div className="flex-1">
+                  <h3 className="font-semibold text-red-900 mb-1">
+                    Distance manquante
+                  </h3>
+                  <p className="text-sm text-red-800 mb-3">
+                    Cette course n'a pas de distance sélectionnée. Vous devez sélectionner une distance 
+                    et l'enregistrer pour pouvoir générer le fichier .rac2 correctement.
+                  </p>
+                </div>
+              </div>
+              
+              {/* Formulaire de sélection rapide */}
+              {availableDistances.length > 0 && (
+                <div className="pt-4 border-t border-red-200">
+                  {isSuggestedDistance && selectedDistanceId && (
+                    <div className="mb-3 p-2 bg-blue-50 border border-blue-200 rounded text-xs text-blue-800">
+                      💡 Distance suggérée automatiquement en fonction des équipages de la course
+                    </div>
+                  )}
+                  <div className="flex items-end gap-3">
+                    <div className="flex-1">
+                      <Label htmlFor="distance-select" className="text-sm font-medium text-red-900 mb-2 block">
+                        Sélectionner une distance
+                      </Label>
+                      <Select
+                        value={selectedDistanceId}
+                        onValueChange={(value) => {
+                          setSelectedDistanceId(value);
+                          setIsSuggestedDistance(false); // L'utilisateur a sélectionné manuellement, ce n'est plus une suggestion
+                        }}
+                      >
+                        <SelectTrigger id="distance-select" className="w-full bg-white">
+                          <SelectValue placeholder="Choisir une distance..." />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {availableDistances.map((dist) => (
+                            <SelectItem key={dist.id} value={dist.id}>
+                              {dist.label || `${dist.meters}m`}
+                              {dist.is_relay && dist.relay_count && (
+                                <span className="ml-2 text-xs text-muted-foreground">
+                                  (Relais {dist.relay_count}x{dist.meters}m)
+                                </span>
+                              )}
+                              {selectedDistanceId === dist.id && isSuggestedDistance && (
+                                <span className="ml-2 text-xs text-blue-600 font-medium">
+                                  (Suggérée)
+                                </span>
+                              )}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <Button
+                      onClick={handleSaveDistance}
+                      disabled={!selectedDistanceId || isSavingDistance}
+                      className="gap-2 bg-red-600 hover:bg-red-700"
+                    >
+                      {isSavingDistance ? (
+                        <>
+                          <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                          Enregistrement...
+                        </>
+                      ) : (
+                        <>
+                          <Save className="w-4 h-4" />
+                          Enregistrer
+                        </>
+                      )}
+                    </Button>
+                  </div>
+                </div>
+              )}
+
+              {availableDistances.length === 0 && (
+                <div className="pt-4 border-t border-red-200">
+                  <p className="text-xs text-red-700">
+                    Aucune distance disponible pour cet événement. 
+                    Veuillez créer des distances dans la page de gestion des distances.
+                  </p>
+                </div>
+              )}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+      
+      {/* Notifications */}
+      <NotificationDisplay eventId={eventId} raceId={raceId} />
+
       {/* Header avec retour */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-4">
@@ -420,14 +879,47 @@ export default function IndoorRaceDetailPage() {
             <h2 className="text-2xl font-bold text-slate-900">
               Course {race.race_number} - {race.name}
             </h2>
-            {race.race_phase && (
-              <p className="text-sm text-muted-foreground mt-1">
-                Phase: {race.race_phase.name} • {dayjs(race.start_time).format("DD/MM/YYYY à HH:mm")}
-              </p>
-            )}
+            <div className="flex items-center gap-4 mt-1">
+              {race.race_phase && (
+                <p className="text-sm text-muted-foreground">
+                  Phase: {race.race_phase.name} • {dayjs(race.start_time).format("DD/MM/YYYY à HH:mm")}
+                </p>
+              )}
+              {(race.distance || raceDistance) && (
+                <div className="flex items-center gap-2">
+                  <span className="text-sm font-semibold text-blue-600">
+                    Distance:
+                  </span>
+                  <span className="text-sm font-bold text-blue-800">
+                    {(() => {
+                      const currentDist = race.distance || raceDistance;
+                      if (currentDist?.is_relay === true || currentDist?.is_relay === 1) {
+                        if (currentDist?.relay_count) {
+                          const totalDist = currentDist.meters * currentDist.relay_count;
+                          const label = currentDist.label || `${currentDist.relay_count}x${currentDist.meters}m`;
+                          return `${label} (${totalDist}m total)`;
+                        }
+                      }
+                      return currentDist?.label || `${currentDist?.meters || distance}m`;
+                    })()}
+                  </span>
+                  {((race.distance?.is_relay === true || race.distance?.is_relay === 1) || 
+                    (raceDistance?.is_relay === true || raceDistance?.is_relay === 1)) && (
+                    <span className="text-xs px-2 py-0.5 bg-orange-100 text-orange-700 rounded-full font-medium">
+                      RELAIS
+                    </span>
+                  )}
+                </div>
+              )}
+            </div>
           </div>
         </div>
-        <Button onClick={generateRac2File} className="gap-2">
+        <Button 
+          onClick={generateRac2File} 
+          className="gap-2"
+          disabled={!hasDistance}
+          title={!hasDistance ? "Veuillez sélectionner une distance pour la course" : ""}
+        >
           <Download className="w-4 h-4" />
           Télécharger .rac2
         </Button>

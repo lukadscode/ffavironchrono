@@ -9,7 +9,8 @@ import type { DragEndEvent } from "@dnd-kit/core";
 import { SortableContext, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import api from "@/lib/axios";
 import { useNavigate } from "react-router-dom";
-import { Settings } from "lucide-react";
+import { Settings, Trophy, Users, Edit, Trash2 } from "lucide-react";
+import PhaseFormDialog from "@/components/races/PhaseFormDialog";
 
 // helper téléchargement
 async function downloadPdf(url: string, filename: string) {
@@ -32,6 +33,7 @@ interface RacePhaseCardProps {
     order_index: number;
   };
   onDelete: (id: string) => Promise<void>;
+  onEdit: (id: string, name: string, order: number) => Promise<void>;
   eventId: string;
   enableCrewDrag?: boolean;
 }
@@ -39,9 +41,11 @@ interface RacePhaseCardProps {
 export default function RacePhaseCard({
   phase,
   onDelete,
+  onEdit,
   eventId,
   enableCrewDrag = false,
 }: RacePhaseCardProps) {
+  const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [races, setRaces] = useState<any[]>([]);
   const { toast } = useToast();
   const navigate = useNavigate();
@@ -91,17 +95,61 @@ export default function RacePhaseCard({
     return acc;
   }, {});
 
+  const totalRaces = races.length;
+  const totalCrews = races.reduce((sum, race) => sum + (race.crews?.length || 0), 0);
+
   return (
-    <Card className="min-w-[320px] w-full  rounded-xl shadow-sm flex flex-col">
-      <CardHeader className=" border-b px-4 py-2 flex items-center justify-between">
-        <CardTitle className="text-sm font-semibold text-gray-700">{phase.name}</CardTitle>
-        <div className="flex items-center gap-2">
+    <Card className="min-w-[320px] w-full rounded-xl shadow-md hover:shadow-lg transition-shadow flex flex-col border-gray-200 bg-white">
+      <CardHeader className="border-b bg-gradient-to-r from-slate-50 to-white px-4 py-3 flex items-center justify-between">
+        <div className="flex-1 min-w-0">
+          <CardTitle className="text-base font-semibold text-slate-900 truncate">
+            {phase.name}
+          </CardTitle>
+          <div className="flex items-center gap-3 mt-1.5">
+            <span className="text-xs text-slate-600 flex items-center gap-1">
+              <Trophy className="w-3 h-3" />
+              {totalRaces} {totalRaces === 1 ? "course" : "courses"}
+            </span>
+            <span className="text-xs text-slate-600 flex items-center gap-1">
+              <Users className="w-3 h-3" />
+              {totalCrews} {totalCrews === 1 ? "équipage" : "équipages"}
+            </span>
+          </div>
+        </div>
+        <div className="flex items-center gap-2 ml-3">
           <Button
             size="sm"
             variant="outline"
             onClick={() => navigate(`/event/${eventId}/racePhases/${phase.id}`)}
+            className="h-8"
+            title="Gérer la phase"
           >
             <Settings className="w-4 h-4" />
+          </Button>
+          <PhaseFormDialog
+            phase={phase}
+            onSubmit={(name, order) => onEdit(phase.id, name, order)}
+            open={editDialogOpen}
+            onOpenChange={setEditDialogOpen}
+            trigger={
+              <Button
+                size="sm"
+                variant="outline"
+                className="h-8"
+                title="Modifier la phase"
+              >
+                <Edit className="w-4 h-4" />
+              </Button>
+            }
+          />
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => onDelete(phase.id)}
+            className="h-8 text-red-600 hover:text-red-700 hover:bg-red-50"
+            title="Supprimer la phase"
+          >
+            <Trash2 className="w-4 h-4" />
           </Button>
           <RaceFormDialog
             phaseId={phase.id}
@@ -111,13 +159,23 @@ export default function RacePhaseCard({
         </div>
       </CardHeader>
 
-      <CardContent className="px-4 py-2 overflow-y-auto max-h-[75vh] space-y-4">
-        <DndContext onDragEnd={() => {}}>
-          {Object.entries(groupedByCategory).map(([categoryLabel, categoryRaces]) => (
-            <div key={categoryLabel} className="space-y-2">
-              <div className="text-[11px] text-gray-500 font-semibold uppercase tracking-wide border-b pb-1">
-                {categoryLabel}
-              </div>
+      <CardContent className="px-4 py-3 overflow-y-auto max-h-[75vh] space-y-4">
+        {totalRaces === 0 ? (
+          <div className="text-center py-8 text-slate-500">
+            <Trophy className="w-8 h-8 mx-auto mb-2 opacity-50" />
+            <p className="text-sm">Aucune course dans cette phase</p>
+            <p className="text-xs text-slate-400 mt-1">Créez une course pour commencer</p>
+          </div>
+        ) : (
+          <DndContext onDragEnd={() => {}}>
+            {Object.entries(groupedByCategory).map(([categoryLabel, categoryRaces]) => (
+              <div key={categoryLabel} className="space-y-2">
+                <div className="text-xs text-slate-700 font-semibold uppercase tracking-wide border-b border-slate-200 pb-2 pt-2 bg-slate-50 -mx-4 px-4 rounded-t">
+                  {categoryLabel}
+                  <span className="ml-2 text-slate-500 font-normal lowercase">
+                    ({categoryRaces.length})
+                  </span>
+                </div>
               <SortableContext
                 items={categoryRaces.map((r) => r.id)}
                 strategy={verticalListSortingStrategy}
@@ -141,6 +199,7 @@ export default function RacePhaseCard({
             </div>
           ))}
         </DndContext>
+        )}
       </CardContent>
     </Card>
   );

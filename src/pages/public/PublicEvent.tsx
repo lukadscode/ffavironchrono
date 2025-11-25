@@ -2,11 +2,13 @@ import { useEffect, useState } from "react";
 import { useParams, Link, useLocation } from "react-router-dom";
 import api, { publicApi } from "@/lib/axios";
 import dayjs from "dayjs";
-import { Calendar, MapPin, ArrowLeft, Trophy, Clock, Users } from "lucide-react";
+import { Calendar, MapPin, ArrowLeft, Trophy, Clock, Users, Info } from "lucide-react";
 import PublicFooter from "@/components/layout/PublicFooter";
 import Live from "./Live";
 import Startlist from "./Startlist";
 import Results from "./Results";
+import Informations from "./Informations";
+import NotificationDisplay from "@/components/notifications/NotificationDisplay";
 
 const DEFAULT_EVENT_IMAGE = "https://www.sports.gouv.fr/sites/default/files/2022-08/photo-2-emmelieke-odul-jpeg-813.jpeg";
 
@@ -32,7 +34,7 @@ export default function PublicEvent() {
   const [event, setEvent] = useState<Event | null>(null);
   const [races, setRaces] = useState<Race[]>([]);
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState<"live" | "startlist" | "results">("live");
+  const [activeTab, setActiveTab] = useState<"live" | "startlist" | "results" | "informations">("live");
 
   useEffect(() => {
     const fetchEvent = async () => {
@@ -79,6 +81,7 @@ export default function PublicEvent() {
     if (location.pathname.includes("/live")) setActiveTab("live");
     else if (location.pathname.includes("/startlist")) setActiveTab("startlist");
     else if (location.pathname.includes("/results")) setActiveTab("results");
+    else if (location.pathname.includes("/informations")) setActiveTab("informations");
   }, [location]);
 
   if (loading) {
@@ -243,8 +246,27 @@ export default function PublicEvent() {
                 <span>Résultats</span>
               </div>
             </Link>
+            <Link
+              to={`/public/event/${eventId}/informations`}
+              onClick={() => setActiveTab("informations")}
+              className={`px-5 py-2.5 text-sm font-medium transition-all duration-200 rounded-lg ${
+                activeTab === "informations"
+                  ? "text-blue-600 bg-blue-50 shadow-sm"
+                  : "text-slate-600 hover:text-blue-600 hover:bg-slate-50"
+              }`}
+            >
+              <div className="flex items-center gap-2">
+                <Info className="w-4 h-4" />
+                <span>Informations</span>
+              </div>
+            </Link>
           </nav>
         </div>
+      </div>
+
+      {/* Notifications */}
+      <div className="container mx-auto px-4 pt-6">
+        <NotificationDisplay eventId={eventId} />
       </div>
 
       {/* Contenu principal */}
@@ -252,6 +274,7 @@ export default function PublicEvent() {
         {activeTab === "live" && <Live />}
         {activeTab === "startlist" && <Startlist />}
         {activeTab === "results" && <Results />}
+        {activeTab === "informations" && <Informations />}
       </main>
 
       <PublicFooter />

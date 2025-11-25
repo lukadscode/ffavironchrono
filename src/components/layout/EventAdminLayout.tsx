@@ -16,6 +16,7 @@ import {
   ChevronRight,
   Gavel,
   Activity,
+  Bell,
 } from "lucide-react";
 
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -36,6 +37,7 @@ const navItems = [
   { to: "distances", label: "Distances", icon: MapPin },
   { to: "races", label: "Courses", icon: Flag },
   { to: "racePhases", label: "Phases", icon: Flag },
+  { to: "notifications", label: "Notifications", icon: Bell },
   { to: "timingPoint", label: "Points", icon: Timer },
   { to: "timing", label: "Chrono", icon: Timer },
   { to: "arbitres", label: "Arbitres", icon: Gavel },
@@ -96,8 +98,8 @@ export default function EventAdminLayout() {
                   clsx(
                     "group flex items-center gap-3 rounded px-3 py-2 text-sm font-medium transition",
                     isActive
-                      ? "bg-primary text-veut"
-                      : "hover:bg-muted hover:text-foreground"
+                      ? "bg-primary text-primary-foreground"
+                      : "text-foreground hover:bg-muted hover:text-foreground"
                   )
                 }
               >
