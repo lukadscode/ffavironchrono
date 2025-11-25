@@ -4,7 +4,8 @@ let socket: Socket;
 
 export const initSocket = (): Socket => {
   if (!socket) {
-    socket = io("http://localhost:3010"); // <-- Mets ici l'adresse de ton backend
+    const API_URL = import.meta.env.VITE_API_URL || "http://localhost:3010";
+    socket = io(API_URL);
   }
   return socket;
 };

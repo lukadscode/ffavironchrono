@@ -162,7 +162,7 @@ export default function WebSocketTestPage() {
 
       ws.onerror = (evt) => {
         console.error("❌ Erreur WebSocket:", evt);
-        addMessage("ERROR: " + (evt.message || "Erreur de connexion"), "system");
+        addMessage("ERROR: Erreur de connexion WebSocket", "system");
         toast({
           title: "Erreur",
           description: "Une erreur est survenue avec la connexion WebSocket",

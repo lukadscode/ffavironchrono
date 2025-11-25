@@ -47,12 +47,13 @@ type Category = {
 };
 
 type Participant = {
-  id: string;
+  id?: string;
   first_name: string;
   last_name: string;
   license_number?: string;
   club_name?: string;
   gender?: string;
+  email?: string;
 };
 
 type CrewParticipant = {
@@ -288,7 +289,10 @@ export default function CrewWizardPage() {
     const seatPosition = participants.length + 1;
     const newP: CrewParticipant = {
       id: crypto.randomUUID(),
-      participant: { ...newParticipant },
+      participant: { 
+        ...newParticipant,
+        id: crypto.randomUUID() // Ajouter un id temporaire pour le nouveau participant
+      },
       seat_position: seatPosition,
       is_coxswain: false,
       isNew: true,

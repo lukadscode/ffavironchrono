@@ -18,6 +18,14 @@ type Category = {
   gender: string;
   boat_seats: number;
   has_coxswain: boolean;
+  distance_id?: string | null;
+  distance?: {
+    id: string;
+    meters: number;
+    is_relay?: boolean;
+    relay_count?: number;
+    label?: string;
+  } | null;
 };
 
 type Participant = {
@@ -62,7 +70,7 @@ type RaceCrew = {
 type Distance = {
   id: string;
   meters: number;
-  is_relay?: boolean;
+  is_relay?: boolean | number;
   relay_count?: number;
   label?: string; // Label formaté depuis l'API (ex: "8x250m" ou "2000m")
 };
@@ -167,7 +175,7 @@ export default function IndoorRaceDetailPage() {
           crewDistances.push({
             distanceId: categoryDistanceId || null,
             meters: categoryDistance.meters || null,
-            isRelay: categoryDistance.is_relay === true || categoryDistance.is_relay === 1,
+            isRelay: categoryDistance.is_relay === true || (typeof categoryDistance.is_relay === 'number' && categoryDistance.is_relay === 1),
             relayCount: categoryDistance.relay_count || null,
           });
         }
@@ -209,7 +217,7 @@ export default function IndoorRaceDetailPage() {
     if (firstCrewDist.meters !== null) {
       const matchingDistance = availableDistances.find(d => {
         const metersMatch = d.meters === firstCrewDist.meters;
-        const relayMatch = (d.is_relay === true || d.is_relay === 1) === firstCrewDist.isRelay;
+        const relayMatch = (d.is_relay === true) === firstCrewDist.isRelay;
         const relayCountMatch = !firstCrewDist.isRelay || d.relay_count === firstCrewDist.relayCount;
         
         return metersMatch && relayMatch && relayCountMatch;
@@ -292,7 +300,7 @@ export default function IndoorRaceDetailPage() {
         setRaceDistance(distanceData);
         // Utiliser la distance de la course au lieu des timing points
         // Vérifier is_relay (peut être 0/1 ou true/false selon l'API)
-        const isRelay = distanceData.is_relay === true || distanceData.is_relay === 1;
+        const isRelay = distanceData.is_relay === true || (typeof distanceData.is_relay === 'number' && distanceData.is_relay === 1);
         if (isRelay && distanceData.relay_count) {
           // Pour un relais, la distance totale = meters * relay_count
           const totalDist = distanceData.meters * distanceData.relay_count;
@@ -520,7 +528,7 @@ export default function IndoorRaceDetailPage() {
           finalRaceDistance = distanceData;
           setRaceDistance(distanceData);
           // Mettre à jour la distance si nécessaire
-          if (distanceData.is_relay === true || distanceData.is_relay === 1) {
+          if (distanceData.is_relay === true || (typeof distanceData.is_relay === 'number' && distanceData.is_relay === 1)) {
             if (distanceData.relay_count && distanceData.meters) {
               setDistance(distanceData.meters * distanceData.relay_count);
             }
@@ -621,7 +629,7 @@ export default function IndoorRaceDetailPage() {
     }
 
     // Vérifier is_relay (peut être 0, false, ou absent)
-    const isRelay = currentDistance?.is_relay === true || currentDistance?.is_relay === 1;
+    const isRelay = currentDistance?.is_relay === true || (typeof currentDistance?.is_relay === 'number' && currentDistance.is_relay === 1);
     const relayCount = currentDistance?.relay_count ? Number(currentDistance.relay_count) : null;
     const relayDistance = currentDistance?.meters ? Number(currentDistance.meters) : distance;
     
@@ -893,7 +901,7 @@ export default function IndoorRaceDetailPage() {
                   <span className="text-sm font-bold text-blue-800">
                     {(() => {
                       const currentDist = race.distance || raceDistance;
-                      if (currentDist?.is_relay === true || currentDist?.is_relay === 1) {
+                      if (currentDist?.is_relay === true || (typeof currentDist?.is_relay === 'number' && currentDist.is_relay === 1)) {
                         if (currentDist?.relay_count) {
                           const totalDist = currentDist.meters * currentDist.relay_count;
                           const label = currentDist.label || `${currentDist.relay_count}x${currentDist.meters}m`;
@@ -903,8 +911,8 @@ export default function IndoorRaceDetailPage() {
                       return currentDist?.label || `${currentDist?.meters || distance}m`;
                     })()}
                   </span>
-                  {((race.distance?.is_relay === true || race.distance?.is_relay === 1) || 
-                    (raceDistance?.is_relay === true || raceDistance?.is_relay === 1)) && (
+                  {((race.distance?.is_relay === true || (typeof race.distance?.is_relay === 'number' && race.distance.is_relay === 1)) || 
+                    (raceDistance?.is_relay === true || (typeof raceDistance?.is_relay === 'number' && raceDistance.is_relay === 1))) && (
                     <span className="text-xs px-2 py-0.5 bg-orange-100 text-orange-700 rounded-full font-medium">
                       RELAIS
                     </span>

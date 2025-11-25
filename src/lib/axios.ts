@@ -2,7 +2,7 @@
 import axios from "axios";
 import { refreshToken } from "@/api/auth";
 
-const API_URL = "http://localhost:3010";
+const API_URL = import.meta.env.VITE_API_URL || "http://localhost:3010";
 
 const api = axios.create({
   baseURL: API_URL,

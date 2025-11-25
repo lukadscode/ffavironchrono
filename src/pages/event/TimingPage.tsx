@@ -588,9 +588,8 @@ export default function TimingPage() {
                 <Select
                   onValueChange={setSelectedRaceId}
                   value={selectedRaceId || undefined}
-                  className="flex-1"
                 >
-                  <SelectTrigger className="w-full h-12 text-base">
+                  <SelectTrigger className="flex-1 w-full h-12 text-base">
                     <SelectValue placeholder="Choisir une course..." />
                   </SelectTrigger>
                   <SelectContent>

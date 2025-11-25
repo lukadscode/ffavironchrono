@@ -46,7 +46,7 @@ type IndoorPointsConfig = {
     "1_3_participants": Array<{ place: number; individuel: number; relais: number }>;
     "4_6_participants": Array<{ place: number; individuel: number; relais: number }>;
     "7_12_participants": Array<{ place: number; individuel: number; relais: number }>;
-    "13_plus_participants": Array<{ place: number | string; individuel: number; relais: number }>;
+    "13_plus_participants": Array<{ place: number; individuel: number; relais: number }>;
   };
 };
 
