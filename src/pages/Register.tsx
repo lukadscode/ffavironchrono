@@ -30,17 +30,97 @@ export default function Register() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    try {
-      await register(form);
+    
+    // Validation basique
+    if (!form.name || !form.email || !form.password) {
       toast({
-        title: "Inscription réussie",
-        description: "Vous pouvez maintenant vous connecter.",
+        title: "Erreur",
+        description: "Veuillez remplir tous les champs obligatoires.",
+        variant: "destructive",
       });
+      return;
+    }
+
+    if (form.password.length < 6) {
+      toast({
+        title: "Erreur",
+        description: "Le mot de passe doit contenir au moins 6 caractères.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    try {
+      const response = await register(form);
+      
+      // Gérer le cas où l'utilisateur existait déjà et était inactif (retour 200)
+      // Le backend retourne un message spécifique dans ce cas
+      const isUpdate = response?.message?.includes("mis à jour") || 
+                       response?.message?.includes("vérifier votre email");
+      
+      if (isUpdate) {
+        toast({
+          title: "Compte mis à jour",
+          description: response.message || "Votre compte a été mis à jour. Veuillez vérifier votre email pour l'activer.",
+        });
+      } else {
+        toast({
+          title: "Inscription réussie",
+          description: "Un email de vérification a été envoyé. Veuillez vérifier votre boîte mail pour activer votre compte.",
+        });
+      }
+      
       navigate("/admin/login");
-    } catch {
+    } catch (err: any) {
+      console.error("Erreur inscription:", err);
+      
+      // Cas spécial : erreur 500 "authentification failed" mais les données sont modifiées en BDD
+      // Cela indique que l'opération a réussi mais qu'il y a eu un problème (probablement l'envoi d'email)
+      if (err?.response?.status === 500) {
+        const errorMsg = err?.response?.data?.message || err?.response?.data?.error || "";
+        const hasData = err?.response?.data?.data || err?.response?.data?.id;
+        
+        // Si le message contient "authentification failed" ou similaire, mais que les données sont modifiées
+        // OU si la réponse contient des données malgré l'erreur (succès partiel)
+        if (hasData || 
+            errorMsg.toLowerCase().includes("authentification") || 
+            errorMsg.toLowerCase().includes("failed") ||
+            errorMsg.toLowerCase().includes("email")) {
+          toast({
+            title: "Inscription partiellement réussie",
+            description: "Votre compte a été créé/mis à jour, mais il y a eu un problème lors de l'envoi de l'email de vérification. Vous pouvez essayer de vous connecter ou contacter l'administrateur pour activer votre compte.",
+            variant: "default",
+          });
+          // On redirige quand même vers la page de connexion
+          navigate("/admin/login");
+          return;
+        }
+      }
+      
+      // Gérer les erreurs spécifiques
+      let errorMessage = "Vérifiez les champs ou essayez plus tard.";
+      
+      if (err?.response?.status === 400) {
+        const backendMessage = err?.response?.data?.message || err?.response?.data?.error;
+        if (backendMessage?.toLowerCase().includes("déjà utilisé") || 
+            backendMessage?.toLowerCase().includes("already")) {
+          errorMessage = "Cet email ou numéro de licence est déjà utilisé par un compte actif.";
+        } else {
+          errorMessage = backendMessage || "Données invalides. Vérifiez les informations saisies.";
+        }
+      } else if (err?.response?.status === 500) {
+        errorMessage = err?.response?.data?.message || 
+                      err?.response?.data?.error || 
+                      "Une erreur serveur est survenue. Si votre compte a été créé, vous pouvez essayer de vous connecter.";
+      } else if (err?.response?.data?.message) {
+        errorMessage = err.response.data.message;
+      } else if (err?.response?.data?.error) {
+        errorMessage = err.response.data.error;
+      }
+      
       toast({
         title: "Erreur à l'inscription",
-        description: "Vérifiez les champs ou essayez plus tard.",
+        description: errorMessage,
         variant: "destructive",
       });
     }

@@ -177,9 +177,9 @@ export default function EventOverviewPage() {
   const eventImage = event.image_url || event.cover_url || DEFAULT_EVENT_IMAGE;
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4 sm:space-y-6">
       {/* Hero Section */}
-      <div className="relative w-full h-64 md:h-80 rounded-xl overflow-hidden shadow-lg">
+      <div className="relative w-full h-48 sm:h-64 md:h-80 rounded-xl overflow-hidden shadow-lg">
         <img
           src={eventImage}
           alt={event.name}
@@ -189,11 +189,11 @@ export default function EventOverviewPage() {
           }}
         />
         <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/40 to-black/20"></div>
-        <div className="absolute inset-0 flex flex-col justify-end p-6 text-white">
+        <div className="absolute inset-0 flex flex-col justify-end p-4 sm:p-6 text-white">
           <div className="flex items-start justify-between">
-            <div className="flex-1">
-              <div className="flex items-center gap-3 mb-2 flex-wrap">
-                <h1 className="text-3xl md:text-4xl font-bold">{event.name}</h1>
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center gap-2 sm:gap-3 mb-2 flex-wrap">
+                <h1 className="text-xl sm:text-2xl md:text-3xl lg:text-4xl font-bold break-words">{event.name}</h1>
                 {isOngoing && (
                   <span className="px-3 py-1 rounded-full text-xs font-bold bg-green-500 text-white border border-green-400">
                     En cours
@@ -215,22 +215,22 @@ export default function EventOverviewPage() {
                   </span>
                 )}
               </div>
-              <div className="flex items-center gap-4 text-sm md:text-base text-gray-200 flex-wrap">
+              <div className="flex flex-col sm:flex-row items-start sm:items-center gap-2 sm:gap-4 text-xs sm:text-sm md:text-base text-gray-200">
                 {event.organiser_name && (
                   <div className="flex items-center gap-2">
-                    <Building2 className="w-4 h-4" />
-                    <span>{event.organiser_name}</span>
+                    <Building2 className="w-4 h-4 flex-shrink-0" />
+                    <span className="break-words">{event.organiser_name}</span>
                   </div>
                 )}
                 {event.location && (
                   <div className="flex items-center gap-2">
-                    <MapPin className="w-4 h-4" />
-                    <span>{event.location}</span>
+                    <MapPin className="w-4 h-4 flex-shrink-0" />
+                    <span className="break-words">{event.location}</span>
                   </div>
                 )}
                 <div className="flex items-center gap-2">
-                  <CalendarDays className="w-4 h-4" />
-                  <span>
+                  <CalendarDays className="w-4 h-4 flex-shrink-0" />
+                  <span className="whitespace-nowrap">
                     {dayjs(event.start_date).format("DD MMM YYYY")} –{" "}
                     {dayjs(event.end_date).format("DD MMM YYYY")}
                   </span>

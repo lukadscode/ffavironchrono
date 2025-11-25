@@ -168,26 +168,27 @@ export default function EventsManagementPage() {
   }
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
+    <div className="space-y-4 sm:space-y-6">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
-          <h2 className="text-2xl font-semibold mb-2">Gestion des événements</h2>
-          <p className="text-muted-foreground">
+          <h2 className="text-xl sm:text-2xl font-semibold mb-2">Gestion des événements</h2>
+          <p className="text-sm sm:text-base text-muted-foreground">
             Gérez tous les événements de la plateforme
           </p>
         </div>
 
         <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
           <DialogTrigger asChild>
-            <Button>
+            <Button className="w-full sm:w-auto">
               <Plus className="w-4 h-4 mr-2" />
-              Importer un événement
+              <span className="hidden sm:inline">Importer un événement</span>
+              <span className="sm:hidden">Importer</span>
             </Button>
           </DialogTrigger>
-          <DialogContent>
+          <DialogContent className="max-w-[95vw] sm:max-w-md">
             <DialogHeader>
-              <DialogTitle>Importer un événement</DialogTitle>
-              <DialogDescription>
+              <DialogTitle className="text-lg sm:text-xl">Importer un événement</DialogTitle>
+              <DialogDescription className="text-sm">
                 Saisissez l'ID de la manifestation à importer depuis le système externe.
               </DialogDescription>
             </DialogHeader>
@@ -243,29 +244,29 @@ export default function EventsManagementPage() {
           </CardContent>
         </Card>
       ) : (
-        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+        <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
           {events.map((event) => (
             <Card key={event.id} className="flex flex-col">
               <CardHeader>
-                <CardTitle className="text-lg line-clamp-2">{event.name}</CardTitle>
+                <CardTitle className="text-base sm:text-lg line-clamp-2">{event.name}</CardTitle>
               </CardHeader>
               <CardContent className="space-y-3 flex-1">
-                <div className="flex items-start gap-3 text-sm">
+                <div className="flex items-start gap-2 sm:gap-3 text-xs sm:text-sm">
                   <Calendar className="w-4 h-4 text-muted-foreground mt-0.5 flex-shrink-0" />
-                  <div>
+                  <div className="min-w-0 flex-1">
                     <div className="font-semibold text-slate-700">Dates</div>
-                    <div className="text-muted-foreground">
+                    <div className="text-muted-foreground break-words">
                       {dayjs(event.start_date).format("DD MMM YYYY")} -{" "}
                       {dayjs(event.end_date).format("DD MMM YYYY")}
                     </div>
                   </div>
                 </div>
 
-                <div className="flex items-start gap-3 text-sm">
+                <div className="flex items-start gap-2 sm:gap-3 text-xs sm:text-sm">
                   <MapPin className="w-4 h-4 text-muted-foreground mt-0.5 flex-shrink-0" />
-                  <div>
+                  <div className="min-w-0 flex-1">
                     <div className="font-semibold text-slate-700">Lieu</div>
-                    <div className="text-muted-foreground line-clamp-2">
+                    <div className="text-muted-foreground line-clamp-2 break-words">
                       {event.location}
                     </div>
                   </div>
@@ -289,13 +290,16 @@ export default function EventsManagementPage() {
                   )}
                 </div>
 
-                <div className="flex gap-2 mt-4">
+                <div className="flex flex-col sm:flex-row gap-2 mt-4">
                   <Button
                     asChild
                     variant="outline"
-                    className="flex-1"
+                    className="flex-1 text-sm"
                   >
-                    <Link to={`/event/${event.id}`}>Voir l'événement</Link>
+                    <Link to={`/event/${event.id}`}>
+                      <span className="hidden sm:inline">Voir l'événement</span>
+                      <span className="sm:hidden">Voir</span>
+                    </Link>
                   </Button>
                   <Button
                     variant="destructive"
@@ -318,9 +322,9 @@ export default function EventsManagementPage() {
 
       {/* Modal de confirmation de suppression */}
       <Dialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
-        <DialogContent>
+        <DialogContent className="max-w-[95vw] sm:max-w-md">
           <DialogHeader>
-            <DialogTitle className="flex items-center gap-2 text-red-600">
+            <DialogTitle className="flex items-center gap-2 text-red-600 text-lg sm:text-xl">
               <AlertTriangle className="w-5 h-5" />
               Confirmer la suppression
             </DialogTitle>

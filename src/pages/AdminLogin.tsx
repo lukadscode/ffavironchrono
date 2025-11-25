@@ -47,7 +47,7 @@ export default function AdminLogin() {
     <AuthLayout>
       <Card className="shadow-lg w-full max-w-sm mx-auto">
         <CardHeader>
-          <CardTitle className="text-2xl text-center">Connexion</CardTitle>
+          <CardTitle className="text-xl sm:text-2xl text-center">Connexion</CardTitle>
         </CardHeader>
         <CardContent>
           <form onSubmit={handleSubmit} className="space-y-4">

@@ -52,7 +52,7 @@ export default function HomePage() {
       <PublicHeader />
 
       {/* Hero Section */}
-      <section className="relative overflow-hidden min-h-[500px] md:min-h-[600px] flex items-center text-white">
+      <section className="relative overflow-hidden min-h-[400px] sm:min-h-[500px] md:min-h-[600px] flex items-center text-white">
         {/* Image de fond */}
         <div className="absolute inset-0">
           <img
@@ -64,47 +64,47 @@ export default function HomePage() {
           <div className="absolute inset-0 bg-gradient-to-b from-blue-900/85 via-blue-800/80 to-blue-900/85"></div>
         </div>
         
-        <div className="container mx-auto px-4 py-16 relative z-10">
+        <div className="container mx-auto px-4 sm:px-6 py-8 sm:py-12 md:py-16 relative z-10">
           <div className="max-w-4xl mx-auto text-center">
-            <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-white/10 backdrop-blur-md border border-white/20 mb-6">
-              <Timer className="w-5 h-5" />
-              <span className="text-sm font-medium">FFAviron - Résultats des compétitions</span>
+            <div className="inline-flex items-center gap-2 px-3 sm:px-4 py-2 rounded-full bg-white/10 backdrop-blur-md border border-white/20 mb-4 sm:mb-6 text-xs sm:text-sm">
+              <Timer className="w-4 h-4 sm:w-5 sm:h-5" />
+              <span className="font-medium">FFAviron - Résultats des compétitions</span>
             </div>
             
-            <h1 className="text-5xl md:text-6xl lg:text-7xl font-bold mb-6 leading-tight">
+            <h1 className="text-3xl sm:text-4xl md:text-5xl lg:text-6xl xl:text-7xl font-bold mb-4 sm:mb-6 leading-tight break-words">
               Suivez les résultats
               <span className="block bg-gradient-to-r from-blue-200 to-cyan-200 bg-clip-text text-transparent">
                 des compétitions
               </span>
             </h1>
             
-            <p className="text-xl md:text-2xl text-blue-100 mb-8 max-w-2xl mx-auto leading-relaxed">
+            <p className="text-base sm:text-lg md:text-xl lg:text-2xl text-blue-100 mb-6 sm:mb-8 max-w-2xl mx-auto leading-relaxed px-4">
               Consultez les résultats, les classements et suivez en direct toutes les compétitions d'aviron organisées 
               par la Fédération Française d'Aviron.
             </p>
 
-            <div className="flex flex-wrap items-center justify-center gap-6 mt-12">
-              <div className="flex items-center gap-3 px-6 py-3 rounded-lg bg-white/10 backdrop-blur-md border border-white/20">
-                <Clock className="w-6 h-6 text-cyan-300" />
+            <div className="flex flex-wrap items-center justify-center gap-3 sm:gap-4 md:gap-6 mt-8 sm:mt-12 px-4">
+              <div className="flex items-center gap-2 sm:gap-3 px-4 sm:px-6 py-2 sm:py-3 rounded-lg bg-white/10 backdrop-blur-md border border-white/20">
+                <Clock className="w-5 h-5 sm:w-6 sm:h-6 text-cyan-300 flex-shrink-0" />
                 <div className="text-left">
-                  <div className="text-sm text-blue-200">Temps réel</div>
-                  <div className="text-lg font-bold">0.001s</div>
+                  <div className="text-xs sm:text-sm text-blue-200">Temps réel</div>
+                  <div className="text-base sm:text-lg font-bold">0.001s</div>
                 </div>
               </div>
               
-              <div className="flex items-center gap-3 px-6 py-3 rounded-lg bg-white/10 backdrop-blur-md border border-white/20">
-                <TrendingUp className="w-6 h-6 text-cyan-300" />
+              <div className="flex items-center gap-2 sm:gap-3 px-4 sm:px-6 py-2 sm:py-3 rounded-lg bg-white/10 backdrop-blur-md border border-white/20">
+                <TrendingUp className="w-5 h-5 sm:w-6 sm:h-6 text-cyan-300 flex-shrink-0" />
                 <div className="text-left">
-                  <div className="text-sm text-blue-200">Précision</div>
-                  <div className="text-lg font-bold">100%</div>
+                  <div className="text-xs sm:text-sm text-blue-200">Précision</div>
+                  <div className="text-base sm:text-lg font-bold">100%</div>
                 </div>
               </div>
               
-              <div className="flex items-center gap-3 px-6 py-3 rounded-lg bg-white/10 backdrop-blur-md border border-white/20">
-                <Award className="w-6 h-6 text-cyan-300" />
+              <div className="flex items-center gap-2 sm:gap-3 px-4 sm:px-6 py-2 sm:py-3 rounded-lg bg-white/10 backdrop-blur-md border border-white/20">
+                <Award className="w-5 h-5 sm:w-6 sm:h-6 text-cyan-300 flex-shrink-0" />
                 <div className="text-left">
-                  <div className="text-sm text-blue-200">Compétitions</div>
-                  <div className="text-lg font-bold">{events.length}</div>
+                  <div className="text-xs sm:text-sm text-blue-200">Compétitions</div>
+                  <div className="text-base sm:text-lg font-bold">{events.length}</div>
                 </div>
               </div>
             </div>
@@ -112,17 +112,17 @@ export default function HomePage() {
         </div>
       </section>
 
-      <main className="flex-1 container mx-auto px-4 py-16">
+      <main className="flex-1 container mx-auto px-4 sm:px-6 py-8 sm:py-12 md:py-16">
         {/* Événements en cours */}
         {ongoingEvents.length > 0 && (
-          <section className="mb-16">
-            <div className="flex items-center gap-3 mb-8">
-              <div className="w-1 h-8 bg-blue-600 rounded-full"></div>
-              <h2 className="text-3xl font-bold text-slate-900">En cours</h2>
+          <section className="mb-8 sm:mb-12 md:mb-16">
+            <div className="flex items-center gap-2 sm:gap-3 mb-4 sm:mb-6 md:mb-8">
+              <div className="w-1 h-6 sm:h-8 bg-blue-600 rounded-full"></div>
+              <h2 className="text-xl sm:text-2xl md:text-3xl font-bold text-slate-900">En cours</h2>
               <div className="flex-1 h-px bg-gradient-to-r from-blue-600 to-transparent"></div>
             </div>
             
-            <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+            <div className="grid gap-4 sm:gap-6 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
               {ongoingEvents.map((event) => (
                 <EventCard key={event.id} event={event} status="ongoing" />
               ))}
@@ -132,14 +132,14 @@ export default function HomePage() {
 
         {/* Événements à venir */}
         {upcomingEvents.length > 0 && (
-          <section className="mb-16">
-            <div className="flex items-center gap-3 mb-8">
-              <div className="w-1 h-8 bg-green-600 rounded-full"></div>
-              <h2 className="text-3xl font-bold text-slate-900">À venir</h2>
+          <section className="mb-8 sm:mb-12 md:mb-16">
+            <div className="flex items-center gap-2 sm:gap-3 mb-4 sm:mb-6 md:mb-8">
+              <div className="w-1 h-6 sm:h-8 bg-green-600 rounded-full"></div>
+              <h2 className="text-xl sm:text-2xl md:text-3xl font-bold text-slate-900">À venir</h2>
               <div className="flex-1 h-px bg-gradient-to-r from-green-600 to-transparent"></div>
             </div>
             
-            <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+            <div className="grid gap-4 sm:gap-6 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
               {upcomingEvents.map((event) => (
                 <EventCard key={event.id} event={event} status="upcoming" />
               ))}
@@ -149,14 +149,14 @@ export default function HomePage() {
 
         {/* Événements passés */}
         {pastEvents.length > 0 && (
-          <section className="mb-16">
-            <div className="flex items-center gap-3 mb-8">
-              <div className="w-1 h-8 bg-slate-400 rounded-full"></div>
-              <h2 className="text-3xl font-bold text-slate-900">Archives</h2>
+          <section className="mb-8 sm:mb-12 md:mb-16">
+            <div className="flex items-center gap-2 sm:gap-3 mb-4 sm:mb-6 md:mb-8">
+              <div className="w-1 h-6 sm:h-8 bg-slate-400 rounded-full"></div>
+              <h2 className="text-xl sm:text-2xl md:text-3xl font-bold text-slate-900">Archives</h2>
               <div className="flex-1 h-px bg-gradient-to-r from-slate-400 to-transparent"></div>
             </div>
             
-            <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+            <div className="grid gap-4 sm:gap-6 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
               {pastEvents.map((event) => (
                 <EventCard key={event.id} event={event} status="past" />
               ))}

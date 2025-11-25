@@ -552,9 +552,9 @@ export default function CrewDetail() {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4 sm:space-y-6">
       {/* Header avec gradient */}
-      <div className="relative overflow-hidden rounded-xl bg-gradient-to-br from-blue-600 via-blue-700 to-blue-800 text-white p-6 shadow-lg">
+      <div className="relative overflow-hidden rounded-xl bg-gradient-to-br from-blue-600 via-blue-700 to-blue-800 text-white p-4 sm:p-6 shadow-lg">
         <div className="absolute inset-0 bg-[url('data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNjAiIGhlaWdodD0iNjAiIHZpZXdCb3g9IjAgMCA2MCA2MCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48ZyBmaWxsPSJub25lIiBmaWxsLXJ1bGU9ImV2ZW5vZGQiPjxnIGZpbGw9IiNmZmYiIGZpbGwtb3BhY2l0eT0iMC4xIj48cGF0aCBkPSJNMzYgMzRWMjJIMjR2MTJIMTJ2MTJIMjR2MTJIMzZWMzR6Ii8+PC9nPjwvZz48L3N2Zz4=')] opacity-20"></div>
         
         <div className="relative z-10">
@@ -569,11 +569,11 @@ export default function CrewDetail() {
                 >
                   <ArrowLeft className="w-5 h-5" />
                 </Button>
-                <h1 className="text-3xl font-bold">
+                <h1 className="text-xl sm:text-2xl md:text-3xl font-bold break-words">
                   {crew.category?.code || crew.category?.label || 'Équipage'}
                 </h1>
               </div>
-              <p className="text-blue-100 text-lg">{crew.club_name}</p>
+              <p className="text-blue-100 text-sm sm:text-base md:text-lg break-words">{crew.club_name}</p>
             </div>
             <div className="text-right">
               <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-white/20 backdrop-blur-md border border-white/30">
@@ -596,7 +596,7 @@ export default function CrewDetail() {
       </div>
 
       {/* Informations de l'équipage */}
-      <div className="grid md:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
         <Card>
           <CardHeader className="pb-3">
             <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-2">

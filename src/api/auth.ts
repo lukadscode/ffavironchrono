@@ -12,8 +12,25 @@ export async function register(data: {
   password: string;
   num_license?: string;
 }) {
-  const res = await api.post("/auth/register", data);
-  return res.data;
+  try {
+    const res = await api.post("/auth/register", data);
+    return res.data;
+  } catch (error: any) {
+    // Si c'est une erreur 500 mais que les données ont peut-être été créées
+    // On propage l'erreur mais avec plus d'informations
+    if (error?.response?.status === 500) {
+      // Vérifier si la réponse contient des données malgré l'erreur
+      // (certains backends retournent des données même en cas d'erreur partielle)
+      if (error?.response?.data?.data || error?.response?.data?.id) {
+        // L'opération a partiellement réussi
+        return {
+          ...error.response.data,
+          partialSuccess: true,
+        };
+      }
+    }
+    throw error;
+  }
 }
 
 export async function requestPasswordReset(identifier: string) {

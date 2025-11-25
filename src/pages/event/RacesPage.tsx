@@ -458,9 +458,10 @@ export default function RacesPage() {
                   Participants ({getAllParticipants(selectedRace).length})
                 </h3>
                 <div className="border rounded-lg overflow-hidden">
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
+                  <div className="overflow-x-auto -mx-4 sm:mx-0">
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
                         <TableHead>Couloir</TableHead>
                         <TableHead>Équipage</TableHead>
                         <TableHead>Position</TableHead>
@@ -492,6 +493,7 @@ export default function RacesPage() {
                       ))}
                     </TableBody>
                   </Table>
+                  </div>
                 </div>
               </div>
             </CardContent>

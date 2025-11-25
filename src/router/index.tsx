@@ -8,6 +8,8 @@ import EventsPage from "@/pages/dashboard/EventsPage";
 import EventsManagementPage from "@/pages/dashboard/EventsManagementPage";
 import ProfilePage from "@/pages/dashboard/ProfilePage";
 import ScoringTemplatesPage from "@/pages/dashboard/ScoringTemplatesPage";
+import UsersManagementPage from "@/pages/dashboard/UsersManagementPage";
+import UserDetailPage from "@/pages/dashboard/UserDetailPage";
 import EventAdminLayout from "@/components/layout/EventAdminLayout";
 import ParticipantsPage from "@/pages/event/ParticipantsPage";
 import RacesPage from "@/pages/event/RacesPage";
@@ -78,6 +80,8 @@ const router = createBrowserRouter([
       { path: "events", element: <EventsPage /> },
       { path: "events-management", element: <EventsManagementPage /> },
       { path: "scoring-templates", element: <ScoringTemplatesPage /> },
+      { path: "users-management", element: <UsersManagementPage /> },
+      { path: "users-management/:userId", element: <UserDetailPage /> },
       { path: "profile", element: <ProfilePage /> },
       { path: "websocket-test", element: <WebSocketTestPage /> },
     ],

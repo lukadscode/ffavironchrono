@@ -40,18 +40,18 @@ export default function EventsList() {
   }
 
   return (
-    <div className="container mx-auto px-4 py-8">
-      <h1 className="text-4xl font-bold mb-8 text-center">Événements</h1>
+    <div className="container mx-auto px-4 sm:px-6 py-4 sm:py-8">
+      <h1 className="text-2xl sm:text-3xl md:text-4xl font-bold mb-4 sm:mb-8 text-center">Événements</h1>
 
-      <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+      <div className="grid gap-4 sm:gap-6 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
         {events.map((event) => (
           <Link key={event.id} to={`/public/event/${event.id}`}>
             <Card className="hover:shadow-lg transition-shadow cursor-pointer h-full">
               <CardHeader>
-                <CardTitle className="text-xl">{event.name}</CardTitle>
+                <CardTitle className="text-lg sm:text-xl line-clamp-2">{event.name}</CardTitle>
               </CardHeader>
               <CardContent>
-                <div className="space-y-2 text-sm text-muted-foreground">
+                <div className="space-y-2 text-xs sm:text-sm text-muted-foreground">
                   <p>
                     <span className="font-semibold">Dates:</span>{" "}
                     {dayjs(event.start_date).format("DD/MM/YYYY")} -{" "}

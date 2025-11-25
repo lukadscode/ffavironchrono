@@ -262,18 +262,19 @@ export default function Startlist() {
   }
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <h2 className="text-2xl font-bold text-slate-900">Startlist des courses</h2>
+    <div className="space-y-4 sm:space-y-6">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+        <h2 className="text-xl sm:text-2xl font-bold text-slate-900">Startlist des courses</h2>
         {hasActiveFilters && (
           <Button
             variant="outline"
             size="sm"
             onClick={clearFilters}
-            className="gap-2"
+            className="gap-2 w-full sm:w-auto"
           >
             <X className="w-4 h-4" />
-            Réinitialiser les filtres
+            <span className="hidden sm:inline">Réinitialiser les filtres</span>
+            <span className="sm:hidden">Réinitialiser</span>
           </Button>
         )}
       </div>
@@ -282,12 +283,12 @@ export default function Startlist() {
       <Card>
         <CardHeader className="pb-4">
           <div className="flex items-center gap-2">
-            <Filter className="w-5 h-5 text-slate-600" />
-            <CardTitle className="text-lg">Filtres</CardTitle>
+            <Filter className="w-4 h-4 sm:w-5 sm:h-5 text-slate-600" />
+            <CardTitle className="text-base sm:text-lg">Filtres</CardTitle>
           </div>
         </CardHeader>
         <CardContent>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
             {/* Recherche */}
             <div className="space-y-2">
               <Label htmlFor="search">Recherche</Label>
@@ -382,8 +383,8 @@ export default function Startlist() {
               </div>
             </CardHeader>
             <CardContent className="pt-6">
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm">
+              <div className="overflow-x-auto -mx-4 sm:mx-0">
+                <table className="w-full text-xs sm:text-sm">
                   <thead>
                     <tr className="border-b">
                       <th className="text-left py-2 px-4 font-semibold">Couloir</th>

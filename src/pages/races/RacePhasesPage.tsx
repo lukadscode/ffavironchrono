@@ -104,7 +104,7 @@ export default function RacesPage() {
   const totalCrews = categories.reduce((sum, cat) => sum + cat.crew_count, 0);
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4 sm:space-y-6">
       {/* Header amélioré */}
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
@@ -130,7 +130,7 @@ export default function RacesPage() {
       </div>
 
       {/* Statistiques rapides */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
         <Card className="border-blue-200 bg-gradient-to-br from-blue-50 to-white">
           <CardHeader className="pb-3">
             <div className="flex items-center justify-between">

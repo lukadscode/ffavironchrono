@@ -114,7 +114,7 @@ export default function PublicEvent() {
   return (
     <div className="flex flex-col min-h-screen bg-gradient-to-br from-slate-50 via-blue-50/30 to-slate-50">
       {/* Hero Section de l'événement */}
-      <section className="relative overflow-hidden min-h-[500px] md:min-h-[600px] flex items-center">
+      <section className="relative overflow-hidden min-h-[400px] sm:min-h-[500px] md:min-h-[600px] flex items-center">
         {/* Image de fond */}
         <div className="absolute inset-0">
           <img
@@ -127,23 +127,24 @@ export default function PublicEvent() {
         </div>
 
         {/* Contenu du Hero */}
-        <div className="container mx-auto px-4 py-16 relative z-10">
+        <div className="container mx-auto px-4 sm:px-6 py-8 sm:py-16 relative z-10">
           <div className="max-w-4xl">
             {/* Badge retour */}
             <Link
               to="/"
-              className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-white/20 backdrop-blur-md border border-white/30 text-white text-sm font-medium mb-6 hover:bg-white/30 transition"
+              className="inline-flex items-center gap-2 px-3 sm:px-4 py-2 rounded-full bg-white/20 backdrop-blur-md border border-white/30 text-white text-xs sm:text-sm font-medium mb-4 sm:mb-6 hover:bg-white/30 transition"
             >
               <ArrowLeft className="w-4 h-4" />
-              Retour à l'accueil
+              <span className="hidden sm:inline">Retour à l'accueil</span>
+              <span className="sm:hidden">Retour</span>
             </Link>
 
             {/* Titre et informations */}
-            <div className="space-y-6">
+            <div className="space-y-4 sm:space-y-6">
               <div>
                 {event?.race_type && (
                   <span
-                    className={`inline-block px-4 py-1.5 rounded-full text-xs font-bold text-white mb-4 ${
+                    className={`inline-block px-3 sm:px-4 py-1.5 rounded-full text-xs font-bold text-white mb-3 sm:mb-4 ${
                       event.race_type.toLowerCase().includes("rivière") || event.race_type.toLowerCase().includes("rivier")
                         ? "bg-cyan-500/90"
                         : event.race_type.toLowerCase().includes("mer") || event.race_type.toLowerCase().includes("sea")
@@ -156,16 +157,16 @@ export default function PublicEvent() {
                     {event.race_type}
                   </span>
                 )}
-                <h1 className="text-4xl md:text-5xl lg:text-6xl font-bold text-white mb-4 drop-shadow-2xl">
+                <h1 className="text-2xl sm:text-3xl md:text-4xl lg:text-5xl xl:text-6xl font-bold text-white mb-3 sm:mb-4 drop-shadow-2xl break-words">
                   {event?.name}
                 </h1>
               </div>
 
               {/* Informations de l'événement */}
-              <div className="flex flex-wrap items-center gap-6 text-white">
-                <div className="flex items-center gap-3 px-4 py-2 bg-white/20 backdrop-blur-md rounded-lg border border-white/30">
-                  <Calendar className="w-5 h-5" />
-                  <span className="font-medium">
+              <div className="flex flex-col sm:flex-row flex-wrap items-start sm:items-center gap-3 sm:gap-4 md:gap-6 text-white">
+                <div className="flex items-center gap-2 sm:gap-3 px-3 sm:px-4 py-2 bg-white/20 backdrop-blur-md rounded-lg border border-white/30 text-xs sm:text-sm">
+                  <Calendar className="w-4 h-4 sm:w-5 sm:h-5 flex-shrink-0" />
+                  <span className="font-medium break-words">
                     {startDate && endDate
                       ? isSameDay
                         ? startDate.format("DD MMMM YYYY")
@@ -173,19 +174,19 @@ export default function PublicEvent() {
                       : ""}
                   </span>
                 </div>
-                <div className="flex items-center gap-3 px-4 py-2 bg-white/20 backdrop-blur-md rounded-lg border border-white/30">
-                  <MapPin className="w-5 h-5" />
-                  <span className="font-medium">{event?.location}</span>
+                <div className="flex items-center gap-2 sm:gap-3 px-3 sm:px-4 py-2 bg-white/20 backdrop-blur-md rounded-lg border border-white/30 text-xs sm:text-sm">
+                  <MapPin className="w-4 h-4 sm:w-5 sm:h-5 flex-shrink-0" />
+                  <span className="font-medium break-words">{event?.location}</span>
                 </div>
                 {(isOngoing || isUpcoming) && (
                   <div
-                    className={`flex items-center gap-3 px-4 py-2 rounded-lg border backdrop-blur-md ${
+                    className={`flex items-center gap-2 sm:gap-3 px-3 sm:px-4 py-2 rounded-lg border backdrop-blur-md text-xs sm:text-sm ${
                       isOngoing
                         ? "bg-green-500/90 border-green-400/50 animate-pulse"
                         : "bg-blue-500/90 border-blue-400/50"
                     }`}
                   >
-                    <Trophy className="w-5 h-5" />
+                    <Trophy className="w-4 h-4 sm:w-5 sm:h-5 flex-shrink-0" />
                     <span className="font-medium">
                       {isOngoing ? "En cours" : "À venir"}
                     </span>
@@ -199,65 +200,67 @@ export default function PublicEvent() {
 
       {/* Navigation des onglets - Centré et discret */}
       <div className="bg-white border-b shadow-sm sticky top-0 z-40">
-        <div className="container mx-auto px-4">
-          <nav className="flex justify-center gap-2 py-3">
+        <div className="container mx-auto px-2 sm:px-4">
+          <nav className="flex justify-center gap-1 sm:gap-2 py-2 sm:py-3 overflow-x-auto">
             <Link
               to={`/public/event/${eventId}/live`}
               onClick={() => setActiveTab("live")}
-              className={`px-5 py-2.5 text-sm font-medium transition-all duration-200 rounded-lg ${
+              className={`px-3 sm:px-5 py-2 sm:py-2.5 text-xs sm:text-sm font-medium transition-all duration-200 rounded-lg whitespace-nowrap ${
                 activeTab === "live"
                   ? "text-blue-600 bg-blue-50 shadow-sm"
                   : "text-slate-600 hover:text-blue-600 hover:bg-slate-50"
               }`}
             >
-              <div className="flex items-center gap-2">
-                <Clock className="w-4 h-4" />
+              <div className="flex items-center gap-1 sm:gap-2">
+                <Clock className="w-3 h-3 sm:w-4 sm:h-4" />
                 <span>Live</span>
                 {hasOngoingRaces && (
-                  <span className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></span>
+                  <span className="w-1.5 h-1.5 sm:w-2 sm:h-2 bg-green-500 rounded-full animate-pulse"></span>
                 )}
               </div>
             </Link>
             <Link
               to={`/public/event/${eventId}/startlist`}
               onClick={() => setActiveTab("startlist")}
-              className={`px-5 py-2.5 text-sm font-medium transition-all duration-200 rounded-lg ${
+              className={`px-3 sm:px-5 py-2 sm:py-2.5 text-xs sm:text-sm font-medium transition-all duration-200 rounded-lg whitespace-nowrap ${
                 activeTab === "startlist"
                   ? "text-blue-600 bg-blue-50 shadow-sm"
                   : "text-slate-600 hover:text-blue-600 hover:bg-slate-50"
               }`}
             >
-              <div className="flex items-center gap-2">
-                <Users className="w-4 h-4" />
-                <span>Startlist</span>
+              <div className="flex items-center gap-1 sm:gap-2">
+                <Users className="w-3 h-3 sm:w-4 sm:h-4" />
+                <span className="hidden sm:inline">Startlist</span>
+                <span className="sm:hidden">Liste</span>
               </div>
             </Link>
             <Link
               to={`/public/event/${eventId}/results`}
               onClick={() => setActiveTab("results")}
-              className={`px-5 py-2.5 text-sm font-medium transition-all duration-200 rounded-lg ${
+              className={`px-3 sm:px-5 py-2 sm:py-2.5 text-xs sm:text-sm font-medium transition-all duration-200 rounded-lg whitespace-nowrap ${
                 activeTab === "results"
                   ? "text-blue-600 bg-blue-50 shadow-sm"
                   : "text-slate-600 hover:text-blue-600 hover:bg-slate-50"
               }`}
             >
-              <div className="flex items-center gap-2">
-                <Trophy className="w-4 h-4" />
+              <div className="flex items-center gap-1 sm:gap-2">
+                <Trophy className="w-3 h-3 sm:w-4 sm:h-4" />
                 <span>Résultats</span>
               </div>
             </Link>
             <Link
               to={`/public/event/${eventId}/informations`}
               onClick={() => setActiveTab("informations")}
-              className={`px-5 py-2.5 text-sm font-medium transition-all duration-200 rounded-lg ${
+              className={`px-3 sm:px-5 py-2 sm:py-2.5 text-xs sm:text-sm font-medium transition-all duration-200 rounded-lg whitespace-nowrap ${
                 activeTab === "informations"
                   ? "text-blue-600 bg-blue-50 shadow-sm"
                   : "text-slate-600 hover:text-blue-600 hover:bg-slate-50"
               }`}
             >
-              <div className="flex items-center gap-2">
-                <Info className="w-4 h-4" />
-                <span>Informations</span>
+              <div className="flex items-center gap-1 sm:gap-2">
+                <Info className="w-3 h-3 sm:w-4 sm:h-4" />
+                <span className="hidden sm:inline">Informations</span>
+                <span className="sm:hidden">Infos</span>
               </div>
             </Link>
           </nav>
@@ -265,12 +268,12 @@ export default function PublicEvent() {
       </div>
 
       {/* Notifications */}
-      <div className="container mx-auto px-4 pt-6">
+      <div className="container mx-auto px-4 sm:px-6 pt-4 sm:pt-6">
         <NotificationDisplay eventId={eventId} />
       </div>
 
       {/* Contenu principal */}
-      <main className="flex-1 container mx-auto px-4 py-8 md:py-12">
+      <main className="flex-1 container mx-auto px-4 sm:px-6 py-4 sm:py-6 md:py-8 lg:py-12">
         {activeTab === "live" && <Live />}
         {activeTab === "startlist" && <Startlist />}
         {activeTab === "results" && <Results />}
