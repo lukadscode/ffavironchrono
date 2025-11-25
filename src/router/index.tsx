@@ -43,7 +43,6 @@ import WebSocketTestPage from "@/pages/websocket/WebSocketTestPage";
 import VerifyEmailPage from "@/pages/VerifyEmailPage";
 import ResetPasswordPage from "@/pages/ResetPasswordPage";
 import ForgotPassword from "@/pages/ForgotPassword";
-import ForgotPassword from "@/pages/ForgotPassword";
 
 const router = createBrowserRouter([
   { path: "/", element: <HomePage /> },
