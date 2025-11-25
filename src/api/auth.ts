@@ -48,7 +48,7 @@ export async function refreshToken(refresh_token: string) {
 }
 
 export async function verifyEmail(token: string) {
-  const res = await api.post("/auth/verify-email", { token });
+  const res = await api.get(`/auth/verify-email?token=${encodeURIComponent(token)}`);
   return res.data;
 }
 
