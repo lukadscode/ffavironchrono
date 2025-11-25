@@ -40,6 +40,10 @@ import HomePage from "@/pages/HomePage";
 import AdminLogin from "@/pages/AdminLogin";
 import AdminRedirect from "@/pages/AdminRedirect";
 import WebSocketTestPage from "@/pages/websocket/WebSocketTestPage";
+import VerifyEmailPage from "@/pages/VerifyEmailPage";
+import ResetPasswordPage from "@/pages/ResetPasswordPage";
+import ForgotPassword from "@/pages/ForgotPassword";
+import ForgotPassword from "@/pages/ForgotPassword";
 
 const router = createBrowserRouter([
   { path: "/", element: <HomePage /> },
@@ -49,6 +53,11 @@ const router = createBrowserRouter([
   // Routes admin
   { path: "/admin", element: <AdminRedirect /> },
   { path: "/admin/login", element: <AdminLogin /> },
+  
+  // Routes de vérification et réinitialisation
+  { path: "/verify-email", element: <VerifyEmailPage /> },
+  { path: "/reset-password", element: <ResetPasswordPage /> },
+  { path: "/forgot-password", element: <ForgotPassword /> },
 
   // Route publique pour compatibilité (redirige vers l'accueil)
   {

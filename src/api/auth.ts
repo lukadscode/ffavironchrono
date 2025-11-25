@@ -46,3 +46,13 @@ export async function refreshToken(refresh_token: string) {
   const res = await api.post("/auth/refresh", { refresh_token });
   return res.data; // doit renvoyer un nouvel access_token
 }
+
+export async function verifyEmail(token: string) {
+  const res = await api.post("/auth/verify-email", { token });
+  return res.data;
+}
+
+export async function resetPassword(token: string, password: string) {
+  const res = await api.post("/auth/reset-password", { token, password });
+  return res.data;
+}

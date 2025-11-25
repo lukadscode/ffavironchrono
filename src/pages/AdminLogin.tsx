@@ -8,6 +8,7 @@ import { login } from "@/api/auth";
 import { useAuth } from "@/context/AuthContext";
 import AuthLayout from "@/components/layout/AuthLayout";
 import { useToast } from "@/hooks/use-toast";
+import { Link } from "react-router-dom";
 
 export default function AdminLogin() {
   const navigate = useNavigate();
@@ -61,7 +62,15 @@ export default function AdminLogin() {
               />
             </div>
             <div>
-              <Label htmlFor="password">Mot de passe</Label>
+              <div className="flex items-center justify-between mb-2">
+                <Label htmlFor="password">Mot de passe</Label>
+                <Link
+                  to="/forgot-password"
+                  className="text-xs sm:text-sm text-primary hover:underline"
+                >
+                  Mot de passe oublié ?
+                </Link>
+              </div>
               <Input
                 id="password"
                 type="password"
