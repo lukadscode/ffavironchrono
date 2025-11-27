@@ -762,46 +762,45 @@ export default function GenerateRacesPage() {
     try {
       setLoading(true);
 
-      // Construire l'ordre des catégories depuis les séries
-      const categoryOrder: string[] = [];
-      series.forEach(s => {
-        Object.keys(s.categories).forEach(code => {
-          if (!categoryOrder.includes(code)) {
-            categoryOrder.push(code);
-          }
-        });
-      });
-
-      // Ajouter les catégories non assignées (celles qui n'ont pas tous leurs équipages affectés)
-      allCategoriesWithStatus.forEach(cat => {
-        if (!categoryOrder.includes(cat.code) && cat.assignedCount < cat.crew_count) {
-          categoryOrder.push(cat.code);
-        }
-      });
-
+      // Construire le payload avec la structure des séries
       const payload: any = {
         phase_id: phaseId,
         lane_count: laneCount,
         start_time: startTime ? new Date(startTime).toISOString() : undefined,
-        interval_minutes: intervalMinutes,
-        category_order: categoryOrder,
+        interval_minutes: intervalMinutes || 5,
+        series: series.map(s => ({
+          id: s.id,
+          categories: s.categories  // { categoryCode: numberOfParticipants }
+        })),
       };
 
-      await api.post("/races/generate", payload);
+      const response = await api.post("/races/generate-from-series", payload);
 
+      // Afficher un message de succès avec les détails
+      const data = response.data.data;
       toast({ 
         title: "Succès",
-        description: "Les courses ont été générées avec succès" 
+        description: `${data.races_created} course${data.races_created > 1 ? 's' : ''} générée${data.races_created > 1 ? 's' : ''} avec succès (${data.crews_assigned} équipages assignés)` 
       });
       
       // Rediriger vers la page de détails de la phase
       navigate(`/event/${eventId}/racePhases/${phaseId}`);
     } catch (err: any) {
-      toast({
-        title: "Erreur lors de la génération",
-        description: err?.response?.data?.message || "Une erreur est survenue",
-        variant: "destructive",
-      });
+      // Gérer les erreurs de validation avec détails
+      const errorData = err?.response?.data;
+      if (errorData?.errors && Array.isArray(errorData.errors)) {
+        toast({
+          title: "Erreurs de validation",
+          description: errorData.errors.join("\n"),
+          variant: "destructive",
+        });
+      } else {
+        toast({
+          title: "Erreur lors de la génération",
+          description: errorData?.message || err?.message || "Une erreur est survenue",
+          variant: "destructive",
+        });
+      }
     } finally {
       setLoading(false);
     }
