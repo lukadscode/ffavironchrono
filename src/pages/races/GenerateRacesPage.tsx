@@ -759,6 +759,46 @@ export default function GenerateRacesPage() {
       return;
     }
 
+    // Validation des séries avant envoi
+    const validationErrors: string[] = [];
+    
+    series.forEach((s, index) => {
+      const seriesNumber = index + 1;
+      
+      // Vérifier la capacité des lignes d'eau
+      const totalParticipants = Object.values(s.categories).reduce((sum, count) => sum + count, 0);
+      if (totalParticipants > laneCount) {
+        validationErrors.push(`Série ${seriesNumber}: Le nombre total de participants (${totalParticipants}) dépasse le nombre de lignes d'eau (${laneCount})`);
+      }
+      
+      // Vérifier la compatibilité des distances
+      const categoryCodes = Object.keys(s.categories);
+      if (categoryCodes.length > 0) {
+        const distances = categoryCodes
+          .map(code => {
+            const cat = categories.find(c => c.code === code);
+            return cat ? getCategoryDistance(cat) : null;
+          })
+          .filter((d): d is number => d !== null);
+        
+        if (distances.length > 0) {
+          const uniqueDistances = [...new Set(distances)];
+          if (uniqueDistances.length > 1) {
+            validationErrors.push(`Série ${seriesNumber}: Les catégories ont des distances différentes (${uniqueDistances.join("m, ")}m). Toutes les catégories d'une série doivent avoir la même distance.`);
+          }
+        }
+      }
+    });
+    
+    if (validationErrors.length > 0) {
+      toast({
+        title: "Erreurs de validation",
+        description: validationErrors.join("\n"),
+        variant: "destructive",
+      });
+      return;
+    }
+
     try {
       setLoading(true);
 
@@ -774,7 +814,16 @@ export default function GenerateRacesPage() {
         })),
       };
 
+      console.log("Payload envoyé à l'API:", JSON.stringify(payload, null, 2));
+      console.log("Séries détaillées:", series.map(s => ({
+        id: s.id,
+        categories: s.categories,
+        totalParticipants: Object.values(s.categories).reduce((sum, count) => sum + count, 0)
+      })));
+
       const response = await api.post("/races/generate-from-series", payload);
+      
+      console.log("Réponse de l'API:", response.data);
 
       // Afficher un message de succès avec les détails
       const data = response.data.data;
