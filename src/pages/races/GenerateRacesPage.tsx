@@ -321,8 +321,8 @@ export default function GenerateRacesPage() {
         // Enrichir les catégories avec leurs distances
         try {
           const distancesRes = await api.get(`/distances/event/${eventId}`);
-          const distances = distancesRes.data.data || [];
-          const distanceMap = new Map(distances.map((d: any) => [d.id, d]));
+          const distances: any[] = distancesRes.data.data || [];
+          const distanceMap = new Map<string, any>(distances.map((d: any) => [d.id, d]));
           
           const enrichedCategories = categoriesWithCrews.map((cat: any) => {
             if (cat.distance) {
@@ -330,7 +330,7 @@ export default function GenerateRacesPage() {
             }
             if (cat.distance_id) {
               const distance = distanceMap.get(cat.distance_id);
-              if (distance) {
+              if (distance && distance.id && distance.meters !== undefined) {
                 return {
                   ...cat,
                   distance: {
