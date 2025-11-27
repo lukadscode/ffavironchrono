@@ -19,6 +19,12 @@ interface Category {
   code: string;
   label: string;
   crew_count: number;
+  distance_id?: string;
+  distance?: {
+    id: string;
+    meters: number;
+    label?: string;
+  };
 }
 
 interface Phase {
@@ -93,7 +99,8 @@ function SeriesCard({
   laneCount, 
   onUpdate, 
   onRemove,
-  onRemoveCategory
+  onRemoveCategory,
+  categoryAssignedCounts
 }: { 
   series: Series;
   seriesIndex: number;
@@ -102,6 +109,7 @@ function SeriesCard({
   onUpdate: (seriesId: string, updates: Partial<Series>) => void;
   onRemove: (seriesId: string) => void;
   onRemoveCategory: (seriesId: string, categoryCode: string) => void;
+  categoryAssignedCounts: Record<string, number>;
 }) {
   const totalParticipants = Object.entries(series.categories).reduce((sum, [code, count]) => {
     return sum + count;
@@ -115,21 +123,26 @@ function SeriesCard({
     if (!cat) return;
 
     const currentCount = series.categories[categoryCode] || 0;
-    const totalForCategory = Object.values(series.categories).reduce((sum, count) => sum + count, 0);
-    const otherCategoriesTotal = totalForCategory - currentCount;
+    const totalInSeries = Object.values(series.categories).reduce((sum, count) => sum + count, 0);
     
     // Vérifier les limites
     if (delta > 0) {
-      // Ne pas dépasser le nombre de lignes d'eau
-      if (totalForCategory + delta <= laneCount) {
-        // Vérifier qu'on ne dépasse pas le total de la catégorie (en comptant les autres séries)
-        // Pour simplifier, on vérifie juste que le total dans cette série ne dépasse pas le total disponible
-        const newCategories = {
-          ...series.categories,
-          [categoryCode]: currentCount + delta
-        };
-        onUpdate(series.id, { categories: newCategories });
+      // Vérifier qu'on ne dépasse pas le nombre de lignes d'eau dans cette série
+      if (totalInSeries + delta > laneCount) {
+        return;
       }
+      
+      // Vérifier qu'on ne dépasse pas le total global de la catégorie (en comptant toutes les séries)
+      const totalAssignedForCategory = categoryAssignedCounts[categoryCode] || 0;
+      if (totalAssignedForCategory + delta > cat.crew_count) {
+        return;
+      }
+      
+      const newCategories = {
+        ...series.categories,
+        [categoryCode]: currentCount + delta
+      };
+      onUpdate(series.id, { categories: newCategories });
     } else if (delta < 0) {
       // Ne pas aller en dessous de 0
       if (currentCount + delta >= 0) {
@@ -201,6 +214,11 @@ function SeriesCard({
                     <span className="text-xs text-slate-500">
                       ({cat.crew_count} au total)
                     </span>
+                    {cat.distance && (
+                      <span className="text-xs px-1.5 py-0.5 bg-slate-100 text-slate-600 rounded">
+                        {cat.distance.label || `${cat.distance.meters}m`}
+                      </span>
+                    )}
                   </div>
                   <div className="flex items-center gap-1">
                     <Button
@@ -218,7 +236,11 @@ function SeriesCard({
                       size="icon"
                       className="h-6 w-6"
                       onClick={() => handleCategoryParticipantAdjust(code, 1)}
-                      disabled={count >= cat.crew_count || totalParticipants >= laneCount}
+                      disabled={
+                        count >= cat.crew_count || 
+                        totalParticipants >= laneCount ||
+                        (categoryAssignedCounts[code] || 0) >= cat.crew_count
+                      }
                     >
                       <Plus className="w-3 h-3" />
                     </Button>
@@ -296,7 +318,37 @@ export default function GenerateRacesPage() {
           .filter((cat: any) => cat.crew_count > 0 && cat.code)
           .sort((a: any, b: any) => (a.code || "").localeCompare(b.code || ""));
         
-        setCategories(categoriesWithCrews);
+        // Enrichir les catégories avec leurs distances
+        try {
+          const distancesRes = await api.get(`/distances/event/${eventId}`);
+          const distances = distancesRes.data.data || [];
+          const distanceMap = new Map(distances.map((d: any) => [d.id, d]));
+          
+          const enrichedCategories = categoriesWithCrews.map((cat: any) => {
+            if (cat.distance) {
+              return cat;
+            }
+            if (cat.distance_id) {
+              const distance = distanceMap.get(cat.distance_id);
+              if (distance) {
+                return {
+                  ...cat,
+                  distance: {
+                    id: distance.id,
+                    meters: distance.meters,
+                    label: distance.label,
+                  }
+                };
+              }
+            }
+            return cat;
+          });
+          
+          setCategories(enrichedCategories);
+        } catch (err) {
+          console.error("Erreur chargement distances:", err);
+          setCategories(categoriesWithCrews);
+        }
       } catch (err) {
         console.error("Erreur chargement catégories:", err);
         toast({
@@ -345,6 +397,52 @@ export default function GenerateRacesPage() {
     }));
   }, [categories, categoryAssignedCounts]);
 
+  // Fonction pour obtenir la distance d'une catégorie
+  const getCategoryDistance = (category: Category): number | null => {
+    if (category.distance?.meters !== undefined) {
+      return category.distance.meters;
+    }
+    return null;
+  };
+
+  // Fonction pour vérifier si les distances sont compatibles
+  const areDistancesCompatible = (category1: Category, category2: Category): boolean => {
+    const dist1 = getCategoryDistance(category1);
+    const dist2 = getCategoryDistance(category2);
+    
+    // Si une des deux n'a pas de distance, on autorise (cas flexible)
+    if (dist1 === null || dist2 === null) {
+      return true;
+    }
+    
+    // Les distances doivent être identiques
+    return dist1 === dist2;
+  };
+
+  // Fonction pour vérifier si une catégorie peut être ajoutée à une série
+  const canAddCategoryToSeries = (category: Category, targetSeries: Series): { canAdd: boolean; reason?: string } => {
+    const existingCategoryCodes = Object.keys(targetSeries.categories);
+    
+    if (existingCategoryCodes.length === 0) {
+      return { canAdd: true };
+    }
+    
+    // Vérifier que toutes les catégories existantes ont la même distance que la nouvelle
+    for (const code of existingCategoryCodes) {
+      const existingCategory = categories.find(c => c.code === code);
+      if (existingCategory && !areDistancesCompatible(category, existingCategory)) {
+        const dist1 = getCategoryDistance(category);
+        const dist2 = getCategoryDistance(existingCategory);
+        return {
+          canAdd: false,
+          reason: `Les distances ne correspondent pas (${dist1}m vs ${dist2}m). Les catégories dans une même série doivent avoir la même distance.`
+        };
+      }
+    }
+    
+    return { canAdd: true };
+  };
+
   const handleAddCategoryToSeries = (categoryCode: string, seriesId?: string) => {
     const category = categories.find(c => c.code === categoryCode);
     if (!category) return;
@@ -353,6 +451,17 @@ export default function GenerateRacesPage() {
       // Ajouter à une série existante
       const targetSeries = series.find(s => s.id === seriesId);
       if (!targetSeries) return;
+
+      // Vérifier la compatibilité des distances
+      const validation = canAddCategoryToSeries(category, targetSeries);
+      if (!validation.canAdd) {
+        toast({
+          title: "Impossible d'ajouter la catégorie",
+          description: validation.reason || "Les distances ne correspondent pas",
+          variant: "destructive",
+        });
+        return;
+      }
 
       const currentTotal = Object.values(targetSeries.categories).reduce((sum, count) => sum + count, 0);
       const availableInSeries = laneCount - currentTotal;
@@ -707,6 +816,7 @@ export default function GenerateRacesPage() {
                             onUpdate={handleUpdateSeries}
                             onRemove={handleRemoveSeries}
                             onRemoveCategory={handleRemoveCategoryFromSeries}
+                            categoryAssignedCounts={categoryAssignedCounts}
                           />
                         </DroppableSeries>
                       ))
