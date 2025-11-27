@@ -362,46 +362,78 @@ export default function GenerateRacesPage() {
           .filter((cat: any) => cat.crew_count > 0 && cat.code)
           .sort((a: any, b: any) => (a.code || "").localeCompare(b.code || ""));
         
-        // Enrichir les catégories avec leurs distances
-        try {
-          const distancesRes = await api.get(`/distances/event/${eventId}`);
-          const distances: any[] = distancesRes.data.data || [];
-          const distanceMap = new Map<string, any>(distances.map((d: any) => [d.id, d]));
-          
-          const enrichedCategories = categoriesWithCrews.map((cat: any) => {
-            // Si la catégorie a déjà une distance complète avec meters, l'utiliser
-            if (cat.distance && cat.distance.meters !== undefined && cat.distance.meters !== null) {
-              return cat;
-            }
-            // Sinon, essayer de récupérer la distance via distance_id
-            if (cat.distance_id) {
-              const distance = distanceMap.get(cat.distance_id);
-              if (distance && distance.id && distance.meters !== undefined && distance.meters !== null) {
-                return {
-                  ...cat,
-                  distance: {
+        // Récupérer les distances de l'événement
+        const distancesRes = await api.get(`/distances/event/${eventId}`);
+        const distances: any[] = distancesRes.data.data || [];
+        const distanceMap = new Map<string, any>(distances.map((d: any) => [d.id, d]));
+        
+        // Enrichir les catégories en récupérant les détails complets de chaque catégorie
+        // L'endpoint /with-crews peut ne pas inclure distance_id ou distance complète
+        const enrichedCategories = await Promise.all(
+          categoriesWithCrews.map(async (cat: any) => {
+            try {
+              // Récupérer les détails complets de la catégorie pour avoir le distance_id à jour
+              const categoryRes = await api.get(`/categories/${cat.id}`);
+              const categoryDetail = categoryRes.data.data || categoryRes.data;
+              
+              // Récupérer la distance complète si distance_id existe
+              let distanceData = null;
+              if (categoryDetail.distance_id) {
+                const distance = distanceMap.get(categoryDetail.distance_id);
+                if (distance && distance.meters !== undefined && distance.meters !== null) {
+                  distanceData = {
                     id: distance.id,
                     meters: distance.meters,
                     label: distance.label,
-                  }
+                  };
+                }
+              }
+              
+              // Si la catégorie a déjà une distance complète dans categoryDetail, l'utiliser
+              if (categoryDetail.distance && categoryDetail.distance.meters !== undefined && categoryDetail.distance.meters !== null) {
+                distanceData = {
+                  id: categoryDetail.distance.id,
+                  meters: categoryDetail.distance.meters,
+                  label: categoryDetail.distance.label,
                 };
               }
+              
+              return {
+                ...cat,
+                distance_id: categoryDetail.distance_id || cat.distance_id || null,
+                distance: distanceData,
+              };
+            } catch (err) {
+              console.error(`Erreur récupération distance pour catégorie ${cat.id}:`, err);
+              // Si erreur, essayer avec les données de base
+              let distanceData = null;
+              if (cat.distance_id) {
+                const distance = distanceMap.get(cat.distance_id);
+                if (distance && distance.meters !== undefined && distance.meters !== null) {
+                  distanceData = {
+                    id: distance.id,
+                    meters: distance.meters,
+                    label: distance.label,
+                  };
+                }
+              }
+              return {
+                ...cat,
+                distance_id: cat.distance_id || null,
+                distance: distanceData || cat.distance || null,
+              };
             }
-            return cat;
-          });
-          
-          console.log("Catégories enrichies:", enrichedCategories.map((c: any) => ({
-            code: c.code,
-            label: c.label,
-            distance: c.distance?.meters || null,
-            distance_id: c.distance_id
-          })));
-          
-          setCategories(enrichedCategories);
-        } catch (err) {
-          console.error("Erreur chargement distances:", err);
-          setCategories(categoriesWithCrews);
-        }
+          })
+        );
+        
+        console.log("Catégories enrichies avec distances:", enrichedCategories.map((c: any) => ({
+          code: c.code,
+          label: c.label,
+          distance: c.distance?.meters || null,
+          distance_id: c.distance_id
+        })));
+        
+        setCategories(enrichedCategories);
       } catch (err) {
         console.error("Erreur chargement catégories:", err);
         toast({
