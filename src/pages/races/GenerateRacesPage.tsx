@@ -118,6 +118,38 @@ function SeriesCard({
   const usedLanes = totalParticipants;
   const availableLanes = laneCount - usedLanes;
 
+  // Vérifier que toutes les catégories de la série ont la même distance
+  const getSeriesDistance = (): { distance: number | null; isValid: boolean; error?: string } => {
+    const categoryCodes = Object.keys(series.categories);
+    if (categoryCodes.length === 0) {
+      return { distance: null, isValid: true };
+    }
+
+    const distances = categoryCodes
+      .map(code => {
+        const cat = categories.find(c => c.code === code);
+        return cat?.distance?.meters ?? null;
+      })
+      .filter((d): d is number => d !== null);
+
+    if (distances.length === 0) {
+      return { distance: null, isValid: true }; // Pas de distances définies, c'est OK
+    }
+
+    const uniqueDistances = [...new Set(distances)];
+    if (uniqueDistances.length > 1) {
+      return {
+        distance: null,
+        isValid: false,
+        error: `⚠️ Erreur: Cette série contient des catégories avec des distances différentes (${uniqueDistances.join("m, ")}m). Toutes les catégories doivent avoir la même distance.`
+      };
+    }
+
+    return { distance: uniqueDistances[0], isValid: true };
+  };
+
+  const seriesDistanceInfo = getSeriesDistance();
+
   const handleCategoryParticipantAdjust = (categoryCode: string, delta: number) => {
     const cat = categories.find(c => c.code === categoryCode);
     if (!cat) return;
@@ -162,12 +194,19 @@ function SeriesCard({
   };
 
   return (
-    <Card className="border-2 border-blue-200 bg-blue-50/50">
+    <Card className={`border-2 ${seriesDistanceInfo.isValid ? "border-blue-200 bg-blue-50/50" : "border-red-300 bg-red-50/50"}`}>
       <CardHeader className="pb-3">
         <div className="flex items-center justify-between">
-          <CardTitle className="text-base">
-            Série {seriesIndex + 1}
-          </CardTitle>
+          <div className="flex items-center gap-2">
+            <CardTitle className="text-base">
+              Série {seriesIndex + 1}
+            </CardTitle>
+            {seriesDistanceInfo.distance !== null && (
+              <span className="px-2 py-0.5 bg-blue-100 text-blue-700 rounded text-xs font-medium">
+                {seriesDistanceInfo.distance}m
+              </span>
+            )}
+          </div>
           <Button
             variant="ghost"
             size="icon"
@@ -195,6 +234,11 @@ function SeriesCard({
             </span>
           )}
         </div>
+        {!seriesDistanceInfo.isValid && seriesDistanceInfo.error && (
+          <div className="mt-2 p-2 bg-red-100 border border-red-300 rounded text-xs text-red-700">
+            {seriesDistanceInfo.error}
+          </div>
+        )}
       </CardHeader>
       <CardContent className="space-y-3">
         {Object.keys(series.categories).length === 0 ? (
