@@ -697,25 +697,21 @@ export default function GenerateRacesPage() {
             </div>
 
             <div className="space-y-2">
-              <Label>Nombre de lignes d'eau *</Label>
-              <Select 
-                value={laneCount.toString()} 
-                onValueChange={(v) => setLaneCount(Number(v))}
-              >
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {[...Array(20)].map((_, i) => {
-                    const n = i + 1;
-                    return (
-                      <SelectItem key={n} value={`${n}`}>
-                        {n}
-                      </SelectItem>
-                    );
-                  })}
-                </SelectContent>
-              </Select>
+              <Label>Nombre de lignes d'eau/rameur *</Label>
+              <Input
+                type="number"
+                min={1}
+                value={laneCount}
+                onChange={(e) => {
+                  const value = parseInt(e.target.value, 10);
+                  if (!isNaN(value) && value > 0) {
+                    setLaneCount(value);
+                  } else if (e.target.value === "") {
+                    setLaneCount(1);
+                  }
+                }}
+                placeholder="Ex: 6"
+              />
             </div>
 
             <div className="space-y-2">
