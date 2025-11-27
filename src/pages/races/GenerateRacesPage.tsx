@@ -563,11 +563,11 @@ export default function GenerateRacesPage() {
     return { canAdd: true };
   };
 
-  const handleAddCategoryToSeries = (categoryCode: string, seriesId?: string) => {
+  const handleAddCategoryToSeries = (categoryCode: string, seriesId?: string, forceNewSeries: boolean = false) => {
     const category = categories.find(c => c.code === categoryCode);
     if (!category) return;
 
-    if (seriesId && series.some(s => s.id === seriesId)) {
+    if (seriesId && series.some(s => s.id === seriesId) && !forceNewSeries) {
       // Ajouter à une série existante
       const targetSeries = series.find(s => s.id === seriesId);
       if (!targetSeries) return;
@@ -632,41 +632,44 @@ export default function GenerateRacesPage() {
       }
     } else {
       // Créer une nouvelle série pour cette catégorie
-      // Mais d'abord, vérifier s'il existe une série existante avec la même distance où on pourrait ajouter
-      const categoryDistance = getCategoryDistance(category);
-      if (categoryDistance !== null) {
-        // Chercher une série existante avec la même distance et de la place
-        const compatibleSeries = series.find(s => {
-          const existingCategoryCodes = Object.keys(s.categories);
-          if (existingCategoryCodes.length === 0) return false;
+      // Si forceNewSeries est true, on saute la recherche de série compatible
+      if (!forceNewSeries) {
+        // Mais d'abord, vérifier s'il existe une série existante avec la même distance où on pourrait ajouter
+        const categoryDistance = getCategoryDistance(category);
+        if (categoryDistance !== null) {
+          // Chercher une série existante avec la même distance et de la place
+          const compatibleSeries = series.find(s => {
+            const existingCategoryCodes = Object.keys(s.categories);
+            if (existingCategoryCodes.length === 0) return false;
+            
+            // Vérifier que toutes les catégories de cette série ont la même distance
+            const seriesDistances = existingCategoryCodes
+              .map(code => {
+                const cat = categories.find(c => c.code === code);
+                return cat ? getCategoryDistance(cat) : null;
+              })
+              .filter((d): d is number => d !== null);
+            
+            if (seriesDistances.length === 0) return false;
+            const uniqueDistances = [...new Set(seriesDistances)];
+            if (uniqueDistances.length !== 1 || uniqueDistances[0] !== categoryDistance) {
+              return false;
+            }
+            
+            // Vérifier qu'il y a de la place
+            const currentTotal = Object.values(s.categories).reduce((sum, count) => sum + count, 0);
+            return currentTotal < laneCount;
+          });
           
-          // Vérifier que toutes les catégories de cette série ont la même distance
-          const seriesDistances = existingCategoryCodes
-            .map(code => {
-              const cat = categories.find(c => c.code === code);
-              return cat ? getCategoryDistance(cat) : null;
-            })
-            .filter((d): d is number => d !== null);
-          
-          if (seriesDistances.length === 0) return false;
-          const uniqueDistances = [...new Set(seriesDistances)];
-          if (uniqueDistances.length !== 1 || uniqueDistances[0] !== categoryDistance) {
-            return false;
+          if (compatibleSeries) {
+            // Ajouter à la série compatible existante
+            handleAddCategoryToSeries(categoryCode, compatibleSeries.id, false);
+            return;
           }
-          
-          // Vérifier qu'il y a de la place
-          const currentTotal = Object.values(s.categories).reduce((sum, count) => sum + count, 0);
-          return currentTotal < laneCount;
-        });
-        
-        if (compatibleSeries) {
-          // Ajouter à la série compatible existante
-          handleAddCategoryToSeries(categoryCode, compatibleSeries.id);
-          return;
         }
       }
       
-      // Sinon, créer une nouvelle série
+      // Créer une nouvelle série (forcée ou après vérification)
       const seriesNeeded = Math.ceil(category.crew_count / laneCount);
       const newSeriesList: Series[] = [];
 
@@ -723,7 +726,7 @@ export default function GenerateRacesPage() {
     } 
     // Si on dépose sur la zone "nouvelle série"
     else if (overId === "new-series") {
-      handleAddCategoryToSeries(category.code);
+      handleAddCategoryToSeries(category.code, undefined, true); // forceNewSeries = true
     }
     // Si on dépose sur "unassigned" (retirer de toutes les séries)
     else if (overId === "unassigned") {
