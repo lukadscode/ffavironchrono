@@ -470,30 +470,131 @@ export default function GenerateRacesPage() {
       if (!block || block.categoryCodes.includes(categoryCode)) return; // Déjà dans le bloc
 
       const newCategoryCodes = [...block.categoryCodes, categoryCode];
-      const totalParticipants = newCategoryCodes.reduce((sum, code) => {
-        const cat = categories.find(c => c.code === code);
-        return sum + (cat?.crew_count || 0);
-      }, 0);
-
-      const { series, distribution } = calculateOptimalDistribution(totalParticipants, laneCount);
-
-      setCategoryBlocks(prev => prev.map(b => 
-        b.id === blockId 
-          ? { ...b, categoryCodes: newCategoryCodes, series, participantsPerSeries: distribution }
-          : b
-      ));
-    } else {
-      // Créer un nouveau bloc
-      const { series, distribution } = calculateOptimalDistribution(category.crew_count, laneCount);
       
-      // Répartir la catégorie sur les séries
-      const basePerSeries = Math.floor(category.crew_count / series);
-      const remainder = category.crew_count % series;
+      // Récupérer la distribution existante ou l'initialiser
+      const existingDistribution = block.categoryDistribution || {};
+      
+      // Répartir la nouvelle catégorie en remplissant d'abord les séries existantes
+      const newCategoryDistribution: number[] = Array(block.series).fill(0);
+      let remainingParticipants = category.crew_count;
+      
+      // Remplir les séries une par une jusqu'à ce qu'on n'ait plus de participants
+      for (let seriesIdx = 0; seriesIdx < block.series && remainingParticipants > 0; seriesIdx++) {
+        // Calculer combien de places sont disponibles dans cette série
+        const currentTotalInSeries = block.participantsPerSeries[seriesIdx] || 0;
+        const availableInSeries = laneCount - currentTotalInSeries;
+        
+        // Ajouter le maximum possible dans cette série (sans dépasser les lignes d'eau)
+        const toAdd = Math.min(remainingParticipants, availableInSeries);
+        if (toAdd > 0) {
+          newCategoryDistribution[seriesIdx] = toAdd;
+          remainingParticipants -= toAdd;
+        }
+      }
+      
+      // Si on a encore des participants, créer de nouvelles séries si nécessaire
+      if (remainingParticipants > 0) {
+        const additionalSeries = Math.ceil(remainingParticipants / laneCount);
+        const newSeries = block.series + additionalSeries;
+        
+        // Étendre la distribution pour toutes les catégories existantes
+        const updatedDistribution: Record<string, number[]> = {};
+        
+        // Étendre les distributions existantes avec des zéros
+        block.categoryCodes.forEach(code => {
+          updatedDistribution[code] = [
+            ...(existingDistribution[code] || Array(block.series).fill(0)),
+            ...Array(additionalSeries).fill(0)
+          ];
+        });
+        
+        // Ajouter la nouvelle catégorie avec sa répartition
+        updatedDistribution[categoryCode] = [
+          ...newCategoryDistribution,
+          ...Array(additionalSeries).fill(0)
+        ];
+        
+        // Remplir les nouvelles séries avec les participants restants
+        let remaining = remainingParticipants;
+        for (let seriesIdx = block.series; seriesIdx < newSeries && remaining > 0; seriesIdx++) {
+          const toAdd = Math.min(remaining, laneCount);
+          updatedDistribution[categoryCode][seriesIdx] = toAdd;
+          remaining -= toAdd;
+        }
+        
+        // Calculer les totaux par série
+        const newTotals: number[] = [];
+        for (let seriesIdx = 0; seriesIdx < newSeries; seriesIdx++) {
+          const total = newCategoryCodes.reduce((sum, code) => {
+            return sum + (updatedDistribution[code]?.[seriesIdx] || 0);
+          }, 0);
+          newTotals.push(total);
+        }
+        
+        setCategoryBlocks(prev => prev.map(b => 
+          b.id === blockId 
+            ? { 
+                ...b, 
+                categoryCodes: newCategoryCodes, 
+                series: newSeries, 
+                participantsPerSeries: newTotals,
+                categoryDistribution: updatedDistribution
+              }
+            : b
+        ));
+      } else {
+        // Pas besoin de nouvelles séries, juste ajouter la catégorie
+        const updatedDistribution = {
+          ...existingDistribution,
+          [categoryCode]: newCategoryDistribution
+        };
+        
+        // S'assurer que toutes les distributions ont la même longueur
+        block.categoryCodes.forEach(code => {
+          if (!updatedDistribution[code] || updatedDistribution[code].length < block.series) {
+            updatedDistribution[code] = [
+              ...(updatedDistribution[code] || []),
+              ...Array(block.series - (updatedDistribution[code]?.length || 0)).fill(0)
+            ];
+          }
+        });
+        
+        // Calculer les nouveaux totaux par série
+        const newTotals: number[] = [];
+        for (let seriesIdx = 0; seriesIdx < block.series; seriesIdx++) {
+          const total = newCategoryCodes.reduce((sum, code) => {
+            return sum + (updatedDistribution[code]?.[seriesIdx] || 0);
+          }, 0);
+          newTotals.push(total);
+        }
+        
+        setCategoryBlocks(prev => prev.map(b => 
+          b.id === blockId 
+            ? { 
+                ...b, 
+                categoryCodes: newCategoryCodes, 
+                participantsPerSeries: newTotals,
+                categoryDistribution: updatedDistribution
+              }
+            : b
+        ));
+      }
+    } else {
+      // Créer un nouveau bloc - répartir intelligemment (une série à la fois)
+      const series = Math.ceil(category.crew_count / laneCount);
       const categoryDistribution: Record<string, number[]> = {
-        [categoryCode]: Array.from({ length: series }, (_, i) => 
-          basePerSeries + (i < remainder ? 1 : 0)
-        )
+        [categoryCode]: Array(series).fill(0)
       };
+      
+      // Remplir les séries une par une
+      let remaining = category.crew_count;
+      for (let seriesIdx = 0; seriesIdx < series && remaining > 0; seriesIdx++) {
+        const toAdd = Math.min(remaining, laneCount);
+        categoryDistribution[categoryCode][seriesIdx] = toAdd;
+        remaining -= toAdd;
+      }
+      
+      const distribution = categoryDistribution[categoryCode];
       
       const newBlock: CategoryBlock = {
         id: `block-${Date.now()}`,
