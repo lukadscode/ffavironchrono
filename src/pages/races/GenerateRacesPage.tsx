@@ -12,7 +12,7 @@ import { DndContext, closestCenter, useDroppable } from "@dnd-kit/core";
 import type { DragEndEvent } from "@dnd-kit/core";
 import { SortableContext, verticalListSortingStrategy, useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { Loader2, GripVertical, Tag, Info, ArrowLeft, Save, RotateCcw, Sparkles, Plus, X, Minus } from "lucide-react";
+import { Loader2, GripVertical, Tag, Info, ArrowLeft, Save, Sparkles, Plus, X, Minus } from "lucide-react";
 
 interface Category {
   id: string;
@@ -27,15 +27,12 @@ interface Phase {
   order_index: number;
 }
 
-interface CategoryBlock {
+interface Series {
   id: string;
-  categoryCodes: string[];
-  series: number; // Nombre de séries
-  participantsPerSeries: number[]; // Répartition totale des participants par série (calculée)
-  categoryDistribution: Record<string, number[]>; // Répartition par catégorie : { categoryCode: [count_serie1, count_serie2, ...] }
+  categories: Record<string, number>; // { categoryCode: numberOfParticipants }
 }
 
-function SortableCategoryItem({ category, onRemove }: { category: Category; onRemove?: () => void }) {
+function SortableCategoryItem({ category }: { category: Category }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: category.id,
   });
@@ -70,175 +67,91 @@ function SortableCategoryItem({ category, onRemove }: { category: Category; onRe
         </div>
         <div className="text-xs text-slate-600">{category.label}</div>
       </div>
-      {onRemove && (
-        <Button
-          variant="ghost"
-          size="icon"
-          className="h-6 w-6 text-red-500 hover:text-red-700 hover:bg-red-50"
-          onClick={onRemove}
-        >
-          <X className="w-4 h-4" />
-        </Button>
-      )}
     </div>
   );
 }
 
-function CategoryBlockCard({ 
-  block, 
+function SeriesCard({ 
+  series, 
+  seriesIndex,
   categories, 
   laneCount, 
   onUpdate, 
   onRemove,
   onRemoveCategory
 }: { 
-  block: CategoryBlock; 
+  series: Series;
+  seriesIndex: number;
   categories: Category[];
   laneCount: number;
-  onUpdate: (blockId: string, updates: Partial<CategoryBlock>) => void;
-  onRemove: (blockId: string) => void;
-  onRemoveCategory: (blockId: string, categoryCode: string) => void;
+  onUpdate: (seriesId: string, updates: Partial<Series>) => void;
+  onRemove: (seriesId: string) => void;
+  onRemoveCategory: (seriesId: string, categoryCode: string) => void;
 }) {
-  const totalParticipants = block.categoryCodes.reduce((sum, code) => {
-    const cat = categories.find(c => c.code === code);
-    return sum + (cat?.crew_count || 0);
+  const totalParticipants = Object.entries(series.categories).reduce((sum, [code, count]) => {
+    return sum + count;
   }, 0);
 
-  const maxSeries = Math.ceil(totalParticipants / laneCount);
-  const minSeries = Math.ceil(totalParticipants / (laneCount * 2)); // Au moins la moitié des lignes remplies
+  const usedLanes = totalParticipants;
+  const availableLanes = laneCount - usedLanes;
 
-  // Calculer la répartition initiale par catégorie si elle n'existe pas
-  const getCategoryDistribution = () => {
-    if (!block.categoryDistribution || Object.keys(block.categoryDistribution).length === 0) {
-      // Initialiser la répartition par catégorie
-      const distribution: Record<string, number[]> = {};
-      block.categoryCodes.forEach(code => {
-        const cat = categories.find(c => c.code === code);
-        if (cat) {
-          const basePerSeries = Math.floor(cat.crew_count / block.series);
-          const remainder = cat.crew_count % block.series;
-          distribution[code] = Array.from({ length: block.series }, (_, i) => 
-            basePerSeries + (i < remainder ? 1 : 0)
-          );
-        }
-      });
-      return distribution;
-    }
-    return block.categoryDistribution;
-  };
-
-  const categoryDistribution = getCategoryDistribution();
-
-  // Calculer le total par série à partir de la répartition par catégorie
-  const calculateTotalPerSeries = (dist: Record<string, number[]>) => {
-    const totals: number[] = [];
-    block.categoryCodes.forEach((_, seriesIdx) => {
-      const total = block.categoryCodes.reduce((sum, code) => {
-        return sum + (dist[code]?.[seriesIdx] || 0);
-      }, 0);
-      totals.push(total);
-    });
-    return totals;
-  };
-
-  const handleSeriesChange = (newSeries: number) => {
-    if (newSeries < 1 || newSeries > maxSeries) return;
-    
-    // Répartir chaque catégorie sur le nouveau nombre de séries
-    const newDistribution: Record<string, number[]> = {};
-    block.categoryCodes.forEach(code => {
-      const cat = categories.find(c => c.code === code);
-      if (cat) {
-        const basePerSeries = Math.floor(cat.crew_count / newSeries);
-        const remainder = cat.crew_count % newSeries;
-        newDistribution[code] = Array.from({ length: newSeries }, (_, i) => 
-          basePerSeries + (i < remainder ? 1 : 0)
-        );
-      }
-    });
-    
-    const newTotals = calculateTotalPerSeries(newDistribution);
-    onUpdate(block.id, { 
-      series: newSeries, 
-      categoryDistribution: newDistribution,
-      participantsPerSeries: newTotals
-    });
-  };
-
-  const handleCategoryParticipantAdjust = (categoryCode: string, seriesIndex: number, delta: number) => {
+  const handleCategoryParticipantAdjust = (categoryCode: string, delta: number) => {
     const cat = categories.find(c => c.code === categoryCode);
     if (!cat) return;
 
-    const newDistribution = { ...categoryDistribution };
-    const currentCount = newDistribution[categoryCode]?.[seriesIndex] || 0;
-    const totalForCategory = newDistribution[categoryCode]?.reduce((a, b) => a + b, 0) || 0;
+    const currentCount = series.categories[categoryCode] || 0;
+    const totalForCategory = Object.values(series.categories).reduce((sum, count) => sum + count, 0);
+    const otherCategoriesTotal = totalForCategory - currentCount;
     
     // Vérifier les limites
     if (delta > 0) {
-      // Ne pas dépasser le total de la catégorie
-      if (totalForCategory + delta <= cat.crew_count) {
-        newDistribution[categoryCode] = [...(newDistribution[categoryCode] || [])];
-        newDistribution[categoryCode][seriesIndex] = currentCount + delta;
+      // Ne pas dépasser le nombre de lignes d'eau
+      if (totalForCategory + delta <= laneCount) {
+        // Vérifier qu'on ne dépasse pas le total de la catégorie (en comptant les autres séries)
+        // Pour simplifier, on vérifie juste que le total dans cette série ne dépasse pas le total disponible
+        const newCategories = {
+          ...series.categories,
+          [categoryCode]: currentCount + delta
+        };
+        onUpdate(series.id, { categories: newCategories });
       }
     } else if (delta < 0) {
       // Ne pas aller en dessous de 0
       if (currentCount + delta >= 0) {
-        newDistribution[categoryCode] = [...(newDistribution[categoryCode] || [])];
-        newDistribution[categoryCode][seriesIndex] = currentCount + delta;
+        const newCategories = {
+          ...series.categories,
+          [categoryCode]: currentCount + delta
+        };
+        // Si on arrive à 0, supprimer la catégorie
+        if (newCategories[categoryCode] === 0) {
+          const { [categoryCode]: _, ...rest } = newCategories;
+          onUpdate(series.id, { categories: rest });
+        } else {
+          onUpdate(series.id, { categories: newCategories });
+        }
       }
     }
-
-    // Vérifier que le total de la série ne dépasse pas le nombre de lignes
-    const newTotals = calculateTotalPerSeries(newDistribution);
-    if (newTotals[seriesIndex] <= laneCount) {
-      onUpdate(block.id, { 
-        categoryDistribution: newDistribution,
-        participantsPerSeries: newTotals
-      });
-    }
   };
-
-  const usedLanes = block.participantsPerSeries.reduce((max, count) => Math.max(max, count), 0);
-  const availableLanes = laneCount - usedLanes;
 
   return (
     <Card className="border-2 border-blue-200 bg-blue-50/50">
       <CardHeader className="pb-3">
         <div className="flex items-center justify-between">
           <CardTitle className="text-base">
-            {block.categoryCodes.map((code, idx) => {
-              const cat = categories.find(c => c.code === code);
-              return (
-                <span key={code} className="inline-flex items-center gap-1">
-                  {idx > 0 && <span className="text-slate-400">+</span>}
-                  <span>{cat?.label || code}</span>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="h-4 w-4 text-red-500 hover:text-red-700 hover:bg-red-50 ml-1"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      onRemoveCategory(block.id, code);
-                    }}
-                  >
-                    <X className="w-3 h-3" />
-                  </Button>
-                </span>
-              );
-            })}
+            Série {seriesIndex + 1}
           </CardTitle>
           <Button
             variant="ghost"
             size="icon"
             className="h-6 w-6 text-red-500 hover:text-red-700 hover:bg-red-50"
-            onClick={() => onRemove(block.id)}
+            onClick={() => onRemove(series.id)}
           >
             <X className="w-4 h-4" />
           </Button>
         </div>
         <div className="flex items-center gap-4 text-sm mt-2">
           <span className="text-slate-600">
-            <span className="font-semibold">{totalParticipants}</span> participants
+            <span className="font-semibold">{totalParticipants}</span> participant{totalParticipants > 1 ? 's' : ''}
           </span>
           <span className="text-slate-600">
             Lignes utilisées: <span className="font-semibold">{usedLanes}</span> / {laneCount}
@@ -248,113 +161,66 @@ function CategoryBlockCard({
               {availableLanes} places disponibles
             </span>
           )}
+          {availableLanes === 0 && (
+            <span className="text-orange-600 font-semibold">
+              Série complète
+            </span>
+          )}
         </div>
       </CardHeader>
       <CardContent className="space-y-3">
-        <div className="flex items-center gap-2">
-          <Label className="text-sm">Nombre de séries:</Label>
-          <div className="flex items-center gap-2">
-            <Button
-              variant="outline"
-              size="icon"
-              className="h-7 w-7"
-              onClick={() => handleSeriesChange(block.series - 1)}
-              disabled={block.series <= 1}
-            >
-              <Minus className="w-3 h-3" />
-            </Button>
-            <span className="font-semibold w-8 text-center">{block.series}</span>
-            <Button
-              variant="outline"
-              size="icon"
-              className="h-7 w-7"
-              onClick={() => handleSeriesChange(block.series + 1)}
-              disabled={block.series >= maxSeries}
-            >
-              <Plus className="w-3 h-3" />
-            </Button>
+        {Object.keys(series.categories).length === 0 ? (
+          <div className="text-center py-4 text-slate-500 text-sm">
+            Glissez-déposez une catégorie ici
           </div>
-        </div>
-        
-        <div className="space-y-2">
-          <Label className="text-sm">Catégories dans ce bloc:</Label>
-          <div className="flex flex-wrap gap-2 mb-3">
-            {block.categoryCodes.map((code) => {
+        ) : (
+          <div className="space-y-2">
+            {Object.entries(series.categories).map(([code, count]) => {
               const cat = categories.find(c => c.code === code);
-              const totalInBlock = categoryDistribution[code]?.reduce((a, b) => a + b, 0) || 0;
+              if (!cat) return null;
+              
               return (
-                <span
-                  key={code}
-                  className="inline-flex items-center gap-1 px-2 py-1 bg-blue-100 text-blue-700 rounded text-xs font-medium"
-                >
-                  {cat?.label || code}
-                  <span className="text-blue-500">
-                    ({totalInBlock} / {cat?.crew_count || 0})
-                  </span>
-                </span>
+                <div key={code} className="flex items-center justify-between p-2 bg-white rounded border border-slate-200">
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm font-medium">{cat.label || code}</span>
+                    <span className="text-xs text-slate-500">
+                      ({cat.crew_count} au total)
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-1">
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-6 w-6"
+                      onClick={() => handleCategoryParticipantAdjust(code, -1)}
+                      disabled={count <= 0}
+                    >
+                      <Minus className="w-3 h-3" />
+                    </Button>
+                    <span className="font-semibold w-8 text-center">{count}</span>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-6 w-6"
+                      onClick={() => handleCategoryParticipantAdjust(code, 1)}
+                      disabled={count >= cat.crew_count || totalParticipants >= laneCount}
+                    >
+                      <Plus className="w-3 h-3" />
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-4 w-4 text-red-500 hover:text-red-700 hover:bg-red-50 ml-2"
+                      onClick={() => onRemoveCategory(series.id, code)}
+                    >
+                      <X className="w-3 h-3" />
+                    </Button>
+                  </div>
+                </div>
               );
             })}
           </div>
-          
-          <Label className="text-sm">Répartition par série:</Label>
-          {Array.from({ length: block.series }).map((_, seriesIdx) => {
-            const totalInSeries = block.participantsPerSeries[seriesIdx] || 0;
-            
-            return (
-              <div key={seriesIdx} className="p-3 bg-white rounded border border-gray-200 space-y-2">
-                <div className="flex items-center justify-between pb-2 border-b border-gray-100">
-                  <div className="flex items-center gap-2">
-                    <span className="text-sm font-semibold">Série {seriesIdx + 1}:</span>
-                    <span className="text-xs text-slate-500">
-                      Total: <span className="font-semibold">{totalInSeries}</span> participant{totalInSeries > 1 ? 's' : ''} / {laneCount} lignes
-                    </span>
-                  </div>
-                </div>
-                <div className="space-y-2">
-                  {block.categoryCodes.map((code) => {
-                    const cat = categories.find(c => c.code === code);
-                    if (!cat) return null;
-                    
-                    const countInSeries = categoryDistribution[code]?.[seriesIdx] || 0;
-                    const totalForCategory = categoryDistribution[code]?.reduce((a, b) => a + b, 0) || 0;
-                    
-                    return (
-                      <div key={code} className="flex items-center justify-between p-2 bg-slate-50 rounded border border-slate-200">
-                        <div className="flex items-center gap-2">
-                          <span className="text-sm font-medium">{cat.label || code}</span>
-                          <span className="text-xs text-slate-500">
-                            ({totalForCategory} / {cat.crew_count} au total)
-                          </span>
-                        </div>
-                        <div className="flex items-center gap-1">
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="h-6 w-6"
-                            onClick={() => handleCategoryParticipantAdjust(code, seriesIdx, -1)}
-                            disabled={countInSeries <= 0}
-                          >
-                            <Minus className="w-3 h-3" />
-                          </Button>
-                          <span className="font-semibold w-8 text-center">{countInSeries}</span>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="h-6 w-6"
-                            onClick={() => handleCategoryParticipantAdjust(code, seriesIdx, 1)}
-                            disabled={countInSeries >= cat.crew_count || totalInSeries >= laneCount}
-                          >
-                            <Plus className="w-3 h-3" />
-                          </Button>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-            );
-          })}
-        </div>
+        )}
       </CardContent>
     </Card>
   );
@@ -372,7 +238,7 @@ export default function GenerateRacesPage() {
   const [intervalMinutes, setIntervalMinutes] = useState<number>(5);
   const [loading, setLoading] = useState(false);
   const [categories, setCategories] = useState<Category[]>([]);
-  const [categoryBlocks, setCategoryBlocks] = useState<CategoryBlock[]>([]);
+  const [series, setSeries] = useState<Series[]>([]);
   const [loadingCategories, setLoadingCategories] = useState(false);
   const [loadingPhases, setLoadingPhases] = useState(true);
 
@@ -433,228 +299,106 @@ export default function GenerateRacesPage() {
     }
   }, [eventId, toast]);
 
-  // Calculer automatiquement la répartition optimale
-  const calculateOptimalDistribution = (participants: number, lanes: number): { series: number; distribution: number[] } => {
-    const series = Math.ceil(participants / lanes);
-    const basePerSeries = Math.floor(participants / series);
-    const remainder = participants % series;
-    const distribution: number[] = [];
-    
-    for (let i = 0; i < series; i++) {
-      distribution.push(basePerSeries + (i < remainder ? 1 : 0));
-    }
-    
-    return { series, distribution };
-  };
-
-  // Réinitialiser les blocs quand la phase change
+  // Réinitialiser les séries quand la phase change
   useEffect(() => {
     if (phaseId) {
-      setCategoryBlocks([]);
+      setSeries([]);
     }
   }, [phaseId]);
 
-  // Catégories non assignées (pas dans les blocs)
+  // Catégories non assignées (pas dans les séries)
   const unassignedCategories = useMemo(() => {
-    const assignedCodes = new Set(categoryBlocks.flatMap(b => b.categoryCodes));
+    const assignedCodes = new Set<string>();
+    series.forEach(s => {
+      Object.keys(s.categories).forEach(code => assignedCodes.add(code));
+    });
     return categories.filter(cat => !assignedCodes.has(cat.code));
-  }, [categories, categoryBlocks]);
+  }, [categories, series]);
 
-  const handleAddCategoryToBlock = (categoryCode: string, blockId?: string) => {
+  const handleAddCategoryToSeries = (categoryCode: string, seriesId?: string) => {
     const category = categories.find(c => c.code === categoryCode);
     if (!category) return;
 
-    if (blockId && categoryBlocks.some(b => b.id === blockId)) {
-      // Ajouter à un bloc existant
-      const block = categoryBlocks.find(b => b.id === blockId);
-      if (!block || block.categoryCodes.includes(categoryCode)) return; // Déjà dans le bloc
+    if (seriesId && series.some(s => s.id === seriesId)) {
+      // Ajouter à une série existante
+      const targetSeries = series.find(s => s.id === seriesId);
+      if (!targetSeries) return;
 
-      const newCategoryCodes = [...block.categoryCodes, categoryCode];
-      
-      // Récupérer la distribution existante ou l'initialiser
-      const existingDistribution = block.categoryDistribution || {};
-      
-      // Répartir la nouvelle catégorie en remplissant d'abord les séries existantes
-      const newCategoryDistribution: number[] = Array(block.series).fill(0);
-      let remainingParticipants = category.crew_count;
-      
-      // Remplir les séries une par une jusqu'à ce qu'on n'ait plus de participants
-      for (let seriesIdx = 0; seriesIdx < block.series && remainingParticipants > 0; seriesIdx++) {
-        // Calculer combien de places sont disponibles dans cette série
-        const currentTotalInSeries = block.participantsPerSeries[seriesIdx] || 0;
-        const availableInSeries = laneCount - currentTotalInSeries;
-        
-        // Ajouter le maximum possible dans cette série (sans dépasser les lignes d'eau)
-        const toAdd = Math.min(remainingParticipants, availableInSeries);
-        if (toAdd > 0) {
-          newCategoryDistribution[seriesIdx] = toAdd;
-          remainingParticipants -= toAdd;
-        }
-      }
-      
-      // Si on a encore des participants, créer de nouvelles séries si nécessaire
-      if (remainingParticipants > 0) {
-        const additionalSeries = Math.ceil(remainingParticipants / laneCount);
-        const newSeries = block.series + additionalSeries;
-        
-        // Étendre la distribution pour toutes les catégories existantes
-        const updatedDistribution: Record<string, number[]> = {};
-        
-        // Étendre les distributions existantes avec des zéros
-        block.categoryCodes.forEach(code => {
-          updatedDistribution[code] = [
-            ...(existingDistribution[code] || Array(block.series).fill(0)),
-            ...Array(additionalSeries).fill(0)
-          ];
-        });
-        
-        // Ajouter la nouvelle catégorie avec sa répartition
-        updatedDistribution[categoryCode] = [
-          ...newCategoryDistribution,
-          ...Array(additionalSeries).fill(0)
-        ];
-        
-        // Remplir les nouvelles séries avec les participants restants
-        let remaining = remainingParticipants;
-        for (let seriesIdx = block.series; seriesIdx < newSeries && remaining > 0; seriesIdx++) {
-          const toAdd = Math.min(remaining, laneCount);
-          updatedDistribution[categoryCode][seriesIdx] = toAdd;
-          remaining -= toAdd;
-        }
-        
-        // Calculer les totaux par série
-        const newTotals: number[] = [];
-        for (let seriesIdx = 0; seriesIdx < newSeries; seriesIdx++) {
-          const total = newCategoryCodes.reduce((sum, code) => {
-            return sum + (updatedDistribution[code]?.[seriesIdx] || 0);
-          }, 0);
-          newTotals.push(total);
-        }
-        
-        setCategoryBlocks(prev => prev.map(b => 
-          b.id === blockId 
-            ? { 
-                ...b, 
-                categoryCodes: newCategoryCodes, 
-                series: newSeries, 
-                participantsPerSeries: newTotals,
-                categoryDistribution: updatedDistribution
-              }
-            : b
-        ));
-      } else {
-        // Pas besoin de nouvelles séries, juste ajouter la catégorie
-        const updatedDistribution = {
-          ...existingDistribution,
-          [categoryCode]: newCategoryDistribution
+      const currentTotal = Object.values(targetSeries.categories).reduce((sum, count) => sum + count, 0);
+      const availableInSeries = laneCount - currentTotal;
+
+      if (availableInSeries > 0) {
+        // Il y a de la place dans cette série
+        const toAdd = Math.min(category.crew_count, availableInSeries);
+        const newCategories = {
+          ...targetSeries.categories,
+          [categoryCode]: (targetSeries.categories[categoryCode] || 0) + toAdd
         };
-        
-        // S'assurer que toutes les distributions ont la même longueur
-        block.categoryCodes.forEach(code => {
-          if (!updatedDistribution[code] || updatedDistribution[code].length < block.series) {
-            updatedDistribution[code] = [
-              ...(updatedDistribution[code] || []),
-              ...Array(block.series - (updatedDistribution[code]?.length || 0)).fill(0)
-            ];
-          }
-        });
-        
-        // Calculer les nouveaux totaux par série
-        const newTotals: number[] = [];
-        for (let seriesIdx = 0; seriesIdx < block.series; seriesIdx++) {
-          const total = newCategoryCodes.reduce((sum, code) => {
-            return sum + (updatedDistribution[code]?.[seriesIdx] || 0);
-          }, 0);
-          newTotals.push(total);
-        }
-        
-        setCategoryBlocks(prev => prev.map(b => 
-          b.id === blockId 
-            ? { 
-                ...b, 
-                categoryCodes: newCategoryCodes, 
-                participantsPerSeries: newTotals,
-                categoryDistribution: updatedDistribution
-              }
-            : b
+
+        setSeries(prev => prev.map(s => 
+          s.id === seriesId 
+            ? { ...s, categories: newCategories }
+            : s
         ));
+
+        // Si il reste des participants, créer une nouvelle série
+        const remaining = category.crew_count - toAdd;
+        if (remaining > 0) {
+          const newSeries: Series = {
+            id: `series-${Date.now()}`,
+            categories: { [categoryCode]: remaining }
+          };
+          setSeries(prev => [...prev, newSeries]);
+        }
+      } else {
+        // La série est pleine, créer une nouvelle série
+        const newSeries: Series = {
+          id: `series-${Date.now()}`,
+          categories: { [categoryCode]: category.crew_count }
+        };
+        setSeries(prev => [...prev, newSeries]);
       }
     } else {
-      // Créer un nouveau bloc - répartir intelligemment (une série à la fois)
-      const series = Math.ceil(category.crew_count / laneCount);
-      const categoryDistribution: Record<string, number[]> = {
-        [categoryCode]: Array(series).fill(0)
-      };
-      
-      // Remplir les séries une par une
+      // Créer une nouvelle série pour cette catégorie
+      const seriesNeeded = Math.ceil(category.crew_count / laneCount);
+      const newSeriesList: Series[] = [];
+
       let remaining = category.crew_count;
-      for (let seriesIdx = 0; seriesIdx < series && remaining > 0; seriesIdx++) {
+      for (let i = 0; i < seriesNeeded && remaining > 0; i++) {
         const toAdd = Math.min(remaining, laneCount);
-        categoryDistribution[categoryCode][seriesIdx] = toAdd;
+        newSeriesList.push({
+          id: `series-${Date.now()}-${i}`,
+          categories: { [categoryCode]: toAdd }
+        });
         remaining -= toAdd;
       }
-      
-      const distribution = categoryDistribution[categoryCode];
-      
-      const newBlock: CategoryBlock = {
-        id: `block-${Date.now()}`,
-        categoryCodes: [categoryCode],
-        series,
-        participantsPerSeries: distribution,
-        categoryDistribution,
-      };
-      setCategoryBlocks(prev => [...prev, newBlock]);
+
+      setSeries(prev => [...prev, ...newSeriesList]);
     }
   };
 
-  const handleRemoveCategoryFromBlock = (blockId: string, categoryCode: string) => {
-    setCategoryBlocks(prev => prev.map(block => {
-      if (block.id === blockId) {
-        const newCategoryCodes = block.categoryCodes.filter(code => code !== categoryCode);
-        if (newCategoryCodes.length === 0) {
-          return null; // Supprimer le bloc s'il est vide
+  const handleRemoveCategoryFromSeries = (seriesId: string, categoryCode: string) => {
+    setSeries(prev => prev.map(s => {
+      if (s.id === seriesId) {
+        const { [categoryCode]: _, ...rest } = s.categories;
+        // Si la série est vide, on peut la supprimer (optionnel)
+        if (Object.keys(rest).length === 0) {
+          return null;
         }
-        
-        const totalParticipants = newCategoryCodes.reduce((sum, code) => {
-          const cat = categories.find(c => c.code === code);
-          return sum + (cat?.crew_count || 0);
-        }, 0);
-
-        const { series, distribution } = calculateOptimalDistribution(totalParticipants, laneCount);
-        
-        // Répartir chaque catégorie sur les séries
-        const categoryDistribution: Record<string, number[]> = {};
-        newCategoryCodes.forEach(code => {
-          const cat = categories.find(c => c.code === code);
-          if (cat) {
-            const basePerSeries = Math.floor(cat.crew_count / series);
-            const remainder = cat.crew_count % series;
-            categoryDistribution[code] = Array.from({ length: series }, (_, i) => 
-              basePerSeries + (i < remainder ? 1 : 0)
-            );
-          }
-        });
-        
-        return {
-          ...block,
-          categoryCodes: newCategoryCodes,
-          series,
-          participantsPerSeries: distribution,
-          categoryDistribution,
-        };
+        return { ...s, categories: rest };
       }
-      return block;
-    }).filter((b): b is CategoryBlock => b !== null));
+      return s;
+    }).filter((s): s is Series => s !== null));
   };
 
-  const handleUpdateBlock = (blockId: string, updates: Partial<CategoryBlock>) => {
-    setCategoryBlocks(prev => prev.map(b => 
-      b.id === blockId ? { ...b, ...updates } : b
+  const handleUpdateSeries = (seriesId: string, updates: Partial<Series>) => {
+    setSeries(prev => prev.map(s => 
+      s.id === seriesId ? { ...s, ...updates } : s
     ));
   };
 
-  const handleRemoveBlock = (blockId: string) => {
-    setCategoryBlocks(prev => prev.filter(b => b.id !== blockId));
+  const handleRemoveSeries = (seriesId: string) => {
+    setSeries(prev => prev.filter(s => s.id !== seriesId));
   };
 
   const handleDragEnd = (event: DragEndEvent) => {
@@ -666,40 +410,26 @@ export default function GenerateRacesPage() {
 
     const overId = over.id.toString();
 
-    // Si on dépose sur un bloc existant
-    if (overId.startsWith("block-") && categoryBlocks.some(b => b.id === overId)) {
-      const blockId = overId;
-      handleAddCategoryToBlock(category.code, blockId);
+    // Si on dépose sur une série existante
+    if (overId.startsWith("series-") && series.some(s => s.id === overId)) {
+      handleAddCategoryToSeries(category.code, overId);
     } 
-    // Si on dépose sur la zone "nouveau bloc"
-    else if (overId === "new-block") {
-      handleAddCategoryToBlock(category.code);
+    // Si on dépose sur la zone "nouvelle série"
+    else if (overId === "new-series") {
+      handleAddCategoryToSeries(category.code);
     }
-    // Si on dépose sur "unassigned" (retirer de tous les blocs)
+    // Si on dépose sur "unassigned" (retirer de toutes les séries)
     else if (overId === "unassigned") {
-      setCategoryBlocks(prev => prev.map(block => {
-        if (block.categoryCodes.includes(category.code)) {
-          const newCategoryCodes = block.categoryCodes.filter(code => code !== category.code);
-          if (newCategoryCodes.length === 0) {
+      setSeries(prev => prev.map(s => {
+        if (s.categories[category.code]) {
+          const { [category.code]: _, ...rest } = s.categories;
+          if (Object.keys(rest).length === 0) {
             return null;
           }
-          
-          const totalParticipants = newCategoryCodes.reduce((sum, code) => {
-            const cat = categories.find(c => c.code === code);
-            return sum + (cat?.crew_count || 0);
-          }, 0);
-
-          const { series, distribution } = calculateOptimalDistribution(totalParticipants, laneCount);
-          
-          return {
-            ...block,
-            categoryCodes: newCategoryCodes,
-            series,
-            participantsPerSeries: distribution,
-          };
+          return { ...s, categories: rest };
         }
-        return block;
-      }).filter((b): b is CategoryBlock => b !== null));
+        return s;
+      }).filter((s): s is Series => s !== null));
     }
   };
 
@@ -713,7 +443,7 @@ export default function GenerateRacesPage() {
       return;
     }
 
-    if (categoryBlocks.length === 0) {
+    if (series.length === 0) {
       toast({
         title: "Erreur",
         description: "Veuillez organiser au moins une catégorie",
@@ -725,10 +455,10 @@ export default function GenerateRacesPage() {
     try {
       setLoading(true);
 
-      // Construire l'ordre des catégories depuis les blocs
+      // Construire l'ordre des catégories depuis les séries
       const categoryOrder: string[] = [];
-      categoryBlocks.forEach(block => {
-        block.categoryCodes.forEach(code => {
+      series.forEach(s => {
+        Object.keys(s.categories).forEach(code => {
           if (!categoryOrder.includes(code)) {
             categoryOrder.push(code);
           }
@@ -792,7 +522,7 @@ export default function GenerateRacesPage() {
             </h1>
           </div>
           <p className="text-blue-100 text-lg">
-            Configurez les paramètres et organisez les catégories pour générer automatiquement les courses
+            Configurez les paramètres et organisez les catégories en séries pour générer automatiquement les courses
           </p>
         </div>
       </div>
@@ -810,7 +540,7 @@ export default function GenerateRacesPage() {
                 value={phaseId} 
                 onValueChange={(v) => {
                   setPhaseId(v);
-                  setCategoryBlocks([]); // Réinitialiser les blocs
+                  setSeries([]);
                 }}
                 disabled={loadingPhases}
               >
@@ -831,18 +561,7 @@ export default function GenerateRacesPage() {
               <Label>Nombre de lignes d'eau *</Label>
               <Select 
                 value={laneCount.toString()} 
-                onValueChange={(v) => {
-                  setLaneCount(Number(v));
-                  // Recalculer les blocs
-                  setCategoryBlocks(prev => prev.map(block => {
-                    const totalParticipants = block.categoryCodes.reduce((sum, code) => {
-                      const cat = categories.find(c => c.code === code);
-                      return sum + (cat?.crew_count || 0);
-                    }, 0);
-                    const { series, distribution } = calculateOptimalDistribution(totalParticipants, Number(v));
-                    return { ...block, series, participantsPerSeries: distribution };
-                  }));
-                }}
+                onValueChange={(v) => setLaneCount(Number(v))}
               >
                 <SelectTrigger>
                   <SelectValue />
@@ -882,7 +601,7 @@ export default function GenerateRacesPage() {
         </CardContent>
       </Card>
 
-      {/* Deux colonnes : Catégories disponibles et Ordre/Répartition */}
+      {/* Deux colonnes : Catégories disponibles et Séries */}
       {phaseId && laneCount > 0 ? (
         <DndContext
           collisionDetection={closestCenter}
@@ -897,7 +616,7 @@ export default function GenerateRacesPage() {
                   Catégories disponibles
                 </CardTitle>
                 <p className="text-sm text-muted-foreground mt-1">
-                  Glissez-déposez les catégories vers la colonne de droite pour les organiser
+                  Glissez-déposez les catégories vers la colonne de droite pour créer des séries
                 </p>
               </CardHeader>
               <CardContent>
@@ -929,44 +648,45 @@ export default function GenerateRacesPage() {
               </CardContent>
             </Card>
 
-            {/* Colonne droite : Ordre et répartition */}
+            {/* Colonne droite : Séries */}
             <Card>
               <CardHeader>
-                <CardTitle>Ordre et répartition des courses</CardTitle>
+                <CardTitle>Séries</CardTitle>
                 <p className="text-sm text-muted-foreground mt-1">
-                  Organisez les catégories en blocs. Les catégories dans le même bloc seront regroupées dans les mêmes courses.
+                  Organisez les catégories en séries. Glissez-déposez une catégorie sur une série pour l'ajouter.
                 </p>
               </CardHeader>
               <CardContent>
                 <ScrollArea className="h-[600px]">
                   <div className="space-y-4">
-                    {categoryBlocks.length > 0 ? (
-                      categoryBlocks.map((block) => (
-                        <DroppableBlock
-                          key={block.id}
-                          blockId={block.id}
+                    {series.length > 0 ? (
+                      series.map((s, idx) => (
+                        <DroppableSeries
+                          key={s.id}
+                          seriesId={s.id}
                         >
-                          <CategoryBlockCard
-                            block={block}
+                          <SeriesCard
+                            series={s}
+                            seriesIndex={idx}
                             categories={categories}
                             laneCount={laneCount}
-                            onUpdate={handleUpdateBlock}
-                            onRemove={handleRemoveBlock}
-                            onRemoveCategory={handleRemoveCategoryFromBlock}
+                            onUpdate={handleUpdateSeries}
+                            onRemove={handleRemoveSeries}
+                            onRemoveCategory={handleRemoveCategoryFromSeries}
                           />
-                        </DroppableBlock>
+                        </DroppableSeries>
                       ))
                     ) : (
                       <div className="text-center py-12 text-muted-foreground border-2 border-dashed rounded-lg">
                         <Info className="w-12 h-12 mx-auto mb-3 opacity-50" />
-                        <p className="font-medium">Aucun bloc créé</p>
+                        <p className="font-medium">Aucune série créée</p>
                         <p className="text-sm mt-1">
                           Glissez-déposez des catégories depuis la colonne de gauche
                         </p>
                       </div>
                     )}
 
-                    {/* Zone de dépôt pour créer un nouveau bloc */}
+                    {/* Zone de dépôt pour créer une nouvelle série */}
                     <DroppableZone />
                   </div>
                 </ScrollArea>
@@ -987,7 +707,7 @@ export default function GenerateRacesPage() {
       )}
 
       {/* Bouton de génération */}
-      {phaseId && categoryBlocks.length > 0 && (
+      {phaseId && series.length > 0 && (
         <Card>
           <CardContent className="pt-6">
             <Button 
@@ -1017,7 +737,7 @@ export default function GenerateRacesPage() {
 
 function DroppableZone() {
   const { setNodeRef, isOver } = useDroppable({
-    id: "new-block",
+    id: "new-series",
   });
 
   return (
@@ -1031,15 +751,15 @@ function DroppableZone() {
     >
       <Plus className="w-8 h-8 mx-auto mb-2 text-gray-400" />
       <p className="text-sm text-gray-600 font-medium">
-        Déposez ici pour créer un nouveau bloc
+        Déposez ici pour créer une nouvelle série
       </p>
     </div>
   );
 }
 
-function DroppableBlock({ blockId, children }: { blockId: string; children: React.ReactNode }) {
+function DroppableSeries({ seriesId, children }: { seriesId: string; children: React.ReactNode }) {
   const { setNodeRef, isOver } = useDroppable({
-    id: blockId,
+    id: seriesId,
   });
 
   return (
