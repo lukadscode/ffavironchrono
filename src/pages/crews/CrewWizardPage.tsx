@@ -584,13 +584,19 @@ export default function CrewWizardPage() {
         }
 
         // Ajouter le participant à l'équipage via /crew-participants
-        await api.post("/crew-participants", {
+        const payload: any = {
           crew_id: crewId,
           participant_id: participantId,
           is_coxswain: p.is_coxswain || false,
-          coxswain_weight: p.is_coxswain ? 0 : 0, // Toujours envoyer, même si ce n'est pas un barreur
           seat_position: index + 1,
-        });
+        };
+        
+        // Ajouter coxswain_weight seulement si c'est un barreur
+        if (p.is_coxswain) {
+          payload.coxswain_weight = 0;
+        }
+        
+        await api.post("/crew-participants", payload);
       }
 
       toast({
