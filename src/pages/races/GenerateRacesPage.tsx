@@ -88,13 +88,15 @@ function CategoryBlockCard({
   categories, 
   laneCount, 
   onUpdate, 
-  onRemove 
+  onRemove,
+  onRemoveCategory
 }: { 
   block: CategoryBlock; 
   categories: Category[];
   laneCount: number;
   onUpdate: (blockId: string, updates: Partial<CategoryBlock>) => void;
   onRemove: (blockId: string) => void;
+  onRemoveCategory: (blockId: string, categoryCode: string) => void;
 }) {
   const totalParticipants = block.categoryCodes.reduce((sum, code) => {
     const cat = categories.find(c => c.code === code);
@@ -148,10 +150,26 @@ function CategoryBlockCard({
       <CardHeader className="pb-3">
         <div className="flex items-center justify-between">
           <CardTitle className="text-base">
-            {block.categoryCodes.map(code => {
+            {block.categoryCodes.map((code, idx) => {
               const cat = categories.find(c => c.code === code);
-              return cat?.label || code;
-            }).join(" + ")}
+              return (
+                <span key={code} className="inline-flex items-center gap-1">
+                  {idx > 0 && <span className="text-slate-400">+</span>}
+                  <span>{cat?.label || code}</span>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-4 w-4 text-red-500 hover:text-red-700 hover:bg-red-50 ml-1"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onRemoveCategory(block.id, code);
+                    }}
+                  >
+                    <X className="w-3 h-3" />
+                  </Button>
+                </span>
+              );
+            })}
           </CardTitle>
           <Button
             variant="ghost"
@@ -326,67 +344,12 @@ export default function GenerateRacesPage() {
     return { series, distribution };
   };
 
-  // Calculer automatiquement les blocs quand phaseId, laneCount ou categories changent
+  // Réinitialiser les blocs quand la phase change
   useEffect(() => {
-    if (!phaseId || !laneCount || categories.length === 0) {
-      if (categoryBlocks.length === 0) {
-        setCategoryBlocks([]);
-      }
-      return;
+    if (phaseId) {
+      setCategoryBlocks([]);
     }
-
-    // Si aucun bloc n'existe, créer automatiquement des blocs en essayant de regrouper intelligemment
-    if (categoryBlocks.length === 0) {
-      const initialBlocks: CategoryBlock[] = [];
-      const processedCategories = new Set<string>();
-
-      // Trier les catégories par nombre de participants (décroissant)
-      const sortedCategories = [...categories].sort((a, b) => b.crew_count - a.crew_count);
-
-      sortedCategories.forEach((cat) => {
-        if (processedCategories.has(cat.code)) return;
-
-        // Chercher un bloc existant où on peut ajouter cette catégorie
-        let addedToExisting = false;
-        for (const block of initialBlocks) {
-          const totalParticipants = block.categoryCodes.reduce((sum, code) => {
-            const c = categories.find(c => c.code === code);
-            return sum + (c?.crew_count || 0);
-          }, 0);
-          
-          const newTotal = totalParticipants + cat.crew_count;
-          const maxSeries = Math.ceil(newTotal / laneCount);
-          const minParticipantsPerSeries = Math.ceil(newTotal / maxSeries);
-          
-          // Si on peut ajouter sans dépasser les lignes d'eau
-          if (minParticipantsPerSeries <= laneCount) {
-            block.categoryCodes.push(cat.code);
-            const { series, distribution } = calculateOptimalDistribution(newTotal, laneCount);
-            block.series = series;
-            block.participantsPerSeries = distribution;
-            processedCategories.add(cat.code);
-            addedToExisting = true;
-            break;
-          }
-        }
-
-        // Si on n'a pas pu l'ajouter à un bloc existant, créer un nouveau bloc
-        if (!addedToExisting) {
-          const { series, distribution } = calculateOptimalDistribution(cat.crew_count, laneCount);
-          initialBlocks.push({
-            id: `block-${Date.now()}-${initialBlocks.length}`,
-            categoryCodes: [cat.code],
-            series,
-            participantsPerSeries: distribution,
-          });
-          processedCategories.add(cat.code);
-        }
-      });
-
-      setCategoryBlocks(initialBlocks);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [phaseId, laneCount, categories]);
+  }, [phaseId]);
 
   // Catégories non assignées (pas dans les blocs)
   const unassignedCategories = useMemo(() => {
@@ -398,10 +361,10 @@ export default function GenerateRacesPage() {
     const category = categories.find(c => c.code === categoryCode);
     if (!category) return;
 
-    if (blockId) {
+    if (blockId && categoryBlocks.some(b => b.id === blockId)) {
       // Ajouter à un bloc existant
       const block = categoryBlocks.find(b => b.id === blockId);
-      if (!block) return;
+      if (!block || block.categoryCodes.includes(categoryCode)) return; // Déjà dans le bloc
 
       const newCategoryCodes = [...block.categoryCodes, categoryCode];
       const totalParticipants = newCategoryCodes.reduce((sum, code) => {
@@ -760,6 +723,7 @@ export default function GenerateRacesPage() {
                             laneCount={laneCount}
                             onUpdate={handleUpdateBlock}
                             onRemove={handleRemoveBlock}
+                            onRemoveCategory={handleRemoveCategoryFromBlock}
                           />
                         </DroppableBlock>
                       ))
