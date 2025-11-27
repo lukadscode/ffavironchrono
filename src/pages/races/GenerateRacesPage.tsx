@@ -32,7 +32,13 @@ interface Series {
   categories: Record<string, number>; // { categoryCode: numberOfParticipants }
 }
 
-function SortableCategoryItem({ category }: { category: Category }) {
+function SortableCategoryItem({ 
+  category, 
+  assignedCount 
+}: { 
+  category: Category;
+  assignedCount: number;
+}) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: category.id,
   });
@@ -43,12 +49,17 @@ function SortableCategoryItem({ category }: { category: Category }) {
     opacity: isDragging ? 0.5 : 1,
   };
 
+  const isComplete = assignedCount >= category.crew_count;
+  const bgColor = isComplete ? "bg-green-50 border-green-200" : "bg-orange-50 border-orange-200";
+
   return (
     <div
       ref={setNodeRef}
       style={style}
-      className={`flex items-center gap-3 p-3 border rounded-lg bg-white transition-all ${
-        isDragging ? "shadow-lg border-blue-500 scale-105 z-50" : "border-gray-200 hover:border-blue-300 hover:shadow-md"
+      className={`flex items-center gap-3 p-3 border rounded-lg transition-all ${
+        isDragging 
+          ? "shadow-lg border-blue-500 scale-105 z-50 bg-white" 
+          : `${bgColor} hover:shadow-md`
       }`}
     >
       <div
@@ -61,8 +72,12 @@ function SortableCategoryItem({ category }: { category: Category }) {
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-2 mb-1">
           <span className="font-bold text-sm text-slate-900">{category.code}</span>
-          <span className="px-2 py-0.5 bg-blue-100 text-blue-700 rounded text-xs font-medium">
-            {category.crew_count} {category.crew_count === 1 ? "équipage" : "équipages"}
+          <span className={`px-2 py-0.5 rounded text-xs font-medium ${
+            isComplete 
+              ? "bg-green-100 text-green-700" 
+              : "bg-orange-100 text-orange-700"
+          }`}>
+            {assignedCount} / {category.crew_count} équipages
           </span>
         </div>
         <div className="text-xs text-slate-600">{category.label}</div>
@@ -306,14 +321,29 @@ export default function GenerateRacesPage() {
     }
   }, [phaseId]);
 
-  // Catégories non assignées (pas dans les séries)
-  const unassignedCategories = useMemo(() => {
-    const assignedCodes = new Set<string>();
-    series.forEach(s => {
-      Object.keys(s.categories).forEach(code => assignedCodes.add(code));
+  // Calculer le nombre d'équipages affectés pour chaque catégorie
+  const categoryAssignedCounts = useMemo(() => {
+    const counts: Record<string, number> = {};
+    categories.forEach(cat => {
+      counts[cat.code] = 0;
     });
-    return categories.filter(cat => !assignedCodes.has(cat.code));
+    
+    series.forEach(s => {
+      Object.entries(s.categories).forEach(([code, count]) => {
+        counts[code] = (counts[code] || 0) + count;
+      });
+    });
+    
+    return counts;
   }, [categories, series]);
+
+  // Catégories non assignées (pas dans les séries) - mais on affiche toutes les catégories avec leur statut
+  const allCategoriesWithStatus = useMemo(() => {
+    return categories.map(cat => ({
+      ...cat,
+      assignedCount: categoryAssignedCounts[cat.code] || 0
+    }));
+  }, [categories, categoryAssignedCounts]);
 
   const handleAddCategoryToSeries = (categoryCode: string, seriesId?: string) => {
     const category = categories.find(c => c.code === categoryCode);
@@ -465,9 +495,9 @@ export default function GenerateRacesPage() {
         });
       });
 
-      // Ajouter les catégories non assignées
-      unassignedCategories.forEach(cat => {
-        if (!categoryOrder.includes(cat.code)) {
+      // Ajouter les catégories non assignées (celles qui n'ont pas tous leurs équipages affectés)
+      allCategoriesWithStatus.forEach(cat => {
+        if (!categoryOrder.includes(cat.code) && cat.assignedCount < cat.crew_count) {
           categoryOrder.push(cat.code);
         }
       });
@@ -624,16 +654,20 @@ export default function GenerateRacesPage() {
                   <div className="flex items-center justify-center py-12">
                     <Loader2 className="w-8 h-8 animate-spin text-blue-600" />
                   </div>
-                ) : unassignedCategories.length > 0 ? (
+                ) : allCategoriesWithStatus.length > 0 ? (
                   <UnassignedDroppable>
                     <ScrollArea className="h-[600px] border rounded-lg p-4 bg-slate-50">
                       <SortableContext
-                        items={unassignedCategories.map((c) => c.id)}
+                        items={allCategoriesWithStatus.map((c) => c.id)}
                         strategy={verticalListSortingStrategy}
                       >
                         <div className="space-y-3">
-                          {unassignedCategories.map((category) => (
-                            <SortableCategoryItem key={category.id} category={category} />
+                          {allCategoriesWithStatus.map((category) => (
+                            <SortableCategoryItem 
+                              key={category.id} 
+                              category={category}
+                              assignedCount={category.assignedCount}
+                            />
                           ))}
                         </div>
                       </SortableContext>
@@ -642,7 +676,7 @@ export default function GenerateRacesPage() {
                 ) : (
                   <div className="text-center py-12 text-muted-foreground">
                     <Tag className="w-12 h-12 mx-auto mb-3 opacity-50" />
-                    <p className="font-medium">Toutes les catégories sont organisées</p>
+                    <p className="font-medium">Aucune catégorie disponible</p>
                   </div>
                 )}
               </CardContent>
