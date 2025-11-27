@@ -390,19 +390,26 @@ export default function CrewDetail() {
     try {
       setIsAddingParticipant(true);
       
-      // Enregistrer immédiatement via l'API avec création du participant
+      // Étape 1: Créer le participant
       const normalizedGender = normalizeGender(newParticipant.gender);
-      await api.post(`/crews/${crewId}/seats`, {
-        new_participant: {
-          first_name: newParticipant.first_name,
-          last_name: newParticipant.last_name,
-          license_number: newParticipant.license_number || undefined,
-          club_name: newParticipant.club_name || undefined,
-          gender: normalizedGender || undefined,
-          email: newParticipant.email || undefined,
-        },
-        seat_position,
+      const participantRes = await api.post("/participants", {
+        first_name: newParticipant.first_name,
+        last_name: newParticipant.last_name,
+        license_number: newParticipant.license_number || undefined,
+        club_name: newParticipant.club_name || undefined,
+        gender: normalizedGender || undefined,
+        email: newParticipant.email || undefined,
+      });
+      
+      const participantId = participantRes.data.data.id;
+      
+      // Étape 2: Ajouter le participant à l'équipage via /crew-participants
+      await api.post("/crew-participants", {
+        crew_id: crewId,
+        participant_id: participantId,
         is_coxswain: false,
+        coxswain_weight: undefined,
+        seat_position,
       });
 
       // Recharger les données pour avoir la structure complète

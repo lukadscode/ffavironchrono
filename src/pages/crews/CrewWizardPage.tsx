@@ -564,8 +564,9 @@ export default function CrewWizardPage() {
         }
       }
 
-      // Étape 3: Préparer les données pour lier tous les participants à l'équipage
-      const seats = participants.map((p, index) => {
+      // Étape 3: Ajouter tous les participants à l'équipage via /crew-participants
+      for (let index = 0; index < participants.length; index++) {
+        const p = participants[index];
         let participantId: string;
         
         if (p.participantId) {
@@ -582,18 +583,15 @@ export default function CrewWizardPage() {
           throw new Error(`Participant ${p.id} n'a pas d'ID`);
         }
 
-        return {
-          id: participantId,
+        // Ajouter le participant à l'équipage via /crew-participants
+        await api.post("/crew-participants", {
+          crew_id: crewId,
+          participant_id: participantId,
+          is_coxswain: p.is_coxswain || false,
+          coxswain_weight: p.is_coxswain ? 0 : 0, // Toujours envoyer, même si ce n'est pas un barreur
           seat_position: index + 1,
-        };
-      });
-
-      // Lier tous les participants à l'équipage
-      // new est vide car tous les participants sont déjà créés
-      await api.put(`/crews/${crewId}/seats`, {
-        seats: seats,
-        new: [],
-      });
+        });
+      }
 
       toast({
         title: "Succès",
