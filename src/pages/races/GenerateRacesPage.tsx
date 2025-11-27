@@ -221,36 +221,84 @@ function CategoryBlockCard({
         </div>
         
         <div className="space-y-2">
-          <Label className="text-sm">Répartition par série:</Label>
-          {block.participantsPerSeries.map((count, idx) => (
-            <div key={idx} className="flex items-center gap-2 p-2 bg-white rounded border">
-              <span className="text-sm font-medium w-20">Série {idx + 1}:</span>
-              <div className="flex items-center gap-1">
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="h-6 w-6"
-                  onClick={() => handleParticipantAdjust(idx, -1)}
-                  disabled={count <= 1}
+          <Label className="text-sm">Catégories dans ce bloc:</Label>
+          <div className="flex flex-wrap gap-2 mb-3">
+            {block.categoryCodes.map((code) => {
+              const cat = categories.find(c => c.code === code);
+              return (
+                <span
+                  key={code}
+                  className="inline-flex items-center gap-1 px-2 py-1 bg-blue-100 text-blue-700 rounded text-xs font-medium"
                 >
-                  <Minus className="w-3 h-3" />
-                </Button>
-                <span className="font-semibold w-8 text-center">{count}</span>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="h-6 w-6"
-                  onClick={() => handleParticipantAdjust(idx, 1)}
-                  disabled={count >= laneCount}
-                >
-                  <Plus className="w-3 h-3" />
-                </Button>
-                <span className="text-xs text-slate-500 ml-2">
-                  ({count} / {laneCount} lignes)
+                  {cat?.label || code}
+                  <span className="text-blue-500">({cat?.crew_count || 0})</span>
                 </span>
+              );
+            })}
+          </div>
+          
+          <Label className="text-sm">Répartition par série:</Label>
+          {block.participantsPerSeries.map((count, idx) => {
+            // Calculer la répartition approximative des catégories dans cette série
+            const totalParticipants = block.categoryCodes.reduce((sum, code) => {
+              const cat = categories.find(c => c.code === code);
+              return sum + (cat?.crew_count || 0);
+            }, 0);
+            
+            return (
+              <div key={idx} className="p-3 bg-white rounded border border-gray-200 space-y-2">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm font-semibold">Série {idx + 1}:</span>
+                    <span className="text-xs text-slate-500">
+                      {count} participant{count > 1 ? 's' : ''} / {laneCount} lignes
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-1">
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-6 w-6"
+                      onClick={() => handleParticipantAdjust(idx, -1)}
+                      disabled={count <= 1}
+                    >
+                      <Minus className="w-3 h-3" />
+                    </Button>
+                    <span className="font-semibold w-8 text-center">{count}</span>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-6 w-6"
+                      onClick={() => handleParticipantAdjust(idx, 1)}
+                      disabled={count >= laneCount}
+                    >
+                      <Plus className="w-3 h-3" />
+                    </Button>
+                  </div>
+                </div>
+                <div className="flex flex-wrap gap-1.5 pt-1 border-t border-gray-100">
+                  {block.categoryCodes.map((code) => {
+                    const cat = categories.find(c => c.code === code);
+                    if (!cat) return null;
+                    
+                    // Calculer approximativement combien de participants de cette catégorie dans cette série
+                    const categoryRatio = cat.crew_count / totalParticipants;
+                    const approxInSeries = Math.round(count * categoryRatio);
+                    
+                    return (
+                      <span
+                        key={code}
+                        className="inline-flex items-center gap-1 px-2 py-0.5 bg-slate-100 text-slate-700 rounded text-xs"
+                      >
+                        {cat.label || code}
+                        <span className="text-slate-500 font-medium">~{approxInSeries}</span>
+                      </span>
+                    );
+                  })}
+                </div>
               </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       </CardContent>
     </Card>
