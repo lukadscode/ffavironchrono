@@ -1,6 +1,7 @@
 import { Navigate, useParams } from "react-router-dom";
 import { useAuth } from "@/context/AuthContext";
-import { useEventRole, EventRole } from "@/hooks/useEventRole";
+import { useEventRole } from "@/hooks/useEventRole";
+import type { EventRole } from "@/hooks/useEventRole";
 import type { ReactNode } from "react";
 import { Loader2 } from "lucide-react";
 
