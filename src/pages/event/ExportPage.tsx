@@ -240,25 +240,69 @@ export default function ExportPage() {
       );
 
       if (format === "pdf") {
-        // Utiliser l'API backend pour le PDF
-        const res = await api.get(`/exports/startlist/event/${eventId}`, {
-          responseType: "blob",
-        });
+        // Utiliser l'API backend pour le PDF avec gestion d'erreur robuste
+        try {
+          const res = await api.get(`/exports/startlist/event/${eventId}`, {
+            responseType: "blob",
+            validateStatus: () => true, // Ne pas rejeter automatiquement les erreurs HTTP
+          });
 
-        const blob = new Blob([res.data], { type: "application/pdf" });
-        const url = URL.createObjectURL(blob);
-        const link = document.createElement("a");
-        link.href = url;
-        link.download = `Startlist_${event?.name?.replace(/\s+/g, "_") || "Event"}_${dayjs().format("YYYY-MM-DD")}.pdf`;
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
-        URL.revokeObjectURL(url);
+          // Vérifier le statut de la réponse
+          if (res.status < 200 || res.status >= 300) {
+            let errorMsg = `HTTP ${res.status}`;
+            try {
+              const text = await (res.data as any).text?.();
+              if (text) {
+                try {
+                  const json = JSON.parse(text);
+                  errorMsg = json?.message || json?.error || errorMsg;
+                } catch {
+                  errorMsg = text;
+                }
+              }
+            } catch {}
+            
+            toast({
+              title: "Erreur export PDF",
+              description: errorMsg || "L'endpoint PDF n'est pas disponible. Veuillez utiliser Excel ou CSV.",
+              variant: "destructive",
+            });
+            return;
+          }
 
-        toast({
-          title: "Export PDF réussi",
-          description: "Fichier PDF téléchargé",
-        });
+          // Vérifier que c'est bien un PDF
+          const contentType = (res.headers?.["content-type"] || "").toLowerCase();
+          if (!contentType.includes("pdf")) {
+            toast({
+              title: "Erreur export PDF",
+              description: "Le serveur n'a pas renvoyé un fichier PDF valide. Veuillez utiliser Excel ou CSV.",
+              variant: "destructive",
+            });
+            return;
+          }
+
+          const blob = new Blob([res.data], { type: "application/pdf" });
+          const url = URL.createObjectURL(blob);
+          const link = document.createElement("a");
+          link.href = url;
+          link.download = `Startlist_${event?.name?.replace(/\s+/g, "_") || "Event"}_${dayjs().format("YYYY-MM-DD")}.pdf`;
+          document.body.appendChild(link);
+          link.click();
+          document.body.removeChild(link);
+          URL.revokeObjectURL(url);
+
+          toast({
+            title: "Export PDF réussi",
+            description: "Fichier PDF téléchargé",
+          });
+        } catch (err: any) {
+          console.error("Erreur export PDF:", err);
+          toast({
+            title: "Erreur export PDF",
+            description: err?.response?.data?.message || err?.message || "Impossible de générer le PDF. Veuillez utiliser Excel ou CSV.",
+            variant: "destructive",
+          });
+        }
       } else {
         // Générer Excel ou CSV avec une meilleure structure
         const allRows: any[] = [];

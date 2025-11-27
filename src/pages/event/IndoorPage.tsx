@@ -98,6 +98,12 @@ export default function IndoorPage() {
   };
 
   const generateRac2ForRace = async (race: FullRace, event: Event, distances: any[]): Promise<void> => {
+    // Vérifier que la course a des équipages
+    if (!race.race_crews || race.race_crews.length === 0) {
+      console.warn(`Course ${race.name} n'a pas d'équipages, fichier .rac2 non généré`);
+      return;
+    }
+
     // Récupérer la distance de la course
     let finalRaceDistance = race.distance;
     if (!finalRaceDistance && race.distance_id) {
@@ -269,16 +275,46 @@ export default function IndoorPage() {
       const distancesRes = await api.get(`/distances/event/${eventId}`);
       const distances = distancesRes.data.data || [];
 
-      // Récupérer les détails complets de chaque course
+      // Récupérer les détails complets de chaque course avec leurs équipages
       const fullRaces: FullRace[] = [];
       for (const race of races) {
         try {
           const raceRes = await api.get(`/races/${race.id}`);
-          const fullRace: FullRace = raceRes.data.data || raceRes.data;
-          fullRaces.push(fullRace);
+          const raceData = raceRes.data.data || raceRes.data;
+          
+          // Vérifier si race_crews est déjà inclus, sinon le récupérer
+          let raceCrews = raceData.race_crews || [];
+          if (!raceCrews || raceCrews.length === 0) {
+            try {
+              const raceCrewsRes = await api.get(`/race-crews/${race.id}`);
+              raceCrews = raceCrewsRes.data.data || raceCrewsRes.data || [];
+            } catch (err) {
+              console.error(`Erreur lors de la récupération des équipages pour la course ${race.id}:`, err);
+              raceCrews = [];
+            }
+          }
+          
+          const fullRace: FullRace = {
+            ...raceData,
+            race_crews: raceCrews,
+          };
+          
+          // Ne générer que si la course a des équipages
+          if (raceCrews.length > 0) {
+            fullRaces.push(fullRace);
+          }
         } catch (err) {
           console.error(`Erreur lors de la récupération de la course ${race.id}:`, err);
         }
+      }
+
+      if (fullRaces.length === 0) {
+        toast({
+          title: "Aucune course avec équipages",
+          description: "Aucune course ne contient d'équipages à exporter",
+          variant: "destructive",
+        });
+        return;
       }
 
       // Générer et télécharger chaque fichier .rac2
@@ -288,7 +324,7 @@ export default function IndoorPage() {
           await generateRac2ForRace(race, event, distances);
           successCount++;
           // Petit délai entre chaque téléchargement pour éviter de surcharger le navigateur
-          await new Promise(resolve => setTimeout(resolve, 100));
+          await new Promise(resolve => setTimeout(resolve, 200));
         } catch (err) {
           console.error(`Erreur lors de la génération du fichier pour ${race.name}:`, err);
         }
