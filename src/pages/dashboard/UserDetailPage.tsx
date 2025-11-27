@@ -59,7 +59,7 @@ type UserEvent = {
   id: string;
   user_id: string;
   event_id: string;
-  role: "viewer" | "editor" | "referee" | "organiser";
+  role: "viewer" | "editor" | "referee" | "timing" | "organiser";
   Event: {
     id: string;
     name: string;
@@ -343,6 +343,8 @@ export default function UserDetailPage() {
         return "Éditeur";
       case "referee":
         return "Arbitre";
+      case "timing":
+        return "Chronométreur";
       case "viewer":
         return "Visualiseur";
       default:
@@ -610,6 +612,7 @@ export default function UserDetailPage() {
                             <SelectItem value="viewer">Visualiseur</SelectItem>
                             <SelectItem value="editor">Éditeur</SelectItem>
                             <SelectItem value="referee">Arbitre</SelectItem>
+                            <SelectItem value="timing">Chronométreur</SelectItem>
                             <SelectItem value="organiser">Organisateur</SelectItem>
                           </SelectContent>
                         </Select>

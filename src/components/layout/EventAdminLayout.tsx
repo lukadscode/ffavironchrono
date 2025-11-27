@@ -1,6 +1,9 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo } from "react";
 import { Outlet, useParams, NavLink } from "react-router-dom";
 import clsx from "clsx";
+import { useEventRole } from "@/hooks/useEventRole";
+import { ROLE_PERMISSIONS } from "@/router/EventProtectedRoute";
+import { useAuth } from "@/context/AuthContext";
 import {
   Home,
   Users,
@@ -31,19 +34,19 @@ const logout = () => {
   window.location.href = "/";
 };
 
-const navItems = [
-  { to: "", label: "Accueil", icon: Home },
-  { to: "permissions", label: "Droits", icon: Shield },
-  { to: "participants", label: "Participants", icon: Users },
-  { to: "crews", label: "Équipages", icon: Rows },
-  { to: "distances", label: "Distances", icon: MapPin },
-  { to: "races", label: "Courses", icon: Flag },
-  { to: "racePhases", label: "Phases", icon: Flag },
-  { to: "notifications", label: "Notifications", icon: Bell },
-  { to: "timingPoint", label: "Points", icon: Timer },
-  { to: "timing", label: "Chrono", icon: Timer },
-  { to: "arbitres", label: "Arbitres", icon: Gavel },
-  { to: "indoor", label: "Indoor", icon: Activity },
+const allNavItems = [
+  { to: "", label: "Accueil", icon: Home, permission: "overview" },
+  { to: "permissions", label: "Droits", icon: Shield, permission: "permissions" },
+  { to: "participants", label: "Participants", icon: Users, permission: "participants" },
+  { to: "crews", label: "Équipages", icon: Rows, permission: "crews" },
+  { to: "distances", label: "Distances", icon: MapPin, permission: "distances" },
+  { to: "races", label: "Courses", icon: Flag, permission: "races" },
+  { to: "racePhases", label: "Phases", icon: Flag, permission: "racePhases" },
+  { to: "notifications", label: "Notifications", icon: Bell, permission: "notifications" },
+  { to: "timingPoint", label: "Points", icon: Timer, permission: "timingPoint" },
+  { to: "timing", label: "Chrono", icon: Timer, permission: "timing" },
+  { to: "arbitres", label: "Arbitres", icon: Gavel, permission: "arbitres" },
+  { to: "indoor", label: "Indoor", icon: Activity, permission: "indoor" },
 ];
 
 export default function EventAdminLayout() {
@@ -51,8 +54,28 @@ export default function EventAdminLayout() {
   const [collapsed, setCollapsed] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const { theme, toggleTheme } = useTheme();
+  const eventRole = useEventRole();
 
   const [eventName, setEventName] = useState<string>("");
+
+  // Vérifier si l'utilisateur est admin global
+  const { user } = useAuth();
+  const isGlobalAdmin = user?.role === "admin" || user?.role === "superadmin";
+
+  // Filtrer les éléments de navigation selon les permissions
+  const navItems = useMemo(() => {
+    // Les admins globaux voient tout
+    if (isGlobalAdmin) return allNavItems;
+    
+    if (!eventRole) return allNavItems.filter(item => item.permission === "overview");
+    
+    // L'organisateur voit tout
+    if (eventRole === "organiser") return allNavItems;
+    
+    // Pour les autres rôles, filtrer selon les permissions
+    const permissions = ROLE_PERMISSIONS[eventRole] || [];
+    return allNavItems.filter(item => permissions.includes(item.permission));
+  }, [eventRole, isGlobalAdmin]);
 
   useEffect(() => {
     if (!eventId) return;

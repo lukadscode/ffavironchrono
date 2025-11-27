@@ -1,6 +1,7 @@
 import { Navigate, createBrowserRouter, RouterProvider } from "react-router-dom";
 import Register from "@/pages/Register";
 import ProtectedRoute from "@/router/ProtectedRoute";
+import EventProtectedRoute from "@/router/EventProtectedRoute";
 import Logout from "@/pages/Logout";
 import DashboardLayout from "@/components/layout/DashboardLayout";
 import DashboardHome from "@/pages/dashboard/DashboardHome";
@@ -103,25 +104,171 @@ const router = createBrowserRouter([
       </ProtectedRoute>
     ),
     children: [
-      { path: "", element: <EventOverviewPage /> },
-      { path: "participants", element: <ParticipantsPage /> },
-      { path: "participants/:participantId", element: <ParticipantDetail /> },
-      { path: "crews", element: <CrewList /> },
-      { path: "crews/new", element: <CrewWizardPage /> },
-      { path: "crews/:crewId", element: <CrewDetail /> },
-      { path: "races", element: <RacesPage /> },
-      { path: "timing", element: <TimingOverviewPage /> },
-      { path: "timing/:timingPointId", element: <TimingPage /> },
-      { path: "distances", element: <DistancesPage /> }, // ✅ route ajoutée ici
-      { path: "permissions", element: <EventPermissionsPage /> },
-      { path: "notifications", element: <NotificationsPage /> },
-      { path: "racePhases", element: <RacePhasesPage /> },
-      { path: "racePhases/:phaseId", element: <RacePhaseDetailPage /> },
-      { path: "generate-races", element: <GenerateRacesPage /> },
-      { path: "timingPoint", element: <TimingPointsPage /> },
-      { path: "arbitres", element: <ArbitresPage /> },
-      { path: "indoor", element: <IndoorPage /> },
-      { path: "indoor/:raceId", element: <IndoorRaceDetailPage /> },
+      // Overview - accessible à tous les rôles
+      { 
+        path: "", 
+        element: (
+          <EventProtectedRoute allowedRoles={["organiser", "editor", "referee", "timing", "viewer"]}>
+            <EventOverviewPage />
+          </EventProtectedRoute>
+        )
+      },
+      // Participants - organisateur et éditeur
+      { 
+        path: "participants", 
+        element: (
+          <EventProtectedRoute allowedRoles={["organiser", "editor"]}>
+            <ParticipantsPage />
+          </EventProtectedRoute>
+        )
+      },
+      { 
+        path: "participants/:participantId", 
+        element: (
+          <EventProtectedRoute allowedRoles={["organiser", "editor"]}>
+            <ParticipantDetail />
+          </EventProtectedRoute>
+        )
+      },
+      // Équipages - organisateur et éditeur
+      { 
+        path: "crews", 
+        element: (
+          <EventProtectedRoute allowedRoles={["organiser", "editor"]}>
+            <CrewList />
+          </EventProtectedRoute>
+        )
+      },
+      { 
+        path: "crews/new", 
+        element: (
+          <EventProtectedRoute allowedRoles={["organiser", "editor"]}>
+            <CrewWizardPage />
+          </EventProtectedRoute>
+        )
+      },
+      { 
+        path: "crews/:crewId", 
+        element: (
+          <EventProtectedRoute allowedRoles={["organiser", "editor"]}>
+            <CrewDetail />
+          </EventProtectedRoute>
+        )
+      },
+      // Courses - organisateur et éditeur
+      { 
+        path: "races", 
+        element: (
+          <EventProtectedRoute allowedRoles={["organiser", "editor"]}>
+            <RacesPage />
+          </EventProtectedRoute>
+        )
+      },
+      // Timing - organisateur et chronométreur
+      { 
+        path: "timing", 
+        element: (
+          <EventProtectedRoute allowedRoles={["organiser", "timing"]}>
+            <TimingOverviewPage />
+          </EventProtectedRoute>
+        )
+      },
+      { 
+        path: "timing/:timingPointId", 
+        element: (
+          <EventProtectedRoute allowedRoles={["organiser", "timing"]}>
+            <TimingPage />
+          </EventProtectedRoute>
+        )
+      },
+      // Distances - organisateur et éditeur
+      { 
+        path: "distances", 
+        element: (
+          <EventProtectedRoute allowedRoles={["organiser", "editor"]}>
+            <DistancesPage />
+          </EventProtectedRoute>
+        )
+      },
+      // Permissions - organisateur uniquement
+      { 
+        path: "permissions", 
+        element: (
+          <EventProtectedRoute allowedRoles={["organiser"]}>
+            <EventPermissionsPage />
+          </EventProtectedRoute>
+        )
+      },
+      // Notifications - organisateur uniquement
+      { 
+        path: "notifications", 
+        element: (
+          <EventProtectedRoute allowedRoles={["organiser"]}>
+            <NotificationsPage />
+          </EventProtectedRoute>
+        )
+      },
+      // Phases de course - organisateur et éditeur
+      { 
+        path: "racePhases", 
+        element: (
+          <EventProtectedRoute allowedRoles={["organiser", "editor"]}>
+            <RacePhasesPage />
+          </EventProtectedRoute>
+        )
+      },
+      { 
+        path: "racePhases/:phaseId", 
+        element: (
+          <EventProtectedRoute allowedRoles={["organiser", "editor"]}>
+            <RacePhaseDetailPage />
+          </EventProtectedRoute>
+        )
+      },
+      // Génération de courses - organisateur et éditeur
+      { 
+        path: "generate-races", 
+        element: (
+          <EventProtectedRoute allowedRoles={["organiser", "editor"]}>
+            <GenerateRacesPage />
+          </EventProtectedRoute>
+        )
+      },
+      // Points de chronométrage - organisateur et chronométreur
+      { 
+        path: "timingPoint", 
+        element: (
+          <EventProtectedRoute allowedRoles={["organiser", "timing"]}>
+            <TimingPointsPage />
+          </EventProtectedRoute>
+        )
+      },
+      // Arbitres - organisateur et arbitre
+      { 
+        path: "arbitres", 
+        element: (
+          <EventProtectedRoute allowedRoles={["organiser", "referee"]}>
+            <ArbitresPage />
+          </EventProtectedRoute>
+        )
+      },
+      // Indoor - organisateur et chronométreur
+      { 
+        path: "indoor", 
+        element: (
+          <EventProtectedRoute allowedRoles={["organiser", "timing"]}>
+            <IndoorPage />
+          </EventProtectedRoute>
+        )
+      },
+      { 
+        path: "indoor/:raceId", 
+        element: (
+          <EventProtectedRoute allowedRoles={["organiser", "timing"]}>
+            <IndoorRaceDetailPage />
+          </EventProtectedRoute>
+        )
+      },
     ],
   },
 

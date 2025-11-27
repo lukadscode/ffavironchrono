@@ -2,6 +2,9 @@ import { useEffect, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import api from "@/lib/axios";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { useToast } from "@/hooks/use-toast";
+import { Download, Loader2 } from "lucide-react";
 import dayjs from "dayjs";
 
 type Race = {
@@ -16,11 +19,51 @@ type Race = {
   };
 };
 
+type RaceCrew = {
+  lane: number;
+  crew_id: string;
+  crew: {
+    id: string;
+    club_code?: string;
+    category?: {
+      label: string;
+    };
+    crew_participants: Array<{
+      seat_position: number;
+      participant: {
+        id: string;
+        first_name: string;
+        last_name: string;
+      };
+    }>;
+  };
+};
+
+type FullRace = Race & {
+  race_crews: RaceCrew[];
+  lane_count?: number;
+  distance?: {
+    id: string;
+    meters: number;
+    is_relay?: boolean;
+    relay_count?: number;
+    label?: string;
+  } | null;
+  distance_id?: string | null;
+};
+
+type Event = {
+  id: string;
+  name: string;
+};
+
 export default function IndoorPage() {
   const { eventId } = useParams();
   const navigate = useNavigate();
+  const { toast } = useToast();
   const [races, setRaces] = useState<Race[]>([]);
   const [loading, setLoading] = useState(true);
+  const [isDownloadingAll, setIsDownloadingAll] = useState(false);
 
   useEffect(() => {
     if (eventId) fetchRaces();
@@ -54,6 +97,219 @@ export default function IndoorPage() {
     }
   };
 
+  const generateRac2ForRace = async (race: FullRace, event: Event, distances: any[]): Promise<void> => {
+    // Récupérer la distance de la course
+    let finalRaceDistance = race.distance;
+    if (!finalRaceDistance && race.distance_id) {
+      finalRaceDistance = distances.find((d: any) => d.id === race.distance_id) || null;
+    }
+
+    // Récupérer le nombre total de couloirs
+    const totalLanes = race.lane_count || 64;
+    const laneCount = Math.max(totalLanes, race.race_crews.length > 0 
+      ? Math.max(...race.race_crews.map(rc => rc.lane))
+      : 0
+    );
+
+    // Créer un map des couloirs occupés
+    const occupiedLanes = new Map<number, RaceCrew>();
+    race.race_crews.forEach((rc) => {
+      occupiedLanes.set(rc.lane, rc);
+    });
+
+    // Construire le tableau boats
+    const boats = [];
+    for (let lane = 1; lane <= laneCount; lane++) {
+      const raceCrew = occupiedLanes.get(lane);
+      
+      if (raceCrew) {
+        const participants = raceCrew.crew.crew_participants
+          .sort((a, b) => a.seat_position - b.seat_position)
+          .map((cp) => cp.participant);
+
+        let boatName = "";
+        if (participants.length === 1) {
+          const p = participants[0];
+          boatName = `${p.last_name.toUpperCase()}, ${p.first_name}`;
+        } else {
+          boatName = participants
+            .map((p) => `${p.last_name.toUpperCase()}, ${p.first_name}`)
+            .join(" • ");
+        }
+
+        const categoryLabel = raceCrew.crew.category?.label || "";
+        
+        boats.push({
+          class_name: categoryLabel || "Unknown",
+          id: raceCrew.crew_id,
+          lane_number: lane,
+          name: boatName,
+          participants: participants.map((p) => ({
+            id: p.id,
+            name: `${p.last_name.toUpperCase()}, ${p.first_name}`,
+          })),
+          affiliation: raceCrew.crew.club_code || "",
+        });
+      } else {
+        boats.push({
+          class_name: "EMPTY",
+          id: `Lane ${lane}`,
+          lane_number: lane,
+          name: "EMPTY",
+          participants: [
+            {
+              id: `Lane ${lane}`,
+              name: "Lane " + lane,
+            },
+          ],
+          affiliation: "",
+        });
+      }
+    }
+
+    // Déterminer si c'est un relais
+    const currentDistance = finalRaceDistance;
+    const isRelay = currentDistance?.is_relay === true || (typeof currentDistance?.is_relay === 'number' && currentDistance.is_relay === 1);
+    const relayCount = currentDistance?.relay_count ? Number(currentDistance.relay_count) : null;
+    const relayDistance = currentDistance?.meters ? Number(currentDistance.meters) : 500; // Par défaut 500m pour indoor
+    const distance = relayDistance;
+
+    const totalDistance = isRelay && relayCount && relayDistance 
+      ? relayDistance * relayCount 
+      : distance;
+
+    // Déterminer le type de course
+    let raceType: string;
+    if (isRelay) {
+      raceType = "relay";
+    } else {
+      const allParticipantsCounts = race.race_crews.map(rc => 
+        rc.crew.crew_participants?.length || 0
+      );
+      const isIndividual = allParticipantsCounts.length > 0 && 
+        allParticipantsCounts.every(count => count === 1);
+      raceType = isIndividual ? "individual" : "team";
+    }
+
+    // Construire le nom long
+    let nameLong = race.name;
+    if (isRelay && currentDistance) {
+      const distanceLabel = currentDistance.label || 
+        (relayCount && relayDistance ? `${relayCount}x${relayDistance}m` : race.name);
+      const firstCrew = race.race_crews[0];
+      if (firstCrew?.crew?.category?.label) {
+        nameLong = `${distanceLabel} ${firstCrew.crew.category.label}`;
+      } else {
+        nameLong = distanceLabel;
+      }
+    }
+
+    const finalDuration = isRelay && relayCount && relayDistance 
+      ? relayDistance * relayCount 
+      : totalDistance;
+    const finalSplitValue = isRelay && relayDistance 
+      ? relayDistance 
+      : totalDistance;
+
+    // Construire l'objet rac2
+    const rac2Data: any = {
+      race_definition: {
+        duration: finalDuration,
+        duration_type: "meters",
+        event_name: event.name.toUpperCase(),
+        name_long: nameLong,
+        name_short: race.id,
+        race_id: race.id,
+        race_type: raceType,
+        boats: boats,
+        split_type: "even",
+        split_value: finalSplitValue,
+        team_size: 1,
+        handicap_enabled: false,
+        time_cap: 0,
+      },
+    };
+
+    if (isRelay) {
+      rac2Data.race_definition.display_prompt_at_splits = true;
+      rac2Data.race_definition.sound_horn_at_splits = true;
+    }
+
+    // Télécharger le fichier
+    const jsonContent = JSON.stringify(rac2Data, null, 2);
+    const blob = new Blob([jsonContent], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `${race.name.replace(/\s+/g, "_")}_${race.id}.rac2`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  };
+
+  const downloadAllRac2Files = async () => {
+    if (!eventId || races.length === 0) {
+      toast({
+        title: "Erreur",
+        description: "Aucune course disponible",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setIsDownloadingAll(true);
+
+    try {
+      // Récupérer les informations de l'événement
+      const eventRes = await api.get(`/events/${eventId}`);
+      const event: Event = eventRes.data.data || eventRes.data;
+
+      // Récupérer toutes les distances
+      const distancesRes = await api.get(`/distances/event/${eventId}`);
+      const distances = distancesRes.data.data || [];
+
+      // Récupérer les détails complets de chaque course
+      const fullRaces: FullRace[] = [];
+      for (const race of races) {
+        try {
+          const raceRes = await api.get(`/races/${race.id}`);
+          const fullRace: FullRace = raceRes.data.data || raceRes.data;
+          fullRaces.push(fullRace);
+        } catch (err) {
+          console.error(`Erreur lors de la récupération de la course ${race.id}:`, err);
+        }
+      }
+
+      // Générer et télécharger chaque fichier .rac2
+      let successCount = 0;
+      for (const race of fullRaces) {
+        try {
+          await generateRac2ForRace(race, event, distances);
+          successCount++;
+          // Petit délai entre chaque téléchargement pour éviter de surcharger le navigateur
+          await new Promise(resolve => setTimeout(resolve, 100));
+        } catch (err) {
+          console.error(`Erreur lors de la génération du fichier pour ${race.name}:`, err);
+        }
+      }
+
+      toast({
+        title: "Téléchargement terminé",
+        description: `${successCount} fichier(s) .rac2 téléchargé(s) sur ${fullRaces.length}`,
+      });
+    } catch (err: any) {
+      console.error("Erreur lors du téléchargement des fichiers:", err);
+      toast({
+        title: "Erreur",
+        description: "Impossible de télécharger tous les fichiers .rac2",
+        variant: "destructive",
+      });
+    } finally {
+      setIsDownloadingAll(false);
+    }
+  };
+
   if (loading) {
     return (
       <div className="flex items-center justify-center py-12">
@@ -64,7 +320,28 @@ export default function IndoorPage() {
 
   return (
     <div className="space-y-6">
-      <h2 className="text-2xl font-bold text-slate-900">Indoor - Liste des courses</h2>
+      <div className="flex items-center justify-between">
+        <h2 className="text-2xl font-bold text-slate-900">Indoor - Liste des courses</h2>
+        {races.length > 0 && (
+          <Button
+            onClick={downloadAllRac2Files}
+            disabled={isDownloadingAll}
+            className="bg-blue-600 hover:bg-blue-700"
+          >
+            {isDownloadingAll ? (
+              <>
+                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                Téléchargement...
+              </>
+            ) : (
+              <>
+                <Download className="w-4 h-4 mr-2" />
+                Télécharger tous les .rac2
+              </>
+            )}
+          </Button>
+        )}
+      </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
         {races.length === 0 ? (

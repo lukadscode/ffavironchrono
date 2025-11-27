@@ -289,8 +289,10 @@ export default function EventPermissionsPage() {
                       </SelectTrigger>
                       <SelectContent>
                         <SelectItem value="organiser">Organisateur</SelectItem>
-                        <SelectItem value="viewer">Spectateur</SelectItem>
+                        <SelectItem value="viewer">Visualiseur</SelectItem>
                         <SelectItem value="editor">Éditeur</SelectItem>
+                        <SelectItem value="referee">Arbitre</SelectItem>
+                        <SelectItem value="timing">Chronométreur</SelectItem>
                       </SelectContent>
                     </Select>
                   </div>
