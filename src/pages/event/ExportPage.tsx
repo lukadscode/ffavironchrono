@@ -6,6 +6,8 @@ import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
 import { Download, FileSpreadsheet, FileText, Loader2, Users, Flag } from "lucide-react";
 import * as XLSX from "xlsx";
+import jsPDF from "jspdf";
+import autoTable from "jspdf-autotable";
 import dayjs from "dayjs";
 
 type Crew = {
@@ -13,6 +15,7 @@ type Crew = {
   club_name: string;
   club_code: string;
   coach_name?: string | null;
+  status?: number;
   category?: {
     id: string;
     code: string;
@@ -40,6 +43,13 @@ type Race = {
   race_number: number;
   start_time: string;
   status: string;
+  distance_id?: string;
+  distance?: {
+    id: string;
+    meters: number;
+    label?: string;
+    is_relay?: boolean;
+  };
   race_crews?: Array<{
     lane: number;
     crew_id: string;
@@ -82,123 +92,336 @@ export default function ExportPage() {
     }
   };
 
+  // Fonction pour formater le temps en millisecondes
+  const formatTime = (ms: number | null): string => {
+    if (ms === null || ms === undefined) return "";
+    const totalSeconds = Math.floor(ms / 1000);
+    const minutes = Math.floor(totalSeconds / 60);
+    const seconds = totalSeconds % 60;
+    const milliseconds = Math.floor((ms % 1000) / 10);
+    return `${minutes}:${seconds.toString().padStart(2, "0")}.${milliseconds.toString().padStart(2, "0")}`;
+  };
+
   // Export Excel global de tous les équipages avec participants et résultats
   const exportGlobalExcel = async () => {
     if (!eventId) return;
 
     setExportingGlobal(true);
     try {
-      // Récupérer tous les équipages
+      // Récupérer tous les équipages avec leurs participants
       const crewsRes = await api.get(`/crews/event/${eventId}`);
       const crews: Crew[] = crewsRes.data.data || [];
 
-      // Récupérer toutes les courses pour les résultats
+      // Récupérer les phases
+      const phasesRes = await api.get(`/race-phases/${eventId}`);
+      const phases = phasesRes.data.data || [];
+
+      // Récupérer les distances
+      const distancesRes = await api.get(`/distances/event/${eventId}`);
+      const distances = distancesRes.data.data || [];
+      const distanceMap = new Map(distances.map((d: any) => [d.id, d]));
+
+      // Récupérer toutes les courses avec leurs équipages
       const racesRes = await api.get(`/races/event/${eventId}`);
-      const races: Race[] = racesRes.data.data || [];
+      let races: Race[] = racesRes.data.data || [];
 
-      // Créer un map des résultats par équipage
-      const crewResults = new Map<string, any[]>();
-      races.forEach((race) => {
-        race.race_crews?.forEach((rc) => {
-          if (!crewResults.has(rc.crew_id)) {
-            crewResults.set(rc.crew_id, []);
+      // Enrichir les courses avec leurs distances et race_crews si nécessaire
+      races = await Promise.all(
+        races.map(async (race) => {
+          // Si la course n'a pas de race_crews, les récupérer
+          if (!race.race_crews || race.race_crews.length === 0) {
+            try {
+              const raceCrewsRes = await api.get(`/race-crews/${race.id}`);
+              race.race_crews = raceCrewsRes.data.data || [];
+            } catch (err) {
+              console.error(`Erreur récupération race-crews pour ${race.id}:`, err);
+              race.race_crews = [];
+            }
           }
-          crewResults.get(rc.crew_id)?.push({
-            race_name: race.name,
-            race_number: race.race_number,
-            lane: rc.lane,
-            start_time: race.start_time,
-            status: race.status,
-            phase: race.race_phase?.name || "",
-          });
-        });
-      });
 
-      // Préparer les données pour Excel
+          // Si la course n'a pas de distance mais a un distance_id, la récupérer
+          if (!race.distance && race.distance_id) {
+            const distance = distanceMap.get(race.distance_id);
+            if (distance) {
+              race.distance = distance;
+            }
+          }
+
+          return race;
+        })
+      );
+
+      // Créer un map des résultats par équipage avec timings
+      const crewResults = new Map<string, any[]>();
+      
+      // Pour chaque course, récupérer les timings et résultats
+      for (const race of races) {
+        try {
+          // Récupérer les timings de la course
+          const timingsRes = await api.get(`/timings/race/${race.id}`).catch(() => ({ data: { data: [] } }));
+          const allTimings = timingsRes.data.data || [];
+
+          // Récupérer les timing points
+          const timingPointsRes = await api.get(`/timing-points/race/${race.id}`).catch(() => ({ data: { data: [] } }));
+          const timingPoints = timingPointsRes.data.data || [];
+          const lastTimingPoint = timingPoints.length > 0 
+            ? timingPoints.reduce((last: any, current: any) => 
+                (current.order_index > last.order_index ? current : last), timingPoints[0])
+            : null;
+
+          // Récupérer les assignments
+          const assignmentsRes = await api.get(`/timing-assignments/race/${race.id}`).catch(() => ({ data: { data: [] } }));
+          const assignments = assignmentsRes.data.data || [];
+          const timingToCrew = new Map<string, string>();
+          assignments.forEach((a: any) => {
+            if (a.timing_id && a.crew_id) {
+              timingToCrew.set(a.timing_id, a.crew_id);
+            }
+          });
+
+          // Grouper les timings par crew_id
+          const timingsByCrew = new Map<string, any[]>();
+          allTimings.forEach((timing: any) => {
+            const crewId = timing.crew_id || timingToCrew.get(timing.id);
+            if (crewId && timing.relative_time_ms !== null) {
+              if (!timingsByCrew.has(crewId)) {
+                timingsByCrew.set(crewId, []);
+              }
+              timingsByCrew.get(crewId)!.push(timing);
+            }
+          });
+
+          // Pour chaque équipage dans la course
+          race.race_crews?.forEach((rc) => {
+            if (!crewResults.has(rc.crew_id)) {
+              crewResults.set(rc.crew_id, []);
+            }
+
+            // Trouver le timing final
+            const crewTimings = timingsByCrew.get(rc.crew_id) || [];
+            const finishTiming = lastTimingPoint 
+              ? crewTimings.find((t: any) => t.timing_point_id === lastTimingPoint.id)
+              : null;
+
+            // Calculer le classement (trier tous les équipages de la course par temps)
+            const allCrewTimings = Array.from(timingsByCrew.entries())
+              .map(([cid, timings]) => {
+                const finish = lastTimingPoint 
+                  ? timings.find((t: any) => t.timing_point_id === lastTimingPoint.id)
+                  : null;
+                return { crew_id: cid, time: finish?.relative_time_ms || null };
+              })
+              .filter((r) => r.time !== null)
+              .sort((a, b) => (a.time || 0) - (b.time || 0));
+
+            const position = finishTiming?.relative_time_ms !== null && finishTiming?.relative_time_ms !== undefined
+              ? allCrewTimings.findIndex((r) => r.crew_id === rc.crew_id) + 1
+              : null;
+
+            crewResults.get(rc.crew_id)?.push({
+              race_id: race.id,
+              race_name: race.name,
+              race_number: race.race_number,
+              lane: rc.lane,
+              start_time: race.start_time,
+              status: race.status,
+              phase: race.race_phase?.name || "",
+              phase_id: race.race_phase?.id || "",
+              distance: race.distance?.meters || race.distance?.label || "",
+              distance_label: race.distance?.label || "",
+              is_relay: race.distance?.is_relay || false,
+              final_time_ms: finishTiming?.relative_time_ms || null,
+              final_time: finishTiming?.relative_time_ms ? formatTime(finishTiming.relative_time_ms) : "",
+              position: position,
+              total_crews: race.race_crews?.length || 0,
+            });
+          });
+        } catch (err) {
+          console.error(`Erreur récupération résultats pour course ${race.id}:`, err);
+          // Ajouter quand même les infos de base sans timings
+          race.race_crews?.forEach((rc) => {
+            if (!crewResults.has(rc.crew_id)) {
+              crewResults.set(rc.crew_id, []);
+            }
+            crewResults.get(rc.crew_id)?.push({
+              race_id: race.id,
+              race_name: race.name,
+              race_number: race.race_number,
+              lane: rc.lane,
+              start_time: race.start_time,
+              status: race.status,
+              phase: race.race_phase?.name || "",
+              phase_id: race.race_phase?.id || "",
+              distance: race.distance?.meters || race.distance?.label || "",
+              distance_label: race.distance?.label || "",
+              is_relay: race.distance?.is_relay || false,
+              final_time_ms: null,
+              final_time: "",
+              position: null,
+              total_crews: race.race_crews?.length || 0,
+            });
+          });
+        }
+      }
+
+      // Préparer les données pour Excel avec toutes les informations
       const rows: any[] = [];
 
       crews.forEach((crew) => {
         const participants = crew.crew_participants || [];
+        const sortedParticipants = [...participants].sort((a, b) => {
+          if (a.is_coxswain && !b.is_coxswain) return 1;
+          if (!a.is_coxswain && b.is_coxswain) return -1;
+          return (a.seat_position || 0) - (b.seat_position || 0);
+        });
         const results = crewResults.get(crew.id) || [];
 
-        if (participants.length === 0) {
+        if (sortedParticipants.length === 0) {
           // Équipage sans participants
-          rows.push({
-            "ID Équipage": crew.id,
-            "Club": crew.club_name || "",
-            "Code Club": crew.club_code || "",
-            "Entraîneur": crew.coach_name || "",
-            "Catégorie": crew.category?.label || "",
-            "Code Catégorie": crew.category?.code || "",
-            "Prénom Participant": "",
-            "Nom Participant": "",
-            "Position": "",
-            "Barreur": "",
-            "Licence": "",
-            "Email": "",
-            "Genre": "",
-            "Course": "",
-            "Numéro Course": "",
-            "Couloir": "",
-            "Heure Départ": "",
-            "Statut": "",
-            "Phase": "",
-          });
-        } else {
-          // Pour chaque participant
-          participants.forEach((cp, index) => {
-            const participant = cp.participant;
-            const isFirstRow = index === 0;
-
-            rows.push({
-              "ID Équipage": isFirstRow ? crew.id : "",
-              "Club": isFirstRow ? crew.club_name || "" : "",
-              "Code Club": isFirstRow ? crew.club_code || "" : "",
-              "Entraîneur": isFirstRow ? crew.coach_name || "" : "",
-              "Catégorie": isFirstRow ? crew.category?.label || "" : "",
-              "Code Catégorie": isFirstRow ? crew.category?.code || "" : "",
-              "Prénom Participant": participant.first_name || "",
-              "Nom Participant": participant.last_name || "",
-              "Position": cp.seat_position || "",
-              "Barreur": cp.is_coxswain ? "Oui" : "Non",
-              "Licence": participant.license_number || "",
-              "Email": participant.email || "",
-              "Genre": participant.gender || "",
-              "Course": isFirstRow && results.length > 0 ? results[0].race_name : "",
-              "Numéro Course": isFirstRow && results.length > 0 ? results[0].race_number : "",
-              "Couloir": isFirstRow && results.length > 0 ? results[0].lane : "",
-              "Heure Départ": isFirstRow && results.length > 0 ? dayjs(results[0].start_time).format("DD/MM/YYYY HH:mm") : "",
-              "Statut": isFirstRow && results.length > 0 ? results[0].status : "",
-              "Phase": isFirstRow && results.length > 0 ? results[0].phase : "",
-            });
-          });
-
-          // Ajouter les autres résultats si plusieurs courses
-          if (results.length > 1) {
-            results.slice(1).forEach((result) => {
+          if (results.length > 0) {
+            results.forEach((result, idx) => {
               rows.push({
-                "ID Équipage": "",
-                "Club": "",
-                "Code Club": "",
-                "Entraîneur": "",
-                "Catégorie": "",
-                "Code Catégorie": "",
+                "ID Équipage": idx === 0 ? crew.id : "",
+                "Statut Équipage": idx === 0 ? (crew.status || "") : "",
+                "Club": idx === 0 ? crew.club_name || "" : "",
+                "Code Club": idx === 0 ? crew.club_code || "" : "",
+                "Entraîneur": idx === 0 ? crew.coach_name || "" : "",
+                "Catégorie": idx === 0 ? crew.category?.label || "" : "",
+                "Code Catégorie": idx === 0 ? crew.category?.code || "" : "",
                 "Prénom Participant": "",
                 "Nom Participant": "",
-                "Position": "",
+                "Position Bateau": "",
                 "Barreur": "",
                 "Licence": "",
                 "Email": "",
                 "Genre": "",
+                "Club Participant": "",
+                "ID Course": result.race_id,
                 "Course": result.race_name,
                 "Numéro Course": result.race_number,
-                "Couloir": result.lane,
-                "Heure Départ": dayjs(result.start_time).format("DD/MM/YYYY HH:mm"),
-                "Statut": result.status,
                 "Phase": result.phase,
+                "Distance": result.distance,
+                "Distance Label": result.distance_label,
+                "Relais": result.is_relay ? "Oui" : "Non",
+                "Couloir": result.lane,
+                "Heure Départ": dayjs(result.start_time).format("DD/MM/YYYY HH:mm:ss"),
+                "Statut Course": result.status,
+                "Temps Final (ms)": result.final_time_ms || "",
+                "Temps Final": result.final_time,
+                "Classement": result.position || "",
+                "Total Équipages": result.total_crews,
               });
             });
+          } else {
+            rows.push({
+              "ID Équipage": crew.id,
+              "Statut Équipage": crew.status || "",
+              "Club": crew.club_name || "",
+              "Code Club": crew.club_code || "",
+              "Entraîneur": crew.coach_name || "",
+              "Catégorie": crew.category?.label || "",
+              "Code Catégorie": crew.category?.code || "",
+              "Prénom Participant": "",
+              "Nom Participant": "",
+              "Position Bateau": "",
+              "Barreur": "",
+              "Licence": "",
+              "Email": "",
+              "Genre": "",
+              "Club Participant": "",
+              "ID Course": "",
+              "Course": "",
+              "Numéro Course": "",
+              "Phase": "",
+              "Distance": "",
+              "Distance Label": "",
+              "Relais": "",
+              "Couloir": "",
+              "Heure Départ": "",
+              "Statut Course": "",
+              "Temps Final (ms)": "",
+              "Temps Final": "",
+              "Classement": "",
+              "Total Équipages": "",
+            });
           }
+        } else {
+          // Pour chaque participant
+          sortedParticipants.forEach((cp, participantIndex) => {
+            const participant = cp.participant;
+            const isFirstParticipant = participantIndex === 0;
+
+            if (results.length > 0) {
+              // Une ligne par participant par course
+              results.forEach((result, resultIndex) => {
+                const isFirstResult = resultIndex === 0;
+                rows.push({
+                  "ID Équipage": isFirstParticipant && isFirstResult ? crew.id : "",
+                  "Statut Équipage": isFirstParticipant && isFirstResult ? (crew.status || "") : "",
+                  "Club": isFirstParticipant && isFirstResult ? crew.club_name || "" : "",
+                  "Code Club": isFirstParticipant && isFirstResult ? crew.club_code || "" : "",
+                  "Entraîneur": isFirstParticipant && isFirstResult ? crew.coach_name || "" : "",
+                  "Catégorie": isFirstParticipant && isFirstResult ? crew.category?.label || "" : "",
+                  "Code Catégorie": isFirstParticipant && isFirstResult ? crew.category?.code || "" : "",
+                  "Prénom Participant": participant.first_name || "",
+                  "Nom Participant": participant.last_name || "",
+                  "Position Bateau": cp.is_coxswain ? "Barreur" : (cp.seat_position || ""),
+                  "Barreur": cp.is_coxswain ? "Oui" : "Non",
+                  "Licence": participant.license_number || "",
+                  "Email": participant.email || "",
+                  "Genre": participant.gender || "",
+                  "Club Participant": participant.club_name || "",
+                  "ID Course": isFirstResult ? result.race_id : "",
+                  "Course": isFirstResult ? result.race_name : "",
+                  "Numéro Course": isFirstResult ? result.race_number : "",
+                  "Phase": isFirstResult ? result.phase : "",
+                  "Distance": isFirstResult ? result.distance : "",
+                  "Distance Label": isFirstResult ? result.distance_label : "",
+                  "Relais": isFirstResult ? (result.is_relay ? "Oui" : "Non") : "",
+                  "Couloir": isFirstResult ? result.lane : "",
+                  "Heure Départ": isFirstResult ? dayjs(result.start_time).format("DD/MM/YYYY HH:mm:ss") : "",
+                  "Statut Course": isFirstResult ? result.status : "",
+                  "Temps Final (ms)": isFirstResult ? (result.final_time_ms || "") : "",
+                  "Temps Final": isFirstResult ? result.final_time : "",
+                  "Classement": isFirstResult ? (result.position || "") : "",
+                  "Total Équipages": isFirstResult ? result.total_crews : "",
+                });
+              });
+            } else {
+              // Pas de course assignée
+              rows.push({
+                "ID Équipage": isFirstParticipant ? crew.id : "",
+                "Statut Équipage": isFirstParticipant ? (crew.status || "") : "",
+                "Club": isFirstParticipant ? crew.club_name || "" : "",
+                "Code Club": isFirstParticipant ? crew.club_code || "" : "",
+                "Entraîneur": isFirstParticipant ? crew.coach_name || "" : "",
+                "Catégorie": isFirstParticipant ? crew.category?.label || "" : "",
+                "Code Catégorie": isFirstParticipant ? crew.category?.code || "" : "",
+                "Prénom Participant": participant.first_name || "",
+                "Nom Participant": participant.last_name || "",
+                "Position Bateau": cp.is_coxswain ? "Barreur" : (cp.seat_position || ""),
+                "Barreur": cp.is_coxswain ? "Oui" : "Non",
+                "Licence": participant.license_number || "",
+                "Email": participant.email || "",
+                "Genre": participant.gender || "",
+                "Club Participant": participant.club_name || "",
+                "ID Course": "",
+                "Course": "",
+                "Numéro Course": "",
+                "Phase": "",
+                "Distance": "",
+                "Distance Label": "",
+                "Relais": "",
+                "Couloir": "",
+                "Heure Départ": "",
+                "Statut Course": "",
+                "Temps Final (ms)": "",
+                "Temps Final": "",
+                "Classement": "",
+                "Total Équipages": "",
+              });
+            }
+          });
         }
       });
 
@@ -240,69 +463,174 @@ export default function ExportPage() {
       );
 
       if (format === "pdf") {
-        // Utiliser l'API backend pour le PDF avec gestion d'erreur robuste
-        try {
-          const res = await api.get(`/exports/startlist/event/${eventId}`, {
-            responseType: "blob",
-            validateStatus: () => true, // Ne pas rejeter automatiquement les erreurs HTTP
-          });
+        // Générer le PDF côté frontend avec jsPDF
+        const doc = new jsPDF({
+          orientation: "portrait",
+          unit: "mm",
+          format: "a4",
+        });
 
-          // Vérifier le statut de la réponse
-          if (res.status < 200 || res.status >= 300) {
-            let errorMsg = `HTTP ${res.status}`;
-            try {
-              const text = await (res.data as any).text?.();
-              if (text) {
-                try {
-                  const json = JSON.parse(text);
-                  errorMsg = json?.message || json?.error || errorMsg;
-                } catch {
-                  errorMsg = text;
-                }
-              }
-            } catch {}
-            
-            toast({
-              title: "Erreur export PDF",
-              description: errorMsg || "L'endpoint PDF n'est pas disponible. Veuillez utiliser Excel ou CSV.",
-              variant: "destructive",
-            });
-            return;
+        // En-tête
+        doc.setFontSize(18);
+        doc.setFont("helvetica", "bold");
+        doc.text("LISTE DE DÉPART", 105, 15, { align: "center" });
+        
+        if (event) {
+          doc.setFontSize(12);
+          doc.setFont("helvetica", "normal");
+          doc.text(event.name, 105, 22, { align: "center" });
+          if (event.location) {
+            doc.setFontSize(10);
+            doc.text(event.location, 105, 27, { align: "center" });
           }
-
-          // Vérifier que c'est bien un PDF
-          const contentType = (res.headers?.["content-type"] || "").toLowerCase();
-          if (!contentType.includes("pdf")) {
-            toast({
-              title: "Erreur export PDF",
-              description: "Le serveur n'a pas renvoyé un fichier PDF valide. Veuillez utiliser Excel ou CSV.",
-              variant: "destructive",
-            });
-            return;
+          if (event.start_date) {
+            const startDate = dayjs(event.start_date);
+            const endDate = event.end_date ? dayjs(event.end_date) : null;
+            const dateStr = endDate && !startDate.isSame(endDate, "day")
+              ? `${startDate.format("DD/MM/YYYY")} - ${endDate.format("DD/MM/YYYY")}`
+              : startDate.format("DD/MM/YYYY");
+            doc.text(dateStr, 105, 32, { align: "center" });
           }
-
-          const blob = new Blob([res.data], { type: "application/pdf" });
-          const url = URL.createObjectURL(blob);
-          const link = document.createElement("a");
-          link.href = url;
-          link.download = `Startlist_${event?.name?.replace(/\s+/g, "_") || "Event"}_${dayjs().format("YYYY-MM-DD")}.pdf`;
-          document.body.appendChild(link);
-          link.click();
-          document.body.removeChild(link);
-          URL.revokeObjectURL(url);
-
-          toast({
-            title: "Export PDF réussi",
-            description: "Fichier PDF téléchargé",
-          });
-        } catch (err: any) {
-          console.error("Erreur export PDF:", err);
-          toast({
-            title: "Erreur export PDF",
-            description: err?.response?.data?.message || err?.message || "Impossible de générer le PDF. Veuillez utiliser Excel ou CSV.",
-            variant: "destructive",
-          });
         }
+
+        let yPosition = 40;
+
+        // Pour chaque course
+        for (let raceIndex = 0; raceIndex < races.length; raceIndex++) {
+          const race = races[raceIndex];
+          
+          // Vérifier si on doit créer une nouvelle page
+          if (yPosition > 250) {
+            doc.addPage();
+            yPosition = 20;
+          }
+
+          // En-tête de course
+          doc.setFontSize(14);
+          doc.setFont("helvetica", "bold");
+          const raceTitle = `Course ${race.race_number}: ${race.name}`;
+          doc.text(raceTitle, 14, yPosition);
+          yPosition += 7;
+
+          // Informations de la course
+          doc.setFontSize(10);
+          doc.setFont("helvetica", "normal");
+          const raceInfo: string[] = [];
+          if (race.start_time) {
+            raceInfo.push(`Départ: ${dayjs(race.start_time).format("DD/MM/YYYY à HH:mm")}`);
+          }
+          if (race.race_phase?.name) {
+            raceInfo.push(`Phase: ${race.race_phase.name}`);
+          }
+          if (race.distance?.label || race.distance?.meters) {
+            raceInfo.push(`Distance: ${race.distance.label || `${race.distance.meters}m`}`);
+          }
+          if (race.status) {
+            raceInfo.push(`Statut: ${race.status}`);
+          }
+          
+          if (raceInfo.length > 0) {
+            doc.text(raceInfo.join(" • "), 14, yPosition);
+            yPosition += 6;
+          }
+
+          // Tableau des équipages
+          const raceCrews = (race.race_crews || []).sort((a, b) => a.lane - b.lane);
+          
+          if (raceCrews.length === 0) {
+            doc.setFontSize(10);
+            doc.text("Aucun équipage assigné", 14, yPosition);
+            yPosition += 10;
+          } else {
+            // Préparer les données pour le tableau
+            const tableData = raceCrews.map((rc) => {
+              const crew = rc.crew;
+              const participants = crew.crew_participants || [];
+              const sortedParticipants = [...participants].sort((a, b) => {
+                if (a.is_coxswain && !b.is_coxswain) return 1;
+                if (!a.is_coxswain && b.is_coxswain) return -1;
+                return (a.seat_position || 0) - (b.seat_position || 0);
+              });
+
+              const participantNames = sortedParticipants
+                .map((cp) => {
+                  const p = cp.participant;
+                  const name = `${p.last_name.toUpperCase()}, ${p.first_name}`;
+                  const position = cp.is_coxswain ? " (Barreur)" : ` (Pos. ${cp.seat_position})`;
+                  return `${name}${position}`;
+                })
+                .join(" • ");
+
+              const licenses = sortedParticipants
+                .map((cp) => cp.participant.license_number || "")
+                .filter(Boolean)
+                .join(", ");
+
+              return [
+                rc.lane.toString(),
+                crew.club_name || "",
+                crew.club_code || "",
+                crew.category?.label || "",
+                crew.category?.code || "",
+                participantNames || "Aucun participant",
+                licenses || "",
+              ];
+            });
+
+            autoTable(doc, {
+              startY: yPosition,
+              head: [["Couloir", "Club", "Code", "Catégorie", "Code Cat.", "Participants", "Licences"]],
+              body: tableData,
+              styles: { fontSize: 8, cellPadding: 2 },
+              headStyles: { fillColor: [66, 139, 202], textColor: 255, fontStyle: "bold" },
+              alternateRowStyles: { fillColor: [245, 245, 245] },
+              margin: { left: 14, right: 14 },
+              columnStyles: {
+                0: { cellWidth: 15 },
+                1: { cellWidth: 40 },
+                2: { cellWidth: 20 },
+                3: { cellWidth: 35 },
+                4: { cellWidth: 20 },
+                5: { cellWidth: 50 },
+                6: { cellWidth: 30 },
+              },
+            });
+
+            // Récupérer la position Y après le tableau
+            const finalY = (doc as any).lastAutoTable.finalY || yPosition + (raceCrews.length * 8);
+            yPosition = finalY + 10;
+          }
+
+          // Séparateur entre les courses
+          if (raceIndex < races.length - 1) {
+            doc.setDrawColor(200, 200, 200);
+            doc.line(14, yPosition, 196, yPosition);
+            yPosition += 5;
+          }
+        }
+
+        // Pied de page
+        const pageCount = doc.getNumberOfPages();
+        for (let i = 1; i <= pageCount; i++) {
+          doc.setPage(i);
+          doc.setFontSize(8);
+          doc.setFont("helvetica", "italic");
+          doc.text(
+            `Page ${i} / ${pageCount} - Généré le ${dayjs().format("DD/MM/YYYY à HH:mm")}`,
+            105,
+            285,
+            { align: "center" }
+          );
+        }
+
+        // Télécharger le PDF
+        const fileName = `Startlist_${event?.name?.replace(/\s+/g, "_") || "Event"}_${dayjs().format("YYYY-MM-DD")}.pdf`;
+        doc.save(fileName);
+
+        toast({
+          title: "Export PDF réussi",
+          description: "Fichier PDF généré et téléchargé",
+        });
       } else {
         // Générer Excel ou CSV avec une meilleure structure
         const allRows: any[] = [];
