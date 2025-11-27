@@ -363,13 +363,26 @@ export default function CrewWizardPage() {
         
         if (typeLibelle.toLowerCase().includes("compétition") || typeLibelle.toLowerCase().includes("competition")) {
           // Licence compétition : ajouter directement le participant
+          // Convertir le genre de l'intranet (M/F) vers le format attendu (Homme/Femme)
+          let normalizedGender = "";
+          if (participantData.genre) {
+            const genre = participantData.genre.trim().toUpperCase();
+            if (genre === "M" || genre === "HOMME") {
+              normalizedGender = "Homme";
+            } else if (genre === "F" || genre === "FEMME") {
+              normalizedGender = "Femme";
+            } else {
+              normalizedGender = participantData.genre;
+            }
+          }
+          
           const newParticipantData: Participant = {
             id: "", // Sera créé par le backend
             first_name: prenom,
             last_name: nom,
             license_number: numeroLicence,
             club_name: participantData.club_nom_court || participantData.club_code || "",
-            gender: participantData.genre || "",
+            gender: normalizedGender,
           };
           
           // Créer un CrewParticipant temporaire
@@ -391,12 +404,25 @@ export default function CrewWizardPage() {
           });
         } else {
           // Type de licence non spécifié ou autre : pré-remplir le formulaire
+          // Convertir le genre de l'intranet (M/F) vers le format attendu (Homme/Femme)
+          let normalizedGender = "";
+          if (participantData.genre) {
+            const genre = participantData.genre.trim().toUpperCase();
+            if (genre === "M" || genre === "HOMME") {
+              normalizedGender = "Homme";
+            } else if (genre === "F" || genre === "FEMME") {
+              normalizedGender = "Femme";
+            } else {
+              normalizedGender = participantData.genre;
+            }
+          }
+          
           setNewParticipant({
             first_name: prenom,
             last_name: nom,
             license_number: numeroLicence,
             club_name: participantData.club_nom_court || participantData.club_code || "",
-            gender: participantData.genre || "",
+            gender: normalizedGender,
             email: participantData.mail || "",
           });
           setShowIntranetSearch(false);
@@ -479,6 +505,16 @@ export default function CrewWizardPage() {
     setParticipants(newOrder);
   };
 
+  // Fonction pour convertir le gender en format attendu par l'API
+  const normalizeGender = (gender: string | undefined): string | undefined => {
+    if (!gender) return undefined;
+    const normalized = gender.trim();
+    if (normalized === "M" || normalized === "m" || normalized === "Homme") return "Homme";
+    if (normalized === "F" || normalized === "f" || normalized === "Femme") return "Femme";
+    if (normalized === "Mixte") return "Mixte";
+    return normalized; // Retourner tel quel si déjà au bon format
+  };
+
   const handleFinish = async () => {
     if (!eventId) return;
 
@@ -490,7 +526,7 @@ export default function CrewWizardPage() {
         category_id: crewData.category_id,
         club_name: crewData.club_name,
         club_code: crewData.club_code,
-        coach_name: crewData.coach_name || null,
+        coach_name: crewData.coach_name?.trim() || null,
       });
 
       const crewId = crewRes.data.data.id;
@@ -502,13 +538,14 @@ export default function CrewWizardPage() {
       for (const p of newParticipants) {
         try {
           const participantData = p.participant || {};
+          const normalizedGender = normalizeGender(participantData.gender);
           const participantRes = await api.post("/participants", {
             first_name: participantData.first_name || "",
             last_name: participantData.last_name || "",
             license_number: participantData.license_number || "",
-            gender: participantData.gender || "",
-            email: participantData.email || "",
-            club_name: participantData.club_name || "",
+            gender: normalizedGender || undefined,
+            email: participantData.email || undefined,
+            club_name: participantData.club_name || undefined,
           });
           createdParticipantIds.push(participantRes.data.data.id);
         } catch (err: any) {

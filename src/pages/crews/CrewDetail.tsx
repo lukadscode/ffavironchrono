@@ -357,6 +357,16 @@ export default function CrewDetail() {
     }
   };
 
+  // Fonction pour convertir le gender en format attendu par l'API
+  const normalizeGender = (gender: string | undefined): string | undefined => {
+    if (!gender) return undefined;
+    const normalized = gender.trim();
+    if (normalized === "M" || normalized === "m" || normalized === "Homme") return "Homme";
+    if (normalized === "F" || normalized === "f" || normalized === "Femme") return "Femme";
+    if (normalized === "Mixte") return "Mixte";
+    return normalized; // Retourner tel quel si déjà au bon format
+  };
+
   const handleAddNewParticipant = async () => {
     if (!canAddParticipant || !crewId) {
       toast({
@@ -381,13 +391,14 @@ export default function CrewDetail() {
       setIsAddingParticipant(true);
       
       // Enregistrer immédiatement via l'API avec création du participant
+      const normalizedGender = normalizeGender(newParticipant.gender);
       await api.post(`/crews/${crewId}/seats`, {
         new_participant: {
           first_name: newParticipant.first_name,
           last_name: newParticipant.last_name,
           license_number: newParticipant.license_number || undefined,
           club_name: newParticipant.club_name || undefined,
-          gender: newParticipant.gender || undefined,
+          gender: normalizedGender || undefined,
           email: newParticipant.email || undefined,
         },
         seat_position,
