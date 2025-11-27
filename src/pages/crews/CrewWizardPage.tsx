@@ -521,13 +521,20 @@ export default function CrewWizardPage() {
     setIsSaving(true);
     try {
       // Étape 1: Créer l'équipage
-      const crewRes = await api.post("/crews", {
+      const crewPayload: any = {
         event_id: eventId,
         category_id: crewData.category_id,
         club_name: crewData.club_name,
         club_code: crewData.club_code,
-        coach_name: crewData.coach_name?.trim() || null,
-      });
+      };
+      
+      // Ajouter coach_name seulement s'il n'est pas vide
+      const trimmedCoachName = crewData.coach_name?.trim();
+      if (trimmedCoachName) {
+        crewPayload.coach_name = trimmedCoachName;
+      }
+      
+      const crewRes = await api.post("/crews", crewPayload);
 
       const crewId = crewRes.data.data.id;
 

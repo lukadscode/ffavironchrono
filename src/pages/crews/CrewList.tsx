@@ -232,10 +232,21 @@ export default function CrewList() {
             <p className="text-lg font-semibold text-muted-foreground mb-2">
               {searchQuery ? "Aucun résultat trouvé" : "Aucun équipage pour le moment"}
             </p>
-            {searchQuery && (
+            {searchQuery ? (
               <p className="text-sm text-muted-foreground">
                 Essayez avec d'autres mots-clés
               </p>
+            ) : (
+              <div className="mt-6">
+                <Button
+                  onClick={() => navigate(`/event/${eventId}/crews/new`)}
+                  className="bg-blue-600 hover:bg-blue-700"
+                  size="lg"
+                >
+                  <Plus className="w-5 h-5 mr-2" />
+                  Créer le premier équipage
+                </Button>
+              </div>
             )}
           </CardContent>
         </Card>
