@@ -830,27 +830,44 @@ export default function RacePhaseDetailPage() {
                   eventId={eventId!} 
                   onSuccess={async () => {
                     try {
+                      // Attendre un court instant pour que la nouvelle course soit disponible dans l'API
+                      await new Promise(resolve => setTimeout(resolve, 300));
+                      
                       // Récupérer toutes les courses de la phase
                       const res = await api.get(`/races/event/${eventId}`);
                       const phaseRaces: Race[] = res.data.data.filter((r: any) => r.phase_id === phaseId);
                       
-                      // Trier par race_number pour trouver la dernière
-                      const sorted = phaseRaces.sort((a, b) => (a.race_number || 0) - (b.race_number || 0));
-                      
-                      // Trouver la nouvelle course (celle qui n'a pas encore de start_time ou qui est la dernière)
-                      // On prend la dernière course créée (la plus récente par ID ou par date de création)
-                      const lastRace = sorted[sorted.length - 1];
-                      if (!lastRace) {
+                      if (phaseRaces.length === 0) {
                         await fetchRaces();
                         return;
                       }
                       
-                      // Calculer le race_number (dernier + 1)
-                      const newRaceNumber = sorted.length;
+                      // Trier par race_number pour trouver la dernière
+                      const sorted = [...phaseRaces].sort((a, b) => (a.race_number || 0) - (b.race_number || 0));
+                      
+                      // Trouver la nouvelle course : celle qui n'a pas de start_time ou qui a le plus grand race_number
+                      // On identifie la nouvelle course comme celle sans start_time ou avec le race_number le plus élevé
+                      const racesWithoutTime = sorted.filter(r => !r.start_time);
+                      const newRace = racesWithoutTime.length > 0 
+                        ? racesWithoutTime[racesWithoutTime.length - 1] 
+                        : sorted[sorted.length - 1];
+                      
+                      if (!newRace) {
+                        await fetchRaces();
+                        return;
+                      }
+                      
+                      // Calculer le race_number : maximum existant + 1
+                      const maxRaceNumber = sorted.length > 0 
+                        ? Math.max(...sorted.map(r => r.race_number || 0))
+                        : 0;
+                      const newRaceNumber = maxRaceNumber + 1;
                       
                       // Calculer le start_time
                       let newStartTime: string;
-                      if (sorted.length === 1) {
+                      const existingRacesWithTime = sorted.filter(r => r.start_time && r.id !== newRace.id);
+                      
+                      if (existingRacesWithTime.length === 0) {
                         // Première course : utiliser firstStartLocal
                         const baseDate = firstStartLocal 
                           ? parseLocalInput(firstStartLocal)
@@ -865,14 +882,19 @@ export default function RacePhaseDetailPage() {
                           setFirstStartLocal(toLocalInputValue(baseDate));
                         }
                       } else {
-                        // Course suivante : dernière course + gap
-                        const previousRace = sorted[sorted.length - 2];
-                        if (previousRace.start_time) {
-                          const prevDate = new Date(previousRace.start_time);
-                          const gap = gapsByRaceId[previousRace.id] || slotMinutes;
+                        // Course suivante : dernière course avec heure + gap
+                        const lastRaceWithTime = existingRacesWithTime.sort((a, b) => {
+                          const timeA = new Date(a.start_time!).getTime();
+                          const timeB = new Date(b.start_time!).getTime();
+                          return timeB - timeA; // Plus récente en premier
+                        })[0];
+                        
+                        if (lastRaceWithTime.start_time) {
+                          const prevDate = new Date(lastRaceWithTime.start_time);
+                          const gap = gapsByRaceId[lastRaceWithTime.id] || slotMinutes;
                           newStartTime = toIsoUtc(addMinutes(prevDate, gap));
                         } else {
-                          // Si la course précédente n'a pas d'heure, utiliser firstStartLocal + (index * slotMinutes)
+                          // Fallback : utiliser firstStartLocal + (index * slotMinutes)
                           const baseDate = firstStartLocal 
                             ? parseLocalInput(firstStartLocal)
                             : (() => {
@@ -885,12 +907,12 @@ export default function RacePhaseDetailPage() {
                       }
                       
                       // Mettre à jour la nouvelle course avec le race_number et start_time
-                      await api.put(`/races/${lastRace.id}`, {
+                      await api.put(`/races/${newRace.id}`, {
                         race_number: newRaceNumber,
                         start_time: newStartTime,
                       });
                       
-                      // Rafraîchir la liste des courses
+                      // Rafraîchir la liste des courses (qui sera triée par race_number)
                       await fetchRaces();
                       
                       toast({ 
