@@ -32,6 +32,7 @@ import ArbitresPage from "@/pages/event/ArbitresPage";
 import IndoorPage from "@/pages/event/IndoorPage";
 import IndoorRaceDetailPage from "@/pages/event/IndoorRaceDetailPage";
 import ExportPage from "@/pages/event/ExportPage";
+import EventUpdatePage from "@/pages/event/EventUpdatePage";
 import EventsList from "@/pages/public/EventsList";
 import PublicEvent from "@/pages/public/PublicEvent";
 import Live from "@/pages/public/Live";
@@ -276,6 +277,15 @@ const router = createBrowserRouter([
         element: (
           <EventProtectedRoute allowedRoles={["organiser", "editor"]}>
             <ExportPage />
+          </EventProtectedRoute>
+        )
+      },
+      // Mise à jour depuis FFAviron - organisateur uniquement
+      { 
+        path: "update", 
+        element: (
+          <EventProtectedRoute allowedRoles={["organiser"]}>
+            <EventUpdatePage />
           </EventProtectedRoute>
         )
       },

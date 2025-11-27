@@ -21,6 +21,7 @@ import {
   Activity,
   Bell,
   FileDown,
+  RefreshCw,
 } from "lucide-react";
 
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -34,6 +35,8 @@ const logout = () => {
   localStorage.clear();
   window.location.href = "/";
 };
+
+import { RefreshCw } from "lucide-react";
 
 const allNavItems = [
   { to: "", label: "Accueil", icon: Home, permission: "overview" },
@@ -49,6 +52,7 @@ const allNavItems = [
   { to: "arbitres", label: "Arbitres", icon: Gavel, permission: "arbitres" },
   { to: "indoor", label: "Indoor", icon: Activity, permission: "indoor" },
   { to: "export", label: "Exports", icon: FileDown, permission: "overview" },
+  { to: "update", label: "Mise à jour FFAviron", icon: RefreshCw, permission: "permissions" }, // Seulement organisateur
 ];
 
 export default function EventAdminLayout() {
@@ -59,35 +63,53 @@ export default function EventAdminLayout() {
   const eventRole = useEventRole();
 
   const [eventName, setEventName] = useState<string>("");
+  const [isIndoor, setIsIndoor] = useState<boolean>(false);
 
   // Vérifier si l'utilisateur est admin global
   const { user } = useAuth();
   const isGlobalAdmin = user?.role === "admin" || user?.role === "superadmin";
 
-  // Filtrer les éléments de navigation selon les permissions
+  // Filtrer les éléments de navigation selon les permissions et le type d'événement
   const navItems = useMemo(() => {
-    // Les admins globaux voient tout
-    if (isGlobalAdmin) return allNavItems;
+    let items = allNavItems;
     
-    if (!eventRole) return allNavItems.filter(item => item.permission === "overview");
+    // Filtrer selon le type d'événement
+    if (isIndoor) {
+      // Si indoor : cacher "Points" et "Chrono"
+      items = items.filter(item => item.to !== "timingPoint" && item.to !== "timing");
+    } else {
+      // Si pas indoor : cacher "Indoor"
+      items = items.filter(item => item.to !== "indoor");
+    }
     
-    // L'organisateur voit tout
-    if (eventRole === "organiser") return allNavItems;
+    // Les admins globaux voient tout (après filtrage par type)
+    if (isGlobalAdmin) return items;
+    
+    if (!eventRole) return items.filter(item => item.permission === "overview");
+    
+    // L'organisateur voit tout (après filtrage par type)
+    if (eventRole === "organiser") return items;
     
     // Pour les autres rôles, filtrer selon les permissions
     const permissions = ROLE_PERMISSIONS[eventRole] || [];
-    return allNavItems.filter(item => permissions.includes(item.permission));
-  }, [eventRole, isGlobalAdmin]);
+    return items.filter(item => permissions.includes(item.permission));
+  }, [eventRole, isGlobalAdmin, isIndoor]);
 
   useEffect(() => {
     if (!eventId) return;
     api
       .get(`/events/${eventId}`)
       .then((res) => {
-        setEventName(res.data.data.name || `Événement ${eventId}`);
+        const eventData = res.data.data;
+        setEventName(eventData.name || `Événement ${eventId}`);
+        // Déterminer si c'est un événement indoor
+        // On vérifie si race_type contient "indoor" (insensible à la casse)
+        const raceType = eventData.race_type?.toLowerCase() || "";
+        setIsIndoor(raceType.includes("indoor"));
       })
       .catch(() => {
         setEventName(`Événement ${eventId}`);
+        setIsIndoor(false);
       });
   }, [eventId]);
 

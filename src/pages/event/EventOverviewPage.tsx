@@ -26,7 +26,11 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent } from "@/components/ui/card";
+import { Checkbox } from "@/components/ui/checkbox";
 import { useToast } from "@/hooks/use-toast";
+import { useEventRole } from "@/hooks/useEventRole";
+import { ROLE_PERMISSIONS } from "@/router/EventProtectedRoute";
+import { useAuth } from "@/context/AuthContext";
 import dayjs from "dayjs";
 
 const DEFAULT_EVENT_IMAGE =
@@ -36,6 +40,9 @@ export default function EventOverviewPage() {
   const { eventId } = useParams();
   const navigate = useNavigate();
   const { toast } = useToast();
+  const eventRole = useEventRole();
+  const { user } = useAuth();
+  const isGlobalAdmin = user?.role === "admin" || user?.role === "superadmin";
   const [event, setEvent] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [editing, setEditing] = useState(false);
@@ -48,6 +55,7 @@ export default function EventOverviewPage() {
     start_date: "",
     end_date: "",
     website_url: "",
+    is_visible: true,
   });
 
   useEffect(() => {
@@ -66,6 +74,7 @@ export default function EventOverviewPage() {
         start_date: data.start_date ? data.start_date.slice(0, 10) : "",
         end_date: data.end_date ? data.end_date.slice(0, 10) : "",
         website_url: data.website_url || "",
+        is_visible: data.is_visible !== undefined ? data.is_visible : true,
       });
     } catch (err: any) {
       console.error("Erreur chargement événement:", err);
@@ -101,13 +110,32 @@ export default function EventOverviewPage() {
   };
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    setForm({ ...form, [e.target.name]: e.target.value });
+    const { name, value, type, checked } = e.target;
+    setForm({ 
+      ...form, 
+      [name]: type === "checkbox" ? checked : value 
+    });
   };
+
 
   const handleSubmit = async () => {
     setIsSaving(true);
     try {
-      const res = await api.put(`/events/${eventId}`, form);
+      // Construire le payload en omettant website_url si vide
+      const payload: any = {
+        name: form.name,
+        location: form.location,
+        start_date: form.start_date,
+        end_date: form.end_date,
+        is_visible: form.is_visible,
+      };
+      
+      // N'inclure website_url que s'il n'est pas vide
+      if (form.website_url && form.website_url.trim() !== "") {
+        payload.website_url = form.website_url.trim();
+      }
+      
+      const res = await api.put(`/events/${eventId}`, payload);
       setEvent(res.data.data);
       setEditing(false);
       toast({
@@ -138,6 +166,7 @@ export default function EventOverviewPage() {
         start_date: event.start_date ? event.start_date.slice(0, 10) : "",
         end_date: event.end_date ? event.end_date.slice(0, 10) : "",
         website_url: event.website_url || "",
+        is_visible: event.is_visible !== undefined ? event.is_visible : true,
       });
     }
     setEditing(false);
@@ -375,7 +404,7 @@ export default function EventOverviewPage() {
               </div>
               <div>
                 <Label className="text-sm font-semibold text-muted-foreground">
-                  Site web
+                  Site web (optionnel)
                 </Label>
                 <div className="flex gap-2 mt-1">
                   <Input
@@ -404,6 +433,20 @@ export default function EventOverviewPage() {
                   )}
                 </div>
               </div>
+              <div className="flex items-center space-x-2">
+                <Checkbox
+                  id="is_visible"
+                  checked={form.is_visible}
+                  onCheckedChange={(checked) => setForm({ ...form, is_visible: checked as boolean })}
+                  disabled={!editing}
+                />
+                <Label
+                  htmlFor="is_visible"
+                  className="text-sm font-semibold text-muted-foreground cursor-pointer"
+                >
+                  Rendre l'événement visible publiquement
+                </Label>
+              </div>
             </div>
           </CardContent>
         </Card>
@@ -416,36 +459,54 @@ export default function EventOverviewPage() {
               Accès rapide
             </h2>
             <div className="grid grid-cols-2 gap-3">
-              <QuickLinkButton
-                icon={<Users className="w-4 h-4" />}
-                label="Participants"
-                onClick={() => navigate(`/event/${eventId}/participants`)}
-              />
-              <QuickLinkButton
-                icon={<Ship className="w-4 h-4" />}
-                label="Équipages"
-                onClick={() => navigate(`/event/${eventId}/crews`)}
-              />
-              <QuickLinkButton
-                icon={<Flag className="w-4 h-4" />}
-                label="Courses"
-                onClick={() => navigate(`/event/${eventId}/races`)}
-              />
-              <QuickLinkButton
-                icon={<Timer className="w-4 h-4" />}
-                label="Chronométrage"
-                onClick={() => navigate(`/event/${eventId}/timing`)}
-              />
-              <QuickLinkButton
-                icon={<Award className="w-4 h-4" />}
-                label="Arbitres"
-                onClick={() => navigate(`/event/${eventId}/arbitres`)}
-              />
-              <QuickLinkButton
-                icon={<UserCheck className="w-4 h-4" />}
-                label="Permissions"
-                onClick={() => navigate(`/event/${eventId}/permissions`)}
-              />
+              {/* Participants - organisateur et éditeur */}
+              {(isGlobalAdmin || eventRole === "organiser" || eventRole === "editor") && (
+                <QuickLinkButton
+                  icon={<Users className="w-4 h-4" />}
+                  label="Participants"
+                  onClick={() => navigate(`/event/${eventId}/participants`)}
+                />
+              )}
+              {/* Équipages - organisateur et éditeur */}
+              {(isGlobalAdmin || eventRole === "organiser" || eventRole === "editor") && (
+                <QuickLinkButton
+                  icon={<Ship className="w-4 h-4" />}
+                  label="Équipages"
+                  onClick={() => navigate(`/event/${eventId}/crews`)}
+                />
+              )}
+              {/* Courses - organisateur et éditeur */}
+              {(isGlobalAdmin || eventRole === "organiser" || eventRole === "editor") && (
+                <QuickLinkButton
+                  icon={<Flag className="w-4 h-4" />}
+                  label="Courses"
+                  onClick={() => navigate(`/event/${eventId}/races`)}
+                />
+              )}
+              {/* Chronométrage - organisateur et chronométreur */}
+              {(isGlobalAdmin || eventRole === "organiser" || eventRole === "timing") && (
+                <QuickLinkButton
+                  icon={<Timer className="w-4 h-4" />}
+                  label="Chronométrage"
+                  onClick={() => navigate(`/event/${eventId}/timing`)}
+                />
+              )}
+              {/* Arbitres - organisateur et arbitre */}
+              {(isGlobalAdmin || eventRole === "organiser" || eventRole === "referee") && (
+                <QuickLinkButton
+                  icon={<Award className="w-4 h-4" />}
+                  label="Arbitres"
+                  onClick={() => navigate(`/event/${eventId}/arbitres`)}
+                />
+              )}
+              {/* Permissions - organisateur uniquement */}
+              {(isGlobalAdmin || eventRole === "organiser") && (
+                <QuickLinkButton
+                  icon={<UserCheck className="w-4 h-4" />}
+                  label="Permissions"
+                  onClick={() => navigate(`/event/${eventId}/permissions`)}
+                />
+              )}
             </div>
           </CardContent>
         </Card>
