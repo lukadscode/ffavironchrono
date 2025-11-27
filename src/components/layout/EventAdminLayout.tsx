@@ -22,6 +22,7 @@ import {
   Bell,
   FileDown,
   RefreshCw,
+  Menu,
 } from "lucide-react";
 
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -29,14 +30,11 @@ import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import { useTheme } from "@/hooks/use-theme";
 import api from "@/lib/axios";
-import { Menu } from "lucide-react";
 
 const logout = () => {
   localStorage.clear();
   window.location.href = "/";
 };
-
-import { RefreshCw } from "lucide-react";
 
 const allNavItems = [
   { to: "", label: "Accueil", icon: Home, permission: "overview" },
