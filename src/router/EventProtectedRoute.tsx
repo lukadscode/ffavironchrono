@@ -29,6 +29,7 @@ const ROLE_PERMISSIONS: Record<EventRole, string[]> = {
     "timingPoint",
     "arbitres",
     "indoor",
+    "export",
   ],
   editor: [
     // Accès à participants, équipages, distance, courses et phases
@@ -39,6 +40,7 @@ const ROLE_PERMISSIONS: Record<EventRole, string[]> = {
     "races",
     "racePhases",
     "generate-races",
+    "export",
   ],
   referee: [
     // Accès à la page arbitre

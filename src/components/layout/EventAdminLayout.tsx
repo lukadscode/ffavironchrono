@@ -20,6 +20,7 @@ import {
   Gavel,
   Activity,
   Bell,
+  FileDown,
 } from "lucide-react";
 
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -47,6 +48,7 @@ const allNavItems = [
   { to: "timing", label: "Chrono", icon: Timer, permission: "timing" },
   { to: "arbitres", label: "Arbitres", icon: Gavel, permission: "arbitres" },
   { to: "indoor", label: "Indoor", icon: Activity, permission: "indoor" },
+  { to: "export", label: "Exports", icon: FileDown, permission: "overview" },
 ];
 
 export default function EventAdminLayout() {

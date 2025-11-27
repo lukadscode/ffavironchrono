@@ -31,6 +31,7 @@ import GenerateRacesPage from "@/pages/races/GenerateRacesPage";
 import ArbitresPage from "@/pages/event/ArbitresPage";
 import IndoorPage from "@/pages/event/IndoorPage";
 import IndoorRaceDetailPage from "@/pages/event/IndoorRaceDetailPage";
+import ExportPage from "@/pages/event/ExportPage";
 import EventsList from "@/pages/public/EventsList";
 import PublicEvent from "@/pages/public/PublicEvent";
 import Live from "@/pages/public/Live";
@@ -266,6 +267,15 @@ const router = createBrowserRouter([
         element: (
           <EventProtectedRoute allowedRoles={["organiser", "timing"]}>
             <IndoorRaceDetailPage />
+          </EventProtectedRoute>
+        )
+      },
+      // Exports - organisateur et éditeur
+      { 
+        path: "export", 
+        element: (
+          <EventProtectedRoute allowedRoles={["organiser", "editor"]}>
+            <ExportPage />
           </EventProtectedRoute>
         )
       },
