@@ -142,8 +142,13 @@ export default function ExportPage() {
           // Si la course n'a pas de distance mais a un distance_id, la récupérer
           if (!race.distance && race.distance_id) {
             const distance = distanceMap.get(race.distance_id);
-            if (distance) {
-              race.distance = distance;
+            if (distance && distance.id && distance.meters !== undefined) {
+              race.distance = {
+                id: distance.id,
+                meters: distance.meters,
+                label: distance.label,
+                is_relay: distance.is_relay,
+              };
             }
           }
 
