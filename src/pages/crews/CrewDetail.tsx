@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
-import { Loader2, Users, Building2, Award, GripVertical, Save, ArrowLeft } from "lucide-react";
+import { Loader2, Users, Building2, Award, GripVertical, Save, ArrowLeft, AlertTriangle } from "lucide-react";
 import { DndContext, closestCenter } from "@dnd-kit/core";
 import {
   arrayMove,
@@ -19,6 +19,14 @@ import { Trash2, Plus, User, Search, UserPlus } from "lucide-react";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useNavigate } from "react-router-dom";
 import dayjs from "dayjs";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 
 function SortableRow({ participant, onRemove }: { participant: any; onRemove: (id: string) => void }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
@@ -134,6 +142,8 @@ export default function CrewDetail() {
   });
   const [isSaving, setIsSaving] = useState(false);
   const [isAddingParticipant, setIsAddingParticipant] = useState(false);
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
 
   useEffect(() => {
     async function fetchCrew() {
@@ -537,6 +547,33 @@ export default function CrewDetail() {
     }
   };
 
+  const handleDeleteCrew = async () => {
+    if (!crewId || !eventId) return;
+
+    setIsDeleting(true);
+    try {
+      await api.delete(`/crews/${crewId}`);
+      
+      toast({
+        title: "Équipage supprimé",
+        description: "L'équipage et tous ses participants ont été supprimés avec succès",
+      });
+
+      // Rediriger vers la liste des équipages
+      navigate(`/event/${eventId}/crews`);
+    } catch (err: any) {
+      console.error("Erreur suppression équipage:", err);
+      toast({
+        title: "Erreur",
+        description: err?.response?.data?.message || "Impossible de supprimer l'équipage",
+        variant: "destructive",
+      });
+    } finally {
+      setIsDeleting(false);
+      setDeleteDialogOpen(false);
+    }
+  };
+
   if (loading) {
     return (
       <div className="flex items-center justify-center py-20">
@@ -593,11 +630,20 @@ export default function CrewDetail() {
               </div>
               <p className="text-blue-100 text-sm sm:text-base md:text-lg break-words">{crew.club_name}</p>
             </div>
-            <div className="text-right">
+            <div className="text-right flex items-center gap-3">
               <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-white/20 backdrop-blur-md border border-white/30">
                 <Users className="w-5 h-5" />
                 <span className="font-semibold">{participants.length} participant{participants.length > 1 ? 's' : ''}</span>
               </div>
+              <Button
+                variant="destructive"
+                size="sm"
+                className="bg-red-600 hover:bg-red-700"
+                onClick={() => setDeleteDialogOpen(true)}
+              >
+                <Trash2 className="w-4 h-4 mr-2" />
+                Supprimer
+              </Button>
             </div>
           </div>
 
@@ -1015,6 +1061,65 @@ export default function CrewDetail() {
           Retour
         </Button>
       </div>
+
+      {/* Dialog de confirmation de suppression */}
+      <Dialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-red-600">
+              <AlertTriangle className="w-5 h-5" />
+              Confirmer la suppression
+            </DialogTitle>
+            <DialogDescription className="pt-4">
+              <div className="space-y-3">
+                <p className="font-semibold text-foreground">
+                  Êtes-vous sûr de vouloir supprimer l'équipage{" "}
+                  <span className="text-red-600">
+                    {crew.club_name} - {crew.category?.label || crew.category?.code || 'Équipage'}
+                  </span>
+                  ?
+                </p>
+                <div className="bg-red-50 border border-red-200 rounded-lg p-4">
+                  <p className="text-sm text-red-800 font-semibold mb-2">
+                    ⚠️ Cette action est irréversible et supprimera :
+                  </p>
+                  <ul className="text-sm text-red-800 list-disc list-inside space-y-1">
+                    <li>L'équipage complet</li>
+                    <li>Tous les participants associés à cet équipage</li>
+                    <li>Toutes les affectations de cet équipage aux courses</li>
+                  </ul>
+                </div>
+              </div>
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setDeleteDialogOpen(false)}
+              disabled={isDeleting}
+            >
+              Annuler
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={handleDeleteCrew}
+              disabled={isDeleting}
+            >
+              {isDeleting ? (
+                <>
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  Suppression...
+                </>
+              ) : (
+                <>
+                  <Trash2 className="w-4 h-4 mr-2" />
+                  Supprimer définitivement
+                </>
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
