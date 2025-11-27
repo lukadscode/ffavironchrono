@@ -8,11 +8,11 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectItem, SelectContent, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { DndContext, closestCenter } from "@dnd-kit/core";
+import { DndContext, closestCenter, useDroppable } from "@dnd-kit/core";
 import type { DragEndEvent } from "@dnd-kit/core";
 import { SortableContext, verticalListSortingStrategy, useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { Loader2, GripVertical, Tag, Info, ArrowLeft, Save, RotateCcw, Sparkles } from "lucide-react";
+import { Loader2, GripVertical, Tag, Info, ArrowLeft, Save, RotateCcw, Sparkles, Plus, X, Minus } from "lucide-react";
 
 interface Category {
   id: string;
@@ -27,7 +27,14 @@ interface Phase {
   order_index: number;
 }
 
-function SortableCategoryItem({ category }: { category: Category }) {
+interface CategoryBlock {
+  id: string;
+  categoryCodes: string[];
+  series: number; // Nombre de séries
+  participantsPerSeries: number[]; // Répartition des participants par série
+}
+
+function SortableCategoryItem({ category, onRemove }: { category: Category; onRemove?: () => void }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: category.id,
   });
@@ -42,7 +49,7 @@ function SortableCategoryItem({ category }: { category: Category }) {
     <div
       ref={setNodeRef}
       style={style}
-      className={`flex items-center gap-3 p-4 border rounded-lg bg-white transition-all ${
+      className={`flex items-center gap-3 p-3 border rounded-lg bg-white transition-all ${
         isDragging ? "shadow-lg border-blue-500 scale-105 z-50" : "border-gray-200 hover:border-blue-300 hover:shadow-md"
       }`}
     >
@@ -55,14 +62,180 @@ function SortableCategoryItem({ category }: { category: Category }) {
       </div>
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-2 mb-1">
-          <span className="font-bold text-lg text-slate-900">{category.code}</span>
+          <span className="font-bold text-sm text-slate-900">{category.code}</span>
           <span className="px-2 py-0.5 bg-blue-100 text-blue-700 rounded text-xs font-medium">
             {category.crew_count} {category.crew_count === 1 ? "équipage" : "équipages"}
           </span>
         </div>
-        <div className="text-sm text-slate-600">{category.label}</div>
+        <div className="text-xs text-slate-600">{category.label}</div>
       </div>
+      {onRemove && (
+        <Button
+          variant="ghost"
+          size="icon"
+          className="h-6 w-6 text-red-500 hover:text-red-700 hover:bg-red-50"
+          onClick={onRemove}
+        >
+          <X className="w-4 h-4" />
+        </Button>
+      )}
     </div>
+  );
+}
+
+function CategoryBlockCard({ 
+  block, 
+  categories, 
+  laneCount, 
+  onUpdate, 
+  onRemove 
+}: { 
+  block: CategoryBlock; 
+  categories: Category[];
+  laneCount: number;
+  onUpdate: (blockId: string, updates: Partial<CategoryBlock>) => void;
+  onRemove: (blockId: string) => void;
+}) {
+  const totalParticipants = block.categoryCodes.reduce((sum, code) => {
+    const cat = categories.find(c => c.code === code);
+    return sum + (cat?.crew_count || 0);
+  }, 0);
+
+  const maxSeries = Math.ceil(totalParticipants / laneCount);
+  const minSeries = Math.ceil(totalParticipants / (laneCount * 2)); // Au moins la moitié des lignes remplies
+
+  const adjustParticipants = (seriesCount: number) => {
+    const basePerSeries = Math.floor(totalParticipants / seriesCount);
+    const remainder = totalParticipants % seriesCount;
+    const distribution: number[] = [];
+    
+    for (let i = 0; i < seriesCount; i++) {
+      distribution.push(basePerSeries + (i < remainder ? 1 : 0));
+    }
+    
+    return distribution;
+  };
+
+  const handleSeriesChange = (newSeries: number) => {
+    if (newSeries < 1 || newSeries > maxSeries) return;
+    const newDistribution = adjustParticipants(newSeries);
+    onUpdate(block.id, { series: newSeries, participantsPerSeries: newDistribution });
+  };
+
+  const handleParticipantAdjust = (seriesIndex: number, delta: number) => {
+    const newDistribution = [...block.participantsPerSeries];
+    const current = newDistribution[seriesIndex];
+    const total = newDistribution.reduce((a, b) => a + b, 0);
+    
+    if (delta > 0 && total + delta <= totalParticipants + laneCount) {
+      newDistribution[seriesIndex] = current + delta;
+    } else if (delta < 0 && current + delta > 0) {
+      newDistribution[seriesIndex] = current + delta;
+    }
+    
+    // Rééquilibrer pour que le total reste proche de totalParticipants
+    const newTotal = newDistribution.reduce((a, b) => a + b, 0);
+    if (Math.abs(newTotal - totalParticipants) <= laneCount) {
+      onUpdate(block.id, { participantsPerSeries: newDistribution });
+    }
+  };
+
+  const usedLanes = block.participantsPerSeries.reduce((max, count) => Math.max(max, count), 0);
+  const availableLanes = laneCount - usedLanes;
+
+  return (
+    <Card className="border-2 border-blue-200 bg-blue-50/50">
+      <CardHeader className="pb-3">
+        <div className="flex items-center justify-between">
+          <CardTitle className="text-base">
+            {block.categoryCodes.map(code => {
+              const cat = categories.find(c => c.code === code);
+              return cat?.label || code;
+            }).join(" + ")}
+          </CardTitle>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-6 w-6 text-red-500 hover:text-red-700 hover:bg-red-50"
+            onClick={() => onRemove(block.id)}
+          >
+            <X className="w-4 h-4" />
+          </Button>
+        </div>
+        <div className="flex items-center gap-4 text-sm mt-2">
+          <span className="text-slate-600">
+            <span className="font-semibold">{totalParticipants}</span> participants
+          </span>
+          <span className="text-slate-600">
+            Lignes utilisées: <span className="font-semibold">{usedLanes}</span> / {laneCount}
+          </span>
+          {availableLanes > 0 && (
+            <span className="text-green-600 font-semibold">
+              {availableLanes} places disponibles
+            </span>
+          )}
+        </div>
+      </CardHeader>
+      <CardContent className="space-y-3">
+        <div className="flex items-center gap-2">
+          <Label className="text-sm">Nombre de séries:</Label>
+          <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              size="icon"
+              className="h-7 w-7"
+              onClick={() => handleSeriesChange(block.series - 1)}
+              disabled={block.series <= 1}
+            >
+              <Minus className="w-3 h-3" />
+            </Button>
+            <span className="font-semibold w-8 text-center">{block.series}</span>
+            <Button
+              variant="outline"
+              size="icon"
+              className="h-7 w-7"
+              onClick={() => handleSeriesChange(block.series + 1)}
+              disabled={block.series >= maxSeries}
+            >
+              <Plus className="w-3 h-3" />
+            </Button>
+          </div>
+        </div>
+        
+        <div className="space-y-2">
+          <Label className="text-sm">Répartition par série:</Label>
+          {block.participantsPerSeries.map((count, idx) => (
+            <div key={idx} className="flex items-center gap-2 p-2 bg-white rounded border">
+              <span className="text-sm font-medium w-20">Série {idx + 1}:</span>
+              <div className="flex items-center gap-1">
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-6 w-6"
+                  onClick={() => handleParticipantAdjust(idx, -1)}
+                  disabled={count <= 1}
+                >
+                  <Minus className="w-3 h-3" />
+                </Button>
+                <span className="font-semibold w-8 text-center">{count}</span>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-6 w-6"
+                  onClick={() => handleParticipantAdjust(idx, 1)}
+                  disabled={count >= laneCount}
+                >
+                  <Plus className="w-3 h-3" />
+                </Button>
+                <span className="text-xs text-slate-500 ml-2">
+                  ({count} / {laneCount} lignes)
+                </span>
+              </div>
+            </div>
+          ))}
+        </div>
+      </CardContent>
+    </Card>
   );
 }
 
@@ -78,7 +251,7 @@ export default function GenerateRacesPage() {
   const [intervalMinutes, setIntervalMinutes] = useState<number>(5);
   const [loading, setLoading] = useState(false);
   const [categories, setCategories] = useState<Category[]>([]);
-  const [categoryOrder, setCategoryOrder] = useState<string[]>([]);
+  const [categoryBlocks, setCategoryBlocks] = useState<CategoryBlock[]>([]);
   const [loadingCategories, setLoadingCategories] = useState(false);
   const [loadingPhases, setLoadingPhases] = useState(true);
 
@@ -122,32 +295,6 @@ export default function GenerateRacesPage() {
           .sort((a: any, b: any) => (a.code || "").localeCompare(b.code || ""));
         
         setCategories(categoriesWithCrews);
-        
-        // Charger l'ordre sauvegardé depuis localStorage si disponible
-        if (phaseId) {
-          const savedOrder = localStorage.getItem(`category_order_${phaseId}`);
-          if (savedOrder) {
-            try {
-              const orderArray = JSON.parse(savedOrder);
-              // Vérifier que les codes existent toujours
-              const validOrder = orderArray.filter((code: string) =>
-                categoriesWithCrews.some((cat: Category) => cat.code === code)
-              );
-              // Ajouter les catégories qui ne sont pas dans l'ordre sauvegardé
-              const missingCategories = categoriesWithCrews
-                .filter((cat: Category) => !validOrder.includes(cat.code))
-                .map((cat: Category) => cat.code);
-              
-              setCategoryOrder([...validOrder, ...missingCategories]);
-            } catch {
-              // Si erreur de parsing, utiliser l'ordre par défaut
-              setCategoryOrder(categoriesWithCrews.map((cat: Category) => cat.code));
-            }
-          } else {
-            // Ordre par défaut : tri par code
-            setCategoryOrder(categoriesWithCrews.map((cat: Category) => cat.code));
-          }
-        }
       } catch (err) {
         console.error("Erreur chargement catégories:", err);
         toast({
@@ -163,91 +310,204 @@ export default function GenerateRacesPage() {
     if (eventId) {
       fetchCategories();
     }
-  }, [eventId, phaseId, toast]);
+  }, [eventId, toast]);
 
-  // Réinitialiser l'ordre quand la phase change
-  useEffect(() => {
-    if (phaseId && categories.length > 0) {
-      const savedOrder = localStorage.getItem(`category_order_${phaseId}`);
-      if (savedOrder) {
-        try {
-          const orderArray = JSON.parse(savedOrder);
-          const validOrder = orderArray.filter((code: string) =>
-            categories.some((cat: Category) => cat.code === code)
-          );
-          const missingCategories = categories
-            .filter((cat: Category) => !validOrder.includes(cat.code))
-            .map((cat: Category) => cat.code);
-          
-          setCategoryOrder([...validOrder, ...missingCategories]);
-        } catch {
-          setCategoryOrder(categories.map((cat: Category) => cat.code));
-        }
-      } else {
-        setCategoryOrder(categories.map((cat: Category) => cat.code));
-      }
+  // Calculer automatiquement la répartition optimale
+  const calculateOptimalDistribution = (participants: number, lanes: number): { series: number; distribution: number[] } => {
+    const series = Math.ceil(participants / lanes);
+    const basePerSeries = Math.floor(participants / series);
+    const remainder = participants % series;
+    const distribution: number[] = [];
+    
+    for (let i = 0; i < series; i++) {
+      distribution.push(basePerSeries + (i < remainder ? 1 : 0));
     }
-  }, [phaseId, categories]);
+    
+    return { series, distribution };
+  };
+
+  // Calculer automatiquement les blocs quand phaseId, laneCount ou categories changent
+  useEffect(() => {
+    if (!phaseId || !laneCount || categories.length === 0) {
+      if (categoryBlocks.length === 0) {
+        setCategoryBlocks([]);
+      }
+      return;
+    }
+
+    // Si aucun bloc n'existe, créer automatiquement des blocs en essayant de regrouper intelligemment
+    if (categoryBlocks.length === 0) {
+      const initialBlocks: CategoryBlock[] = [];
+      const processedCategories = new Set<string>();
+
+      // Trier les catégories par nombre de participants (décroissant)
+      const sortedCategories = [...categories].sort((a, b) => b.crew_count - a.crew_count);
+
+      sortedCategories.forEach((cat) => {
+        if (processedCategories.has(cat.code)) return;
+
+        // Chercher un bloc existant où on peut ajouter cette catégorie
+        let addedToExisting = false;
+        for (const block of initialBlocks) {
+          const totalParticipants = block.categoryCodes.reduce((sum, code) => {
+            const c = categories.find(c => c.code === code);
+            return sum + (c?.crew_count || 0);
+          }, 0);
+          
+          const newTotal = totalParticipants + cat.crew_count;
+          const maxSeries = Math.ceil(newTotal / laneCount);
+          const minParticipantsPerSeries = Math.ceil(newTotal / maxSeries);
+          
+          // Si on peut ajouter sans dépasser les lignes d'eau
+          if (minParticipantsPerSeries <= laneCount) {
+            block.categoryCodes.push(cat.code);
+            const { series, distribution } = calculateOptimalDistribution(newTotal, laneCount);
+            block.series = series;
+            block.participantsPerSeries = distribution;
+            processedCategories.add(cat.code);
+            addedToExisting = true;
+            break;
+          }
+        }
+
+        // Si on n'a pas pu l'ajouter à un bloc existant, créer un nouveau bloc
+        if (!addedToExisting) {
+          const { series, distribution } = calculateOptimalDistribution(cat.crew_count, laneCount);
+          initialBlocks.push({
+            id: `block-${Date.now()}-${initialBlocks.length}`,
+            categoryCodes: [cat.code],
+            series,
+            participantsPerSeries: distribution,
+          });
+          processedCategories.add(cat.code);
+        }
+      });
+
+      setCategoryBlocks(initialBlocks);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [phaseId, laneCount, categories]);
+
+  // Catégories non assignées (pas dans les blocs)
+  const unassignedCategories = useMemo(() => {
+    const assignedCodes = new Set(categoryBlocks.flatMap(b => b.categoryCodes));
+    return categories.filter(cat => !assignedCodes.has(cat.code));
+  }, [categories, categoryBlocks]);
+
+  const handleAddCategoryToBlock = (categoryCode: string, blockId?: string) => {
+    const category = categories.find(c => c.code === categoryCode);
+    if (!category) return;
+
+    if (blockId) {
+      // Ajouter à un bloc existant
+      const block = categoryBlocks.find(b => b.id === blockId);
+      if (!block) return;
+
+      const newCategoryCodes = [...block.categoryCodes, categoryCode];
+      const totalParticipants = newCategoryCodes.reduce((sum, code) => {
+        const cat = categories.find(c => c.code === code);
+        return sum + (cat?.crew_count || 0);
+      }, 0);
+
+      const { series, distribution } = calculateOptimalDistribution(totalParticipants, laneCount);
+
+      setCategoryBlocks(prev => prev.map(b => 
+        b.id === blockId 
+          ? { ...b, categoryCodes: newCategoryCodes, series, participantsPerSeries: distribution }
+          : b
+      ));
+    } else {
+      // Créer un nouveau bloc
+      const { series, distribution } = calculateOptimalDistribution(category.crew_count, laneCount);
+      const newBlock: CategoryBlock = {
+        id: `block-${Date.now()}`,
+        categoryCodes: [categoryCode],
+        series,
+        participantsPerSeries: distribution,
+      };
+      setCategoryBlocks(prev => [...prev, newBlock]);
+    }
+  };
+
+  const handleRemoveCategoryFromBlock = (blockId: string, categoryCode: string) => {
+    setCategoryBlocks(prev => prev.map(block => {
+      if (block.id === blockId) {
+        const newCategoryCodes = block.categoryCodes.filter(code => code !== categoryCode);
+        if (newCategoryCodes.length === 0) {
+          return null; // Supprimer le bloc s'il est vide
+        }
+        
+        const totalParticipants = newCategoryCodes.reduce((sum, code) => {
+          const cat = categories.find(c => c.code === code);
+          return sum + (cat?.crew_count || 0);
+        }, 0);
+
+        const { series, distribution } = calculateOptimalDistribution(totalParticipants, laneCount);
+        
+        return {
+          ...block,
+          categoryCodes: newCategoryCodes,
+          series,
+          participantsPerSeries: distribution,
+        };
+      }
+      return block;
+    }).filter((b): b is CategoryBlock => b !== null));
+  };
+
+  const handleUpdateBlock = (blockId: string, updates: Partial<CategoryBlock>) => {
+    setCategoryBlocks(prev => prev.map(b => 
+      b.id === blockId ? { ...b, ...updates } : b
+    ));
+  };
+
+  const handleRemoveBlock = (blockId: string) => {
+    setCategoryBlocks(prev => prev.filter(b => b.id !== blockId));
+  };
 
   const handleDragEnd = (event: DragEndEvent) => {
     const { active, over } = event;
     if (!over || active.id === over.id) return;
 
-    const activeCategory = categories.find((c) => c.id === active.id);
-    const overCategory = categories.find((c) => c.id === over.id);
-    
-    if (!activeCategory || !overCategory) return;
+    const category = categories.find((c) => c.id === active.id);
+    if (!category) return;
 
-    const activeIndex = categoryOrder.indexOf(activeCategory.code);
-    const overIndex = categoryOrder.indexOf(overCategory.code);
+    const overId = over.id.toString();
 
-    if (activeIndex === -1 || overIndex === -1) return;
-
-    const newOrder = [...categoryOrder];
-    const [removed] = newOrder.splice(activeIndex, 1);
-    newOrder.splice(overIndex, 0, removed);
-
-    setCategoryOrder(newOrder);
-
-    // Sauvegarder dans localStorage
-    if (phaseId) {
-      localStorage.setItem(`category_order_${phaseId}`, JSON.stringify(newOrder));
-      toast({
-        title: "Ordre sauvegardé",
-        description: "L'ordre des catégories a été enregistré",
-      });
+    // Si on dépose sur un bloc existant
+    if (overId.startsWith("block-") && categoryBlocks.some(b => b.id === overId)) {
+      const blockId = overId;
+      handleAddCategoryToBlock(category.code, blockId);
+    } 
+    // Si on dépose sur la zone "nouveau bloc"
+    else if (overId === "new-block") {
+      handleAddCategoryToBlock(category.code);
     }
-  };
+    // Si on dépose sur "unassigned" (retirer de tous les blocs)
+    else if (overId === "unassigned") {
+      setCategoryBlocks(prev => prev.map(block => {
+        if (block.categoryCodes.includes(category.code)) {
+          const newCategoryCodes = block.categoryCodes.filter(code => code !== category.code);
+          if (newCategoryCodes.length === 0) {
+            return null;
+          }
+          
+          const totalParticipants = newCategoryCodes.reduce((sum, code) => {
+            const cat = categories.find(c => c.code === code);
+            return sum + (cat?.crew_count || 0);
+          }, 0);
 
-  // Catégories triées selon l'ordre personnalisé
-  const orderedCategories = useMemo(() => {
-    const ordered: Category[] = [];
-    
-    // D'abord, les catégories dans l'ordre personnalisé
-    categoryOrder.forEach((code) => {
-      const cat = categories.find((c) => c.code === code);
-      if (cat) ordered.push(cat);
-    });
-    
-    // Ensuite, les catégories qui ne sont pas dans l'ordre (au cas où)
-    categories.forEach((cat) => {
-      if (!categoryOrder.includes(cat.code)) {
-        ordered.push(cat);
-      }
-    });
-    
-    return ordered;
-  }, [categories, categoryOrder]);
-
-  const handleResetOrder = () => {
-    const defaultOrder = categories.map((cat) => cat.code).sort((a, b) => a.localeCompare(b));
-    setCategoryOrder(defaultOrder);
-    if (phaseId) {
-      localStorage.removeItem(`category_order_${phaseId}`);
-      toast({
-        title: "Ordre réinitialisé",
-        description: "L'ordre par défaut a été restauré",
-      });
+          const { series, distribution } = calculateOptimalDistribution(totalParticipants, laneCount);
+          
+          return {
+            ...block,
+            categoryCodes: newCategoryCodes,
+            series,
+            participantsPerSeries: distribution,
+          };
+        }
+        return block;
+      }).filter((b): b is CategoryBlock => b !== null));
     }
   };
 
@@ -255,7 +515,16 @@ export default function GenerateRacesPage() {
     if (!phaseId || !laneCount || !eventId) {
       toast({
         title: "Erreur",
-        description: "Veuillez sélectionner une phase et définir le nombre de couloirs",
+        description: "Veuillez sélectionner une phase et définir le nombre de lignes d'eau",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    if (categoryBlocks.length === 0) {
+      toast({
+        title: "Erreur",
+        description: "Veuillez organiser au moins une catégorie",
         variant: "destructive",
       });
       return;
@@ -264,17 +533,30 @@ export default function GenerateRacesPage() {
     try {
       setLoading(true);
 
+      // Construire l'ordre des catégories depuis les blocs
+      const categoryOrder: string[] = [];
+      categoryBlocks.forEach(block => {
+        block.categoryCodes.forEach(code => {
+          if (!categoryOrder.includes(code)) {
+            categoryOrder.push(code);
+          }
+        });
+      });
+
+      // Ajouter les catégories non assignées
+      unassignedCategories.forEach(cat => {
+        if (!categoryOrder.includes(cat.code)) {
+          categoryOrder.push(cat.code);
+        }
+      });
+
       const payload: any = {
         phase_id: phaseId,
         lane_count: laneCount,
         start_time: startTime ? new Date(startTime).toISOString() : undefined,
         interval_minutes: intervalMinutes,
+        category_order: categoryOrder,
       };
-
-      // Ajouter category_order seulement si un ordre personnalisé est défini
-      if (categoryOrder.length > 0) {
-        payload.category_order = categoryOrder;
-      }
 
       await api.post("/races/generate", payload);
 
@@ -295,8 +577,6 @@ export default function GenerateRacesPage() {
       setLoading(false);
     }
   };
-
-  const selectedPhase = phases.find((p) => p.id === phaseId);
 
   return (
     <div className="space-y-4 sm:space-y-6">
@@ -320,210 +600,273 @@ export default function GenerateRacesPage() {
             </h1>
           </div>
           <p className="text-blue-100 text-lg">
-            Configurez les paramètres et l'ordre des catégories pour générer automatiquement les courses
+            Configurez les paramètres et organisez les catégories pour générer automatiquement les courses
           </p>
         </div>
       </div>
 
-      <div className="grid lg:grid-cols-3 gap-6">
-        {/* Colonne de gauche - Paramètres */}
-        <div className="lg:col-span-1 space-y-6">
-          <Card>
-            <CardHeader>
-              <CardTitle>Paramètres de génération</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="space-y-2">
-                <Label>Phase *</Label>
-                <Select 
-                  value={phaseId} 
-                  onValueChange={(v) => setPhaseId(v)}
-                  disabled={loadingPhases}
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder={loadingPhases ? "Chargement..." : "Choisir une phase"} />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {phases.map((p) => (
-                      <SelectItem key={p.id} value={p.id}>
-                        {p.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-
-              <div className="space-y-2">
-                <Label>Nombre de lignes d'eau *</Label>
-                <Select 
-                  value={laneCount.toString()} 
-                  onValueChange={(v) => setLaneCount(Number(v))}
-                >
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {[...Array(16)].map((_, i) => {
-                      const n = i + 1;
-                      return (
-                        <SelectItem key={n} value={`${n}`}>
-                          {n}
-                        </SelectItem>
-                      );
-                    })}
-                  </SelectContent>
-                </Select>
-              </div>
-
-              <div className="space-y-2">
-                <Label>Heure de départ de la première course</Label>
-                <Input
-                  type="datetime-local"
-                  value={startTime}
-                  onChange={(e) => setStartTime(e.target.value)}
-                />
-              </div>
-
-              <div className="space-y-2">
-                <Label>Minutes entre chaque course</Label>
-                <Input
-                  type="number"
-                  min={0}
-                  value={intervalMinutes}
-                  onChange={(e) => setIntervalMinutes(Number(e.target.value))}
-                />
-              </div>
-
-              <Button 
-                onClick={handleGenerate} 
-                disabled={loading || !phaseId}
-                className="w-full"
-                size="lg"
+      {/* Configuration initiale */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Configuration</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="grid md:grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <Label>Phase *</Label>
+              <Select 
+                value={phaseId} 
+                onValueChange={(v) => {
+                  setPhaseId(v);
+                  setCategoryBlocks([]); // Réinitialiser les blocs
+                }}
+                disabled={loadingPhases}
               >
-                {loading ? (
-                  <>
-                    <Loader2 className="h-4 w-4 animate-spin mr-2" />
-                    Génération...
-                  </>
-                ) : (
-                  <>
-                    <Save className="h-4 w-4 mr-2" />
-                    Générer les courses
-                  </>
-                )}
-              </Button>
-            </CardContent>
-          </Card>
-        </div>
+                <SelectTrigger>
+                  <SelectValue placeholder={loadingPhases ? "Chargement..." : "Choisir une phase"} />
+                </SelectTrigger>
+                <SelectContent>
+                  {phases.map((p) => (
+                    <SelectItem key={p.id} value={p.id}>
+                      {p.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
 
-        {/* Colonne de droite - Ordre des catégories */}
-        <div className="lg:col-span-2 space-y-4 sm:space-y-6">
-          {phaseId && categories.length > 0 ? (
+            <div className="space-y-2">
+              <Label>Nombre de lignes d'eau *</Label>
+              <Select 
+                value={laneCount.toString()} 
+                onValueChange={(v) => {
+                  setLaneCount(Number(v));
+                  // Recalculer les blocs
+                  setCategoryBlocks(prev => prev.map(block => {
+                    const totalParticipants = block.categoryCodes.reduce((sum, code) => {
+                      const cat = categories.find(c => c.code === code);
+                      return sum + (cat?.crew_count || 0);
+                    }, 0);
+                    const { series, distribution } = calculateOptimalDistribution(totalParticipants, Number(v));
+                    return { ...block, series, participantsPerSeries: distribution };
+                  }));
+                }}
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {[...Array(20)].map((_, i) => {
+                    const n = i + 1;
+                    return (
+                      <SelectItem key={n} value={`${n}`}>
+                        {n}
+                      </SelectItem>
+                    );
+                  })}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-2">
+              <Label>Heure de départ de la première course</Label>
+              <Input
+                type="datetime-local"
+                value={startTime}
+                onChange={(e) => setStartTime(e.target.value)}
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label>Minutes entre chaque course</Label>
+              <Input
+                type="number"
+                min={0}
+                value={intervalMinutes}
+                onChange={(e) => setIntervalMinutes(Number(e.target.value))}
+              />
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Deux colonnes : Catégories disponibles et Ordre/Répartition */}
+      {phaseId && laneCount > 0 ? (
+        <DndContext
+          collisionDetection={closestCenter}
+          onDragEnd={handleDragEnd}
+        >
+          <div className="grid lg:grid-cols-2 gap-6">
+            {/* Colonne gauche : Catégories disponibles */}
             <Card>
               <CardHeader>
-                <div className="flex items-center justify-between">
-                  <div>
-                    <CardTitle className="flex items-center gap-2">
-                      <Tag className="w-5 h-5" />
-                      Ordre des catégories
-                    </CardTitle>
-                    <p className="text-sm text-muted-foreground mt-1">
-                      Définissez l'ordre dans lequel les catégories seront traitées lors de la génération
-                    </p>
-                  </div>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={handleResetOrder}
-                    disabled={loadingCategories}
-                  >
-                    <RotateCcw className="w-4 h-4 mr-2" />
-                    Réinitialiser
-                  </Button>
-                </div>
+                <CardTitle className="flex items-center gap-2">
+                  <Tag className="w-5 h-5" />
+                  Catégories disponibles
+                </CardTitle>
+                <p className="text-sm text-muted-foreground mt-1">
+                  Glissez-déposez les catégories vers la colonne de droite pour les organiser
+                </p>
               </CardHeader>
               <CardContent>
-                <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-4 flex items-start gap-3">
-                  <Info className="w-5 h-5 text-blue-600 mt-0.5 flex-shrink-0" />
-                  <div className="text-sm text-blue-800">
-                    <p className="font-semibold mb-1">Ordre personnalisé des catégories</p>
-                    <p className="text-xs">
-                      Glissez-déposez les catégories ci-dessous pour définir l'ordre dans lequel elles seront traitées. 
-                      Les catégories non listées seront ajoutées à la fin dans l'ordre alphabétique. 
-                      L'ordre est sauvegardé automatiquement dans votre navigateur pour cette phase.
-                    </p>
-                  </div>
-                </div>
-
                 {loadingCategories ? (
                   <div className="flex items-center justify-center py-12">
                     <Loader2 className="w-8 h-8 animate-spin text-blue-600" />
                   </div>
-                ) : orderedCategories.length > 0 ? (
-                  <div className="space-y-3">
-                    <div className="flex items-center justify-between text-sm">
-                      <span className="text-muted-foreground">
-                        {orderedCategories.length} catégorie{orderedCategories.length > 1 ? "s" : ""} disponible{orderedCategories.length > 1 ? "s" : ""}
-                      </span>
-                      <span className="text-muted-foreground">
-                        Glissez-déposez pour réorganiser
-                      </span>
-                    </div>
+                ) : unassignedCategories.length > 0 ? (
+                  <UnassignedDroppable>
                     <ScrollArea className="h-[600px] border rounded-lg p-4 bg-slate-50">
-                      <DndContext
-                        collisionDetection={closestCenter}
-                        onDragEnd={handleDragEnd}
+                      <SortableContext
+                        items={unassignedCategories.map((c) => c.id)}
+                        strategy={verticalListSortingStrategy}
                       >
-                        <SortableContext
-                          items={orderedCategories.map((c) => c.id)}
-                          strategy={verticalListSortingStrategy}
-                        >
-                          <div className="space-y-3">
-                            {orderedCategories.map((category, index) => (
-                              <div key={category.id} className="relative">
-                                <div className="absolute -left-8 top-1/2 -translate-y-1/2 w-6 h-6 rounded-full bg-blue-500 text-white flex items-center justify-center text-xs font-bold">
-                                  {index + 1}
-                                </div>
-                                <SortableCategoryItem category={category} />
-                              </div>
-                            ))}
-                          </div>
-                        </SortableContext>
-                      </DndContext>
+                        <div className="space-y-3">
+                          {unassignedCategories.map((category) => (
+                            <SortableCategoryItem key={category.id} category={category} />
+                          ))}
+                        </div>
+                      </SortableContext>
                     </ScrollArea>
-                  </div>
+                  </UnassignedDroppable>
                 ) : (
                   <div className="text-center py-12 text-muted-foreground">
                     <Tag className="w-12 h-12 mx-auto mb-3 opacity-50" />
-                    <p className="font-medium">Aucune catégorie avec équipages disponible</p>
-                    <p className="text-sm mt-1">
-                      Assurez-vous que des équipages sont enregistrés pour les catégories
-                    </p>
+                    <p className="font-medium">Toutes les catégories sont organisées</p>
                   </div>
                 )}
               </CardContent>
             </Card>
-          ) : phaseId ? (
+
+            {/* Colonne droite : Ordre et répartition */}
             <Card>
-              <CardContent className="py-12 text-center">
-                <Loader2 className="w-8 h-8 animate-spin text-blue-600 mx-auto mb-4" />
-                <p className="text-muted-foreground">Chargement des catégories...</p>
-              </CardContent>
-            </Card>
-          ) : (
-            <Card>
-              <CardContent className="py-12 text-center">
-                <Info className="w-12 h-12 mx-auto mb-4 text-muted-foreground opacity-50" />
-                <p className="font-medium text-muted-foreground">Sélectionnez une phase</p>
+              <CardHeader>
+                <CardTitle>Ordre et répartition des courses</CardTitle>
                 <p className="text-sm text-muted-foreground mt-1">
-                  Choisissez une phase dans le panneau de gauche pour configurer l'ordre des catégories
+                  Organisez les catégories en blocs. Les catégories dans le même bloc seront regroupées dans les mêmes courses.
                 </p>
+              </CardHeader>
+              <CardContent>
+                <ScrollArea className="h-[600px]">
+                  <div className="space-y-4">
+                    {categoryBlocks.length > 0 ? (
+                      categoryBlocks.map((block) => (
+                        <DroppableBlock
+                          key={block.id}
+                          blockId={block.id}
+                        >
+                          <CategoryBlockCard
+                            block={block}
+                            categories={categories}
+                            laneCount={laneCount}
+                            onUpdate={handleUpdateBlock}
+                            onRemove={handleRemoveBlock}
+                          />
+                        </DroppableBlock>
+                      ))
+                    ) : (
+                      <div className="text-center py-12 text-muted-foreground border-2 border-dashed rounded-lg">
+                        <Info className="w-12 h-12 mx-auto mb-3 opacity-50" />
+                        <p className="font-medium">Aucun bloc créé</p>
+                        <p className="text-sm mt-1">
+                          Glissez-déposez des catégories depuis la colonne de gauche
+                        </p>
+                      </div>
+                    )}
+
+                    {/* Zone de dépôt pour créer un nouveau bloc */}
+                    <DroppableZone />
+                  </div>
+                </ScrollArea>
               </CardContent>
             </Card>
-          )}
-        </div>
-      </div>
+          </div>
+        </DndContext>
+      ) : (
+        <Card>
+          <CardContent className="py-12 text-center">
+            <Info className="w-12 h-12 mx-auto mb-4 text-muted-foreground opacity-50" />
+            <p className="font-medium text-muted-foreground">Sélectionnez une phase et le nombre de lignes d'eau</p>
+            <p className="text-sm text-muted-foreground mt-1">
+              Configurez les paramètres ci-dessus pour commencer
+            </p>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Bouton de génération */}
+      {phaseId && categoryBlocks.length > 0 && (
+        <Card>
+          <CardContent className="pt-6">
+            <Button 
+              onClick={handleGenerate} 
+              disabled={loading || !phaseId}
+              className="w-full"
+              size="lg"
+            >
+              {loading ? (
+                <>
+                  <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                  Génération...
+                </>
+              ) : (
+                <>
+                  <Save className="h-4 w-4 mr-2" />
+                  Générer les courses
+                </>
+              )}
+            </Button>
+          </CardContent>
+        </Card>
+      )}
     </div>
   );
 }
 
+function DroppableZone() {
+  const { setNodeRef, isOver } = useDroppable({
+    id: "new-block",
+  });
+
+  return (
+    <div
+      ref={setNodeRef}
+      className={`border-2 border-dashed rounded-lg p-8 text-center transition-colors ${
+        isOver 
+          ? "border-blue-500 bg-blue-50" 
+          : "border-gray-300 bg-gray-50"
+      }`}
+    >
+      <Plus className="w-8 h-8 mx-auto mb-2 text-gray-400" />
+      <p className="text-sm text-gray-600 font-medium">
+        Déposez ici pour créer un nouveau bloc
+      </p>
+    </div>
+  );
+}
+
+function DroppableBlock({ blockId, children }: { blockId: string; children: React.ReactNode }) {
+  const { setNodeRef, isOver } = useDroppable({
+    id: blockId,
+  });
+
+  return (
+    <div
+      ref={setNodeRef}
+      className={isOver ? "ring-2 ring-blue-500 rounded-lg" : ""}
+    >
+      {children}
+    </div>
+  );
+}
+
+function UnassignedDroppable({ children }: { children: React.ReactNode }) {
+  const { setNodeRef } = useDroppable({
+    id: "unassigned",
+  });
+
+  return (
+    <div ref={setNodeRef}>
+      {children}
+    </div>
+  );
+}
