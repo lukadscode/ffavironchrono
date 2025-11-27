@@ -141,7 +141,7 @@ export default function ExportPage() {
 
           // Si la course n'a pas de distance mais a un distance_id, la récupérer
           if (!race.distance && race.distance_id) {
-            const distance = distanceMap.get(race.distance_id);
+            const distance = distanceMap.get(race.distance_id) as any;
             if (distance && distance.id && distance.meters !== undefined) {
               race.distance = {
                 id: distance.id,
