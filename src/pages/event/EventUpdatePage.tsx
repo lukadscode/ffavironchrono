@@ -4,8 +4,6 @@ import api from "@/lib/axios";
 import { useToast } from "@/hooks/use-toast";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Label } from "@/components/ui/label";
-import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Loader2, RefreshCw, ArrowLeft, CheckCircle2, XCircle, Info, Users, Ship, Flag, MapPin, FileText } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
@@ -181,37 +179,40 @@ export default function EventUpdatePage() {
           <CardTitle>Configuration</CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
-          <div>
-            <Label>ID de la manifestation FFAviron</Label>
-            <Input
-              value={manifestationId}
-              onChange={(e) => setManifestationId(e.target.value)}
-              placeholder="Ex: 12345"
-              disabled={loading}
-            />
-            <p className="text-sm text-muted-foreground mt-1">
-              L'ID de la manifestation dans l'API FFAviron. Si l'événement a été importé depuis FFAviron, cet ID devrait être pré-rempli.
-            </p>
-          </div>
-          
-          <Button
-            onClick={handleUpdate}
-            disabled={loading || !manifestationId || !eventId}
-            className="w-full"
-            size="lg"
-          >
-            {loading ? (
-              <>
-                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                Mise à jour en cours...
-              </>
-            ) : (
-              <>
-                <RefreshCw className="w-4 h-4 mr-2" />
-                Mettre à jour l'événement
-              </>
-            )}
-          </Button>
+          {!manifestationId ? (
+            <Alert>
+              <Info className="h-4 w-4" />
+              <AlertDescription>
+                L'ID de la manifestation FFAviron n'a pas été trouvé pour cet événement. 
+                Veuillez contacter un administrateur pour configurer cet événement.
+              </AlertDescription>
+            </Alert>
+          ) : (
+            <div>
+              <p className="text-sm text-muted-foreground mb-4">
+                Cette action va synchroniser votre événement avec les dernières données de l'API FFAviron.
+                Seuls les nouveaux éléments seront ajoutés, sans modifier les données existantes.
+              </p>
+              <Button
+                onClick={handleUpdate}
+                disabled={loading || !manifestationId || !eventId}
+                className="w-full"
+                size="lg"
+              >
+                {loading ? (
+                  <>
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    Mise à jour en cours...
+                  </>
+                ) : (
+                  <>
+                    <RefreshCw className="w-4 h-4 mr-2" />
+                    Mettre à jour l'événement
+                  </>
+                )}
+              </Button>
+            </div>
+          )}
         </CardContent>
       </Card>
 
