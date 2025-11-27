@@ -369,12 +369,14 @@ export default function GenerateRacesPage() {
           const distanceMap = new Map<string, any>(distances.map((d: any) => [d.id, d]));
           
           const enrichedCategories = categoriesWithCrews.map((cat: any) => {
-            if (cat.distance) {
+            // Si la catégorie a déjà une distance complète avec meters, l'utiliser
+            if (cat.distance && cat.distance.meters !== undefined && cat.distance.meters !== null) {
               return cat;
             }
+            // Sinon, essayer de récupérer la distance via distance_id
             if (cat.distance_id) {
               const distance = distanceMap.get(cat.distance_id);
-              if (distance && distance.id && distance.meters !== undefined) {
+              if (distance && distance.id && distance.meters !== undefined && distance.meters !== null) {
                 return {
                   ...cat,
                   distance: {
@@ -387,6 +389,13 @@ export default function GenerateRacesPage() {
             }
             return cat;
           });
+          
+          console.log("Catégories enrichies:", enrichedCategories.map((c: any) => ({
+            code: c.code,
+            label: c.label,
+            distance: c.distance?.meters || null,
+            distance_id: c.distance_id
+          })));
           
           setCategories(enrichedCategories);
         } catch (err) {
@@ -454,12 +463,17 @@ export default function GenerateRacesPage() {
     const dist1 = getCategoryDistance(category1);
     const dist2 = getCategoryDistance(category2);
     
-    // Si une des deux n'a pas de distance, on autorise (cas flexible)
+    // Si les deux n'ont pas de distance, on autorise (cas flexible)
+    if (dist1 === null && dist2 === null) {
+      return true;
+    }
+    
+    // Si une seule a une distance, on autorise (cas flexible)
     if (dist1 === null || dist2 === null) {
       return true;
     }
     
-    // Les distances doivent être identiques
+    // Si les deux ont des distances, elles doivent être identiques
     return dist1 === dist2;
   };
 
@@ -471,16 +485,46 @@ export default function GenerateRacesPage() {
       return { canAdd: true };
     }
     
-    // Vérifier que toutes les catégories existantes ont la même distance que la nouvelle
-    for (const code of existingCategoryCodes) {
-      const existingCategory = categories.find(c => c.code === code);
-      if (existingCategory && !areDistancesCompatible(category, existingCategory)) {
-        const dist1 = getCategoryDistance(category);
-        const dist2 = getCategoryDistance(existingCategory);
-        return {
-          canAdd: false,
-          reason: `Les distances ne correspondent pas (${dist1}m vs ${dist2}m). Les catégories dans une même série doivent avoir la même distance.`
-        };
+    // Récupérer toutes les distances des catégories existantes (non null)
+    const existingDistances = existingCategoryCodes
+      .map(code => {
+        const existingCategory = categories.find(c => c.code === code);
+        return existingCategory ? getCategoryDistance(existingCategory) : null;
+      })
+      .filter((d): d is number => d !== null);
+    
+    const newCategoryDistance = getCategoryDistance(category);
+    
+    // Si la nouvelle catégorie a une distance
+    if (newCategoryDistance !== null) {
+      // Vérifier qu'elle correspond à toutes les distances existantes
+      if (existingDistances.length > 0) {
+        const uniqueExistingDistances = [...new Set(existingDistances)];
+        if (uniqueExistingDistances.length > 1) {
+          // Il y a déjà des distances différentes dans la série
+          return {
+            canAdd: false,
+            reason: `Cette série contient déjà des catégories avec des distances différentes (${uniqueExistingDistances.join("m, ")}m).`
+          };
+        }
+        // Vérifier que la nouvelle distance correspond à la distance existante
+        if (uniqueExistingDistances[0] !== newCategoryDistance) {
+          return {
+            canAdd: false,
+            reason: `Les distances ne correspondent pas (${newCategoryDistance}m vs ${uniqueExistingDistances[0]}m). Les catégories dans une même série doivent avoir la même distance.`
+          };
+        }
+      }
+    } else {
+      // Si la nouvelle catégorie n'a pas de distance, vérifier qu'il n'y a pas déjà des distances différentes dans la série
+      if (existingDistances.length > 0) {
+        const uniqueExistingDistances = [...new Set(existingDistances)];
+        if (uniqueExistingDistances.length > 1) {
+          return {
+            canAdd: false,
+            reason: `Cette série contient déjà des catégories avec des distances différentes (${uniqueExistingDistances.join("m, ")}m).`
+          };
+        }
       }
     }
     
@@ -496,8 +540,21 @@ export default function GenerateRacesPage() {
       const targetSeries = series.find(s => s.id === seriesId);
       if (!targetSeries) return;
 
-      // Vérifier la compatibilité des distances
+      // Vérifier la compatibilité des distances AVANT d'ajouter
       const validation = canAddCategoryToSeries(category, targetSeries);
+      console.log("Validation distance:", {
+        category: category.code,
+        categoryDistance: getCategoryDistance(category),
+        categoryDistanceObj: category.distance,
+        seriesId,
+        existingCategories: Object.keys(targetSeries.categories),
+        existingCategoriesWithDistances: Object.keys(targetSeries.categories).map(code => {
+          const cat = categories.find(c => c.code === code);
+          return { code, distance: cat ? getCategoryDistance(cat) : null, distanceObj: cat?.distance };
+        }),
+        validationResult: validation
+      });
+      
       if (!validation.canAdd) {
         toast({
           title: "Impossible d'ajouter la catégorie",
@@ -543,6 +600,41 @@ export default function GenerateRacesPage() {
       }
     } else {
       // Créer une nouvelle série pour cette catégorie
+      // Mais d'abord, vérifier s'il existe une série existante avec la même distance où on pourrait ajouter
+      const categoryDistance = getCategoryDistance(category);
+      if (categoryDistance !== null) {
+        // Chercher une série existante avec la même distance et de la place
+        const compatibleSeries = series.find(s => {
+          const existingCategoryCodes = Object.keys(s.categories);
+          if (existingCategoryCodes.length === 0) return false;
+          
+          // Vérifier que toutes les catégories de cette série ont la même distance
+          const seriesDistances = existingCategoryCodes
+            .map(code => {
+              const cat = categories.find(c => c.code === code);
+              return cat ? getCategoryDistance(cat) : null;
+            })
+            .filter((d): d is number => d !== null);
+          
+          if (seriesDistances.length === 0) return false;
+          const uniqueDistances = [...new Set(seriesDistances)];
+          if (uniqueDistances.length !== 1 || uniqueDistances[0] !== categoryDistance) {
+            return false;
+          }
+          
+          // Vérifier qu'il y a de la place
+          const currentTotal = Object.values(s.categories).reduce((sum, count) => sum + count, 0);
+          return currentTotal < laneCount;
+        });
+        
+        if (compatibleSeries) {
+          // Ajouter à la série compatible existante
+          handleAddCategoryToSeries(categoryCode, compatibleSeries.id);
+          return;
+        }
+      }
+      
+      // Sinon, créer une nouvelle série
       const seriesNeeded = Math.ceil(category.crew_count / laneCount);
       const newSeriesList: Series[] = [];
 
