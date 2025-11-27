@@ -2,6 +2,7 @@ import { useParams } from "react-router-dom";
 import { useEffect, useMemo, useState } from "react";
 import api from "@/lib/axios";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
 import { useToast } from "@/hooks/use-toast";
 import {
   DndContext,
@@ -17,7 +18,7 @@ import {
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import clsx from "clsx";
-import { X } from "lucide-react";
+import { X, Search } from "lucide-react";
 import RaceFormDialog from "@/components/races/RaceFormDialog";
 import PhaseResultsPanel from "@/components/races/PhaseResultsPanel";
 
@@ -238,6 +239,7 @@ export default function RacePhaseDetailPage() {
   const [exporting, setExporting] = useState<{ start?: boolean; weigh?: boolean }>({});
   const [phases, setPhases] = useState<RacePhase[]>([]);
   const [currentPhase, setCurrentPhase] = useState<RacePhase | null>(null);
+  const [unassignedSearchQuery, setUnassignedSearchQuery] = useState<string>("");
 
   // === Nouveaux états pour la timeline + gaps dynamiques ===
   const [slotMinutes, setSlotMinutes] = useState<number>(DEFAULT_SLOT_MINUTES);
@@ -395,6 +397,33 @@ export default function RacePhaseDetailPage() {
   };
 
   const unassignedCrews = useMemo(() => crews.filter((c) => !getAllCrewIdsInRaces().includes(c.id)), [crews, races]);
+
+  // Filtrer les équipages non affectés selon la recherche
+  const filteredUnassignedCrews = useMemo(() => {
+    if (!unassignedSearchQuery.trim()) {
+      return unassignedCrews;
+    }
+    const query = unassignedSearchQuery.toLowerCase().trim();
+    return unassignedCrews.filter((crew) => {
+      // Recherche dans le nom du club
+      if (crew.club_name?.toLowerCase().includes(query)) return true;
+      // Recherche dans le code du club
+      if (crew.club_code?.toLowerCase().includes(query)) return true;
+      // Recherche dans la catégorie
+      if (crew.category?.label?.toLowerCase().includes(query)) return true;
+      if (crew.category_label?.toLowerCase().includes(query)) return true;
+      // Recherche dans les noms des participants
+      if (crew.crew_participants) {
+        return crew.crew_participants.some(
+          (cp) =>
+            cp.participant?.first_name?.toLowerCase().includes(query) ||
+            cp.participant?.last_name?.toLowerCase().includes(query) ||
+            cp.participant?.license_number?.toLowerCase().includes(query)
+        );
+      }
+      return false;
+    });
+  }, [unassignedCrews, unassignedSearchQuery]);
 
   // ---------- Helpers planning & renommage ----------
   const addMinutes = (date: Date, minutes: number) => {
@@ -725,11 +754,29 @@ export default function RacePhaseDetailPage() {
           <Card>
             <CardHeader className="bg-red-50">
               <CardTitle>Équipages non affectés</CardTitle>
+              <div className="mt-2">
+                <div className="relative">
+                  <Search className="absolute left-2 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
+                  <Input
+                    type="text"
+                    placeholder="Rechercher un équipage..."
+                    value={unassignedSearchQuery}
+                    onChange={(e) => setUnassignedSearchQuery(e.target.value)}
+                    className="pl-8"
+                  />
+                </div>
+              </div>
             </CardHeader>
             <UnassignedDroppable isActiveHint={isDraggingRaceCrew}>
-              {unassignedCrews.map((crew) => (
-                <DraggableCrew key={crew.id} crew={crew} />
-              ))}
+              {filteredUnassignedCrews.length === 0 && unassignedSearchQuery ? (
+                <div className="text-sm text-gray-500 text-center py-4">
+                  Aucun équipage trouvé pour "{unassignedSearchQuery}"
+                </div>
+              ) : (
+                filteredUnassignedCrews.map((crew) => (
+                  <DraggableCrew key={crew.id} crew={crew} />
+                ))
+              )}
             </UnassignedDroppable>
           </Card>
         </div>
@@ -778,7 +825,90 @@ export default function RacePhaseDetailPage() {
                 >
                   {exporting.weigh ? "Export…" : "Export Pesée (PDF)"}
                 </button>
-                <RaceFormDialog phaseId={phaseId!} eventId={eventId!} onSuccess={fetchRaces} />
+                <RaceFormDialog 
+                  phaseId={phaseId!} 
+                  eventId={eventId!} 
+                  onSuccess={async () => {
+                    try {
+                      // Récupérer toutes les courses de la phase
+                      const res = await api.get(`/races/event/${eventId}`);
+                      const phaseRaces: Race[] = res.data.data.filter((r: any) => r.phase_id === phaseId);
+                      
+                      // Trier par race_number pour trouver la dernière
+                      const sorted = phaseRaces.sort((a, b) => (a.race_number || 0) - (b.race_number || 0));
+                      
+                      // Trouver la nouvelle course (celle qui n'a pas encore de start_time ou qui est la dernière)
+                      // On prend la dernière course créée (la plus récente par ID ou par date de création)
+                      const lastRace = sorted[sorted.length - 1];
+                      if (!lastRace) {
+                        await fetchRaces();
+                        return;
+                      }
+                      
+                      // Calculer le race_number (dernier + 1)
+                      const newRaceNumber = sorted.length;
+                      
+                      // Calculer le start_time
+                      let newStartTime: string;
+                      if (sorted.length === 1) {
+                        // Première course : utiliser firstStartLocal
+                        const baseDate = firstStartLocal 
+                          ? parseLocalInput(firstStartLocal)
+                          : (() => {
+                              const d = new Date();
+                              d.setHours(9, 0, 0, 0);
+                              return d;
+                            })();
+                        newStartTime = toIsoUtc(baseDate);
+                        // Mettre à jour firstStartLocal si elle n'était pas définie
+                        if (!firstStartLocal) {
+                          setFirstStartLocal(toLocalInputValue(baseDate));
+                        }
+                      } else {
+                        // Course suivante : dernière course + gap
+                        const previousRace = sorted[sorted.length - 2];
+                        if (previousRace.start_time) {
+                          const prevDate = new Date(previousRace.start_time);
+                          const gap = gapsByRaceId[previousRace.id] || slotMinutes;
+                          newStartTime = toIsoUtc(addMinutes(prevDate, gap));
+                        } else {
+                          // Si la course précédente n'a pas d'heure, utiliser firstStartLocal + (index * slotMinutes)
+                          const baseDate = firstStartLocal 
+                            ? parseLocalInput(firstStartLocal)
+                            : (() => {
+                                const d = new Date();
+                                d.setHours(9, 0, 0, 0);
+                                return d;
+                              })();
+                          newStartTime = toIsoUtc(addMinutes(baseDate, (newRaceNumber - 1) * slotMinutes));
+                        }
+                      }
+                      
+                      // Mettre à jour la nouvelle course avec le race_number et start_time
+                      await api.put(`/races/${lastRace.id}`, {
+                        race_number: newRaceNumber,
+                        start_time: newStartTime,
+                      });
+                      
+                      // Rafraîchir la liste des courses
+                      await fetchRaces();
+                      
+                      toast({ 
+                        title: "Course créée avec succès", 
+                        description: `Course ajoutée à la fin de la liste avec l'heure ${new Date(newStartTime).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}`
+                      });
+                    } catch (err) {
+                      console.error("Erreur lors de l'ajout automatique de la course:", err);
+                      // En cas d'erreur, on recharge quand même les courses
+                      await fetchRaces();
+                      toast({
+                        title: "Course créée",
+                        description: "La course a été créée mais l'heure n'a pas pu être définie automatiquement",
+                        variant: "default",
+                      });
+                    }
+                  }} 
+                />
               </div>
             </div>
 
