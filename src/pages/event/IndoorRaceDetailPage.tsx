@@ -722,6 +722,29 @@ export default function IndoorRaceDetailPage() {
     return `${minutes}:${seconds.toString().padStart(2, "0")}.${milliseconds.toString().padStart(3, "0")}`;
   };
 
+  // Fonction pour formater le split_time (en centièmes de seconde, ex: 625 = 62.5s = 1:02.5)
+  const formatSplitTime = (splitTime: string | number | null | undefined): string => {
+    if (!splitTime && splitTime !== 0) return "-";
+    
+    // Si c'est déjà formaté (contient ':'), retourner tel quel
+    const str = splitTime.toString();
+    if (str.includes(':')) {
+      return str;
+    }
+    
+    // Convertir en nombre (centièmes de seconde)
+    const centiseconds = typeof splitTime === 'string' ? parseFloat(splitTime) : splitTime;
+    if (isNaN(centiseconds) || centiseconds < 0) return "-";
+    
+    // Convertir centièmes en secondes totales
+    const totalSeconds = centiseconds / 10;
+    const minutes = Math.floor(totalSeconds / 60);
+    const seconds = Math.floor(totalSeconds % 60);
+    const tenths = Math.floor((centiseconds % 10));
+    
+    return `${minutes}:${seconds.toString().padStart(2, "0")}.${tenths}`;
+  };
+
   const generateRac2File = async () => {
     if (!race || !event) {
       toast({
@@ -1434,22 +1457,26 @@ export default function IndoorRaceDetailPage() {
                         {indoorResults.participants.some(p => p.splits_data && p.splits_data.length > 0) && (
                           <td className="py-3 px-4">
                             {hasSplits ? (
-                              <div className="space-y-1">
-                                {participant.splits_data!.map((split: any, idx: number) => {
-                                  const splitTime = split.split_time || split.split_time_display || split.time_display || 
-                                    (split.split_time_ms ? formatTime(split.split_time_ms) : 
-                                    (split.time_ms ? formatTime(split.time_ms) : "-"));
-                                  const splitDist = split.split_distance || split.distance || "";
-                                  return (
-                                    <div key={idx} className="text-xs font-mono">
-                                      {splitDist ? `${splitDist}m: ` : ""}{splitTime}
-                                    </div>
-                                  );
-                                })}
+                              <div>
+                                <div className="flex flex-wrap gap-x-2 gap-y-0.5 text-xs font-mono">
+                                  {participant.splits_data!.map((split: any, idx: number) => {
+                                    const splitTime = split.split_time 
+                                      ? formatSplitTime(split.split_time)
+                                      : (split.split_time_display || split.time_display || 
+                                        (split.split_time_ms ? formatTime(split.split_time_ms) : 
+                                        (split.time_ms ? formatTime(split.time_ms) : "-")));
+                                    const splitDist = split.split_distance || split.distance || "";
+                                    return (
+                                      <span key={idx} className="whitespace-nowrap">
+                                        {splitDist ? `${splitDist}m: ` : ""}{splitTime}
+                                      </span>
+                                    );
+                                  })}
+                                </div>
                                 <Button
                                   variant="ghost"
                                   size="sm"
-                                  className="mt-2 h-6 text-xs"
+                                  className="mt-1 h-6 text-xs"
                                   onClick={() => setSelectedParticipantForChart(participant)}
                                 >
                                   <BarChart3 className="w-3 h-3 mr-1" />
@@ -1618,21 +1645,39 @@ export default function IndoorRaceDetailPage() {
             <div className="space-y-6 mt-4">
               <div className="h-80">
                 <ResponsiveContainer width="100%" height="100%">
-                  <LineChart data={selectedParticipantForChart.splits_data.map((split: any, idx: number) => ({
-                    split: `Split ${idx + 1}`,
-                    distance: split.split_distance || split.distance || 0,
-                    split_time_ms: split.split_time_ms || split.time_ms || 0,
-                    split_avg_pace: split.split_avg_pace ? parseFloat(String(split.split_avg_pace).replace(/[^\d.]/g, '')) : 0,
-                    split_stroke_rate: split.split_stroke_rate || 0,
-                  }))}>
+                  <LineChart data={selectedParticipantForChart.splits_data.map((split: any, idx: number) => {
+                    // Convertir split_time (centièmes de seconde) en secondes pour le graphique
+                    // Exemple: 625 centièmes = 62.5 secondes
+                    let splitTimeInSeconds = 0;
+                    if (split.split_time !== undefined && split.split_time !== null) {
+                      const centiseconds = typeof split.split_time === 'string' ? parseFloat(split.split_time) : split.split_time;
+                      if (!isNaN(centiseconds)) {
+                        splitTimeInSeconds = centiseconds / 10; // Convertir centièmes en secondes (625 -> 62.5)
+                      }
+                    } else if (split.split_time_ms) {
+                      splitTimeInSeconds = split.split_time_ms / 1000; // Convertir ms en secondes
+                    } else if (split.time_ms) {
+                      splitTimeInSeconds = split.time_ms / 1000;
+                    }
+                    
+                    return {
+                      split: `Split ${idx + 1}`,
+                      distance: split.split_distance || split.distance || 0,
+                      split_time_seconds: splitTimeInSeconds,
+                      split_avg_pace: split.split_avg_pace ? parseFloat(String(split.split_avg_pace).replace(/[^\d.]/g, '')) : 0,
+                      split_stroke_rate: split.split_stroke_rate || 0,
+                    };
+                  })}>
                     <CartesianGrid strokeDasharray="3 3" />
                     <XAxis dataKey="split" />
-                    <YAxis yAxisId="left" label={{ value: 'Temps (ms)', angle: -90, position: 'insideLeft' }} />
+                    <YAxis yAxisId="left" label={{ value: 'Temps (secondes)', angle: -90, position: 'insideLeft' }} />
                     <YAxis yAxisId="right" orientation="right" label={{ value: 'Allure / SPM', angle: 90, position: 'insideRight' }} />
                     <Tooltip 
                       formatter={(value: any, name: string) => {
-                        if (name === 'split_time_ms') {
-                          return [formatTime(value), 'Temps'];
+                        if (name === 'split_time_seconds') {
+                          const minutes = Math.floor(value / 60);
+                          const seconds = (value % 60).toFixed(1);
+                          return [`${minutes}:${seconds.padStart(4, '0')}`, 'Temps'];
                         }
                         if (name === 'split_avg_pace') {
                           return [value.toFixed(2) + ' s/500m', 'Allure'];
@@ -1647,7 +1692,7 @@ export default function IndoorRaceDetailPage() {
                     <Line 
                       yAxisId="left" 
                       type="monotone" 
-                      dataKey="split_time_ms" 
+                      dataKey="split_time_seconds" 
                       stroke="#3b82f6" 
                       strokeWidth={2}
                       name="Temps"

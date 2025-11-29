@@ -108,6 +108,18 @@ type IndoorParticipantResult = {
       seat_position?: number;
     }>;
   } | null;
+  splits_data?: Array<{
+    distance?: number;
+    time_ms?: number;
+    time_display?: string;
+    pace?: string;
+    split_distance?: number;
+    split_time_ms?: number;
+    split_time_display?: string;
+    split_time?: string;
+    split_avg_pace?: string;
+    split_stroke_rate?: number;
+  }> | null;
 };
 
 export default function Results() {
@@ -231,19 +243,32 @@ export default function Results() {
                     });
                     
                     // Enrichir les participants avec les infos des équipages
-                    const enrichedParticipants = participants.map((p: IndoorParticipantResult) => {
-                      if (p.crew_id && crewMap.has(p.crew_id)) {
-                        const crew = crewMap.get(p.crew_id);
-                        return {
-                          ...p,
-                          crew: {
-                            ...p.crew,
-                            crew_participants: crew.crew_participants || [],
-                          },
-                        };
-                      }
-                      return p;
-                    });
+                    // Filtrer les participants non identifiés avec temps à 0 (couloirs vidéo)
+                    const enrichedParticipants = participants
+                      .filter((p: IndoorParticipantResult) => {
+                        // Exclure les participants non identifiés (pas de crew_id ou crew null)
+                        if (!p.crew_id || !p.crew) {
+                          return false;
+                        }
+                        // Exclure les participants avec temps à 0
+                        if (p.time_ms === 0 || p.time_ms === null || p.time_ms === undefined) {
+                          return false;
+                        }
+                        return true;
+                      })
+                      .map((p: IndoorParticipantResult) => {
+                        if (p.crew_id && crewMap.has(p.crew_id)) {
+                          const crew = crewMap.get(p.crew_id);
+                          return {
+                            ...p,
+                            crew: {
+                              ...p.crew,
+                              crew_participants: crew.crew_participants || [],
+                            },
+                          };
+                        }
+                        return p;
+                      });
                     
                     console.log(`✅ Course ${race.id} a ${enrichedParticipants.length} participants indoor (enrichis)`);
                     
@@ -322,9 +347,11 @@ export default function Results() {
               const timingsRes = await publicApi.get(`/timings/race/${race.id}`);
               const allTimings = timingsRes.data.data || [];
 
-              // Filtrer uniquement les timings du dernier timing point
+              // Filtrer uniquement les timings du dernier timing point avec temps valide (> 0)
               const finishTimings = allTimings.filter(
-                (t: any) => t.timing_point_id === lastTimingPoint.id && t.relative_time_ms !== null
+                (t: any) => t.timing_point_id === lastTimingPoint.id && 
+                           t.relative_time_ms !== null && 
+                           t.relative_time_ms > 0
               );
 
               // Récupérer les assignments pour avoir les crew_id
@@ -343,10 +370,10 @@ export default function Results() {
               const raceCrewsRes = await publicApi.get(`/race-crews/${race.id}`);
               const raceCrews = raceCrewsRes.data.data || [];
 
-              // Créer un map crew_id -> infos
+              // Créer un map crew_id -> infos (uniquement pour les équipages identifiés)
               const crewInfoMap = new Map();
               raceCrews.forEach((rc: any) => {
-                if (rc.crew_id) {
+                if (rc.crew_id && rc.crew) {
                   crewInfoMap.set(rc.crew_id, {
                     lane: rc.lane || 0,
                     club_name: rc.crew?.club_name || "N/A",
@@ -357,9 +384,9 @@ export default function Results() {
               });
 
               // Construire les résultats avec tous les timings (pas seulement le dernier)
-              // Récupérer tous les timings de la course (pas seulement le dernier point)
+              // Récupérer tous les timings de la course avec temps valide (> 0)
               const allFinishTimings = allTimings.filter(
-                (t: any) => t.relative_time_ms !== null
+                (t: any) => t.relative_time_ms !== null && t.relative_time_ms > 0
               );
 
               // Grouper les timings par crew_id
@@ -375,10 +402,16 @@ export default function Results() {
               });
 
               // Construire les résultats avec les timings intermédiaires
+              // Filtrer les équipages non identifiés et avec temps à 0
               const results: RaceResult[] = Array.from(timingsByCrew.entries())
                 .map(([crewId, timings]): RaceResult | null => {
                   const crewInfo = crewInfoMap.get(crewId);
-                  if (!crewInfo) return null;
+                  if (!crewInfo) return null; // Équipage non identifié (couloir vidéo)
+                  
+                  // Exclure les équipages avec club_name ou club_code à "N/A"
+                  if (crewInfo.club_name === "N/A" || crewInfo.club_code === "N/A") {
+                    return null;
+                  }
 
                   // Trier les timings par order_index
                   const sortedTimings = timings.sort((a: any, b: any) => {
@@ -391,6 +424,11 @@ export default function Results() {
                   const finishTiming = sortedTimings.find((t: any) => 
                     t.timing_point_id === lastTimingPoint.id
                   );
+                  
+                  // Exclure les équipages avec temps à 0
+                  if (!finishTiming || !finishTiming.relative_time_ms || finishTiming.relative_time_ms === 0) {
+                    return null;
+                  }
 
                   // Construire les timings intermédiaires (tous sauf le dernier)
                   const intermediateTimes: IntermediateTime[] = sortedTimings
@@ -543,8 +581,16 @@ export default function Results() {
       })
       .map((race) => {
         if (race.isIndoor && race.indoorResults) {
-          // Filtrer les résultats indoor
+          // Filtrer les résultats indoor (exclure les non identifiés avec temps à 0)
           const filteredIndoorResults = race.indoorResults.filter((participant) => {
+            // Exclure les participants non identifiés
+            if (!participant.crew_id || !participant.crew) {
+              return false;
+            }
+            // Exclure les participants avec temps à 0
+            if (participant.time_ms === 0 || participant.time_ms === null || participant.time_ms === undefined) {
+              return false;
+            }
             // Filtre par club (par code)
             if (selectedClub !== "all" && participant.crew?.club_code !== selectedClub) {
               return false;
@@ -574,8 +620,19 @@ export default function Results() {
             indoorResults: filteredIndoorResults,
           };
         } else {
-          // Filtrer les résultats normaux
+          // Filtrer les résultats normaux (exclure les non identifiés avec temps à 0)
           const filteredResults = (race.results || []).filter((result) => {
+            // Exclure les équipages non identifiés (pas de club_name ou club_code)
+            if (!result.club_name || !result.club_code || result.club_name === "N/A" || result.club_code === "N/A") {
+              return false;
+            }
+            
+            // Exclure les équipages avec temps à 0
+            const timeMs = result.relative_time_ms;
+            if (!timeMs || timeMs === 0) {
+              return false;
+            }
+            
             // Filtre par club (par code)
             if (selectedClub !== "all" && result.club_code !== selectedClub) {
               return false;
@@ -620,6 +677,29 @@ export default function Results() {
     const milliseconds = totalMs % 1000;
 
     return `${minutes}:${seconds.toString().padStart(2, "0")}.${milliseconds.toString().padStart(3, "0")}`;
+  };
+
+  // Fonction pour formater le split_time (en centièmes de seconde, ex: 625 = 62.5s = 1:02.5)
+  const formatSplitTime = (splitTime: string | number | null | undefined): string => {
+    if (!splitTime && splitTime !== 0) return "-";
+    
+    // Si c'est déjà formaté (contient ':'), retourner tel quel
+    const str = splitTime.toString();
+    if (str.includes(':')) {
+      return str;
+    }
+    
+    // Convertir en nombre (centièmes de seconde)
+    const centiseconds = typeof splitTime === 'string' ? parseFloat(splitTime) : splitTime;
+    if (isNaN(centiseconds) || centiseconds < 0) return "-";
+    
+    // Convertir centièmes en secondes totales
+    const totalSeconds = centiseconds / 10;
+    const minutes = Math.floor(totalSeconds / 60);
+    const seconds = Math.floor(totalSeconds % 60);
+    const tenths = Math.floor((centiseconds % 10));
+    
+    return `${minutes}:${seconds.toString().padStart(2, "0")}.${tenths}`;
   };
 
   const formatTimeDifference = (ms: number) => {
@@ -866,9 +946,11 @@ export default function Results() {
                                 <th className="text-left py-2 px-3 font-semibold min-w-[200px]">Participants</th>
                                 <th className="text-left py-2 px-3 font-semibold">Temps</th>
                                 <th className="text-left py-2 px-3 font-semibold">Distance</th>
-                                <th className="text-left py-2 px-3 font-semibold">Allure</th>
                                 <th className="text-left py-2 px-3 font-semibold">SPM</th>
                                 <th className="text-left py-2 px-3 font-semibold">Calories</th>
+                                {race.indoorResults?.some(p => p.splits_data && p.splits_data.length > 0) && (
+                                  <th className="text-left py-2 px-3 font-semibold">Splits</th>
+                                )}
                               </tr>
                             </thead>
                             <tbody>
@@ -944,6 +1026,29 @@ export default function Results() {
                                       </div>
                                     </td>
                                     <td className="py-3 px-3">{participant.calories}</td>
+                                    {race.indoorResults?.some(p => p.splits_data && p.splits_data.length > 0) && (
+                                      <td className="py-3 px-3">
+                                        {participant.splits_data && participant.splits_data.length > 0 ? (
+                                          <div className="flex flex-wrap gap-x-2 gap-y-0.5 text-xs font-mono">
+                                            {participant.splits_data.map((split: any, idx: number) => {
+                                              const splitTime = split.split_time 
+                                                ? formatSplitTime(split.split_time)
+                                                : (split.split_time_display || split.time_display || 
+                                                  (split.split_time_ms ? formatTime(split.split_time_ms) : 
+                                                  (split.time_ms ? formatTime(split.time_ms) : "-")));
+                                              const splitDist = split.split_distance || split.distance || "";
+                                              return (
+                                                <span key={idx} className="whitespace-nowrap">
+                                                  {splitDist ? `${splitDist}m: ` : ""}{splitTime}
+                                                </span>
+                                              );
+                                            })}
+                                          </div>
+                                        ) : (
+                                          <span className="text-muted-foreground text-xs">-</span>
+                                        )}
+                                      </td>
+                                    )}
                                   </tr>
                                 );
                               })}
@@ -987,9 +1092,11 @@ export default function Results() {
                                         <th className="text-left py-2 px-3 font-semibold min-w-[200px]">Participants</th>
                                         <th className="text-left py-2 px-3 font-semibold">Temps</th>
                                         <th className="text-left py-2 px-3 font-semibold">Distance</th>
-                                        <th className="text-left py-2 px-3 font-semibold">Allure</th>
                                         <th className="text-left py-2 px-3 font-semibold">SPM</th>
                                         <th className="text-left py-2 px-3 font-semibold">Calories</th>
+                                        {race.indoorResults?.some(p => p.splits_data && p.splits_data.length > 0) && (
+                                          <th className="text-left py-2 px-3 font-semibold">Splits</th>
+                                        )}
                                       </tr>
                                     </thead>
                                     <tbody>
@@ -1061,6 +1168,29 @@ export default function Results() {
                                               </div>
                                             </td>
                                             <td className="py-3 px-3">{participant.calories}</td>
+                                            {race.indoorResults?.some(p => p.splits_data && p.splits_data.length > 0) && (
+                                              <td className="py-3 px-3">
+                                                {participant.splits_data && participant.splits_data.length > 0 ? (
+                                                  <div className="flex flex-wrap gap-x-2 gap-y-0.5 text-xs font-mono">
+                                                    {participant.splits_data.map((split: any, idx: number) => {
+                                                      const splitTime = split.split_time 
+                                                        ? formatSplitTime(split.split_time)
+                                                        : (split.split_time_display || split.time_display || 
+                                                          (split.split_time_ms ? formatTime(split.split_time_ms) : 
+                                                          (split.time_ms ? formatTime(split.time_ms) : "-")));
+                                                      const splitDist = split.split_distance || split.distance || "";
+                                                      return (
+                                                        <span key={idx} className="whitespace-nowrap">
+                                                          {splitDist ? `${splitDist}m: ` : ""}{splitTime}
+                                                        </span>
+                                                      );
+                                                    })}
+                                                  </div>
+                                                ) : (
+                                                  <span className="text-muted-foreground text-xs">-</span>
+                                                )}
+                                              </td>
+                                            )}
                                           </tr>
                                         );
                                       })}
