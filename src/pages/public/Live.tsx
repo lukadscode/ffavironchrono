@@ -1,6 +1,7 @@
 import { useEffect, useState, useRef } from "react";
 import { useParams } from "react-router-dom";
-import { publicApi, api } from "@/lib/axios";
+import { publicApi } from "@/lib/axios";
+import api from "@/lib/axios";
 import { initSocket, getSocket } from "@/lib/socket";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import dayjs from "dayjs";
@@ -22,6 +23,29 @@ type LiveCrew = {
   final_time: string | null;
 };
 
+// Type pour les résultats indoor
+type IndoorParticipantResult = {
+  id: string;
+  place: number;
+  time_display: string;
+  time_ms: number;
+  distance: number;
+  avg_pace: string;
+  spm: number;
+  calories: number;
+  crew_id?: string | null;
+  crew?: {
+    id: string;
+    club_name: string;
+    club_code: string;
+    category?: {
+      id: string;
+      code: string;
+      label: string;
+    };
+  } | null;
+};
+
 type LiveRace = {
   id: string;
   name: string;
@@ -29,6 +53,8 @@ type LiveRace = {
   start_time: string;
   status: string;
   crews: LiveCrew[];
+  isIndoor?: boolean;
+  indoorResults?: IndoorParticipantResult[];
 };
 
 type TimingPoint = {
@@ -184,6 +210,162 @@ export default function Live() {
       }
     );
 
+    // Écouter les résultats indoor importés
+    socket.on(
+      "indoorResultsImported",
+      async ({ 
+        race_id, 
+        event_id, 
+        participants_count,
+        race_status
+      }: { 
+        race_id: string; 
+        event_id: string; 
+        participants_count: number;
+        race_status: string;
+      }) => {
+        console.log('🏠 indoorResultsImported reçu:', { race_id, participants_count, race_status });
+        
+        // Recharger les données pour avoir les résultats indoor à jour
+        if (eventId === event_id) {
+          // Mettre à jour le statut de la course
+          setRaces((prev) =>
+            prev.map((race) => {
+              if (race.id !== race_id) return race;
+              return { ...race, status: race_status };
+            })
+          );
+          
+          // Recharger les résultats indoor pour la course concernée
+          try {
+            const indoorRes = await publicApi.get(`/indoor-results/race/${race_id}`);
+            const indoorData = indoorRes.data.data;
+            if (indoorData && indoorData.participants) {
+              // Mettre à jour les résultats dans l'état
+              setRaces((prev) =>
+                prev.map((race) => {
+                  if (race.id !== race_id) return race;
+                  return {
+                    ...race,
+                    isIndoor: true,
+                    indoorResults: indoorData.participants.sort((a: any, b: any) => a.place - b.place),
+                    status: race_status,
+                  };
+                })
+              );
+            }
+          } catch (err) {
+            console.error(`Erreur rechargement résultats indoor course ${race_id}:`, err);
+          }
+        }
+      }
+    );
+
+    // Écouter les mises à jour de participants indoor (si ErgRace envoie des mises à jour en temps réel)
+    socket.on(
+      "indoorParticipantUpdate",
+      ({ 
+        race_id, 
+        event_id,
+        participant 
+      }: { 
+        race_id: string; 
+        event_id: string;
+        participant: {
+          id: string;
+          place: number;
+          time_display: string;
+          time_ms: number;
+          distance: number;
+          avg_pace: string;
+          spm: number;
+          calories: number;
+          crew_id?: string | null;
+          crew?: {
+            id: string;
+            club_name: string;
+            club_code: string;
+            category?: {
+              id: string;
+              code: string;
+              label: string;
+            };
+          } | null;
+        };
+      }) => {
+        console.log('🏠 indoorParticipantUpdate reçu:', { race_id, participant });
+        
+        if (eventId !== event_id) return;
+        
+        // Mettre à jour les résultats de la course en temps réel
+        setRaces((prev) =>
+          prev.map((race) => {
+            if (race.id !== race_id) return race;
+            
+            // Si la course a déjà des résultats indoor, les mettre à jour
+            if (race.indoorResults) {
+              const existingIndex = race.indoorResults.findIndex(
+                (p) => p.id === participant.id
+              );
+              
+              if (existingIndex >= 0) {
+                // Mettre à jour le participant existant
+                const updatedResults = [...race.indoorResults];
+                updatedResults[existingIndex] = participant;
+                return {
+                  ...race,
+                  indoorResults: updatedResults.sort((a, b) => a.place - b.place),
+                };
+              } else {
+                // Ajouter le nouveau participant
+                return {
+                  ...race,
+                  indoorResults: [...race.indoorResults, participant].sort(
+                    (a, b) => a.place - b.place
+                  ),
+                };
+              }
+            } else {
+              // Créer une nouvelle structure avec le premier participant
+              return {
+                ...race,
+                isIndoor: true,
+                indoorResults: [participant],
+              };
+            }
+          })
+        );
+      }
+    );
+
+    // Écouter la complétion de la course indoor
+    socket.on(
+      "indoorRaceResultsComplete",
+      ({ 
+        race_id, 
+        event_id,
+        total_participants,
+        race_status
+      }: { 
+        race_id: string; 
+        event_id: string;
+        total_participants: number;
+        race_status: string;
+      }) => {
+        console.log('🏠 indoorRaceResultsComplete reçu:', { race_id, total_participants, race_status });
+        
+        if (eventId !== event_id) return;
+        
+        // Mettre à jour le statut de la course
+        setRaces((prev) =>
+          prev.map((race) => {
+            if (race.id !== race_id) return race;
+            return { ...race, status: race_status };
+          })
+        );
+      }
+    );
+
     return () => {
       socket.emit("leavePublicEvent", { event_id: eventId });
     };
@@ -234,23 +416,46 @@ export default function Live() {
           const sorted = nonOfficialRaces.sort((a: any, b: any) => (a.race_number || 0) - (b.race_number || 0));
           const upcoming = sorted.slice(0, 6);
           
-          const enriched = upcoming.map((race: any) => ({
-            id: race.id,
-            name: race.name,
-            race_number: race.race_number || 0,
-            start_time: race.start_time,
-            status: race.status || "not_started",
-            crews: (race.race_crews || [])
-              .sort((a: any, b: any) => a.lane - b.lane)
-              .map((rc: any) => ({
-                crew_id: rc.crew?.id || rc.crew_id,
-                lane: rc.lane,
-                club_name: rc.crew?.club_name || "N/A",
-                club_code: rc.crew?.club_code || "N/A",
-                intermediate_times: [],
-                final_time: null,
-              })),
-          }));
+          // Charger les résultats indoor pour chaque course
+          const enriched = await Promise.all(
+            upcoming.map(async (race: any) => {
+              let indoorResults: IndoorParticipantResult[] | undefined;
+              
+              // Essayer de charger les résultats indoor
+              try {
+                const indoorRes = await publicApi.get(`/indoor-results/race/${race.id}`);
+                const indoorData = indoorRes.data.data;
+                if (indoorData && indoorData.participants) {
+                  indoorResults = indoorData.participants.sort((a: IndoorParticipantResult, b: IndoorParticipantResult) => a.place - b.place);
+                }
+              } catch (err: any) {
+                // 404 signifie qu'il n'y a pas encore de résultats, c'est normal
+                if (err?.response?.status !== 404) {
+                  console.error(`Erreur chargement résultats indoor course ${race.id}:`, err);
+                }
+              }
+              
+              return {
+                id: race.id,
+                name: race.name,
+                race_number: race.race_number || 0,
+                start_time: race.start_time,
+                status: race.status || "not_started",
+                isIndoor: true,
+                indoorResults,
+                crews: (race.race_crews || [])
+                  .sort((a: any, b: any) => a.lane - b.lane)
+                  .map((rc: any) => ({
+                    crew_id: rc.crew?.id || rc.crew_id,
+                    lane: rc.lane,
+                    club_name: rc.crew?.club_name || "N/A",
+                    club_code: rc.crew?.club_code || "N/A",
+                    intermediate_times: [],
+                    final_time: null,
+                  })),
+              };
+            })
+          );
           
           setRaces(enriched);
           setLoading(false);
@@ -468,6 +673,97 @@ export default function Live() {
       <h2 className="text-2xl font-bold text-slate-900">Live - Courses en cours</h2>
 
       {races.map((race) => {
+        // Si c'est une course indoor avec des résultats, afficher les résultats indoor
+        if (race.isIndoor && race.indoorResults && race.indoorResults.length > 0) {
+          return (
+            <Card key={race.id}>
+              <CardHeader className="bg-slate-50">
+                <div className="flex items-center justify-between">
+                  <CardTitle className="text-lg">
+                    {race.race_number > 0 ? `Course ${race.race_number} - ` : ""}{race.name}
+                  </CardTitle>
+                  <div className="flex items-center gap-3">
+                    <span className="text-sm text-muted-foreground">
+                      {dayjs(race.start_time).format("HH:mm")}
+                    </span>
+                    {getStatusBadge(race.status)}
+                  </div>
+                </div>
+              </CardHeader>
+              <CardContent className="pt-6">
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="border-b bg-slate-50">
+                        <th className="text-left py-2 px-3 font-semibold">Place</th>
+                        <th className="text-left py-2 px-3 font-semibold min-w-[140px]">Équipage</th>
+                        <th className="text-left py-2 px-3 font-semibold">Temps</th>
+                        <th className="text-left py-2 px-3 font-semibold">Distance</th>
+                        <th className="text-left py-2 px-3 font-semibold">Allure</th>
+                        <th className="text-left py-2 px-3 font-semibold">SPM</th>
+                        <th className="text-left py-2 px-3 font-semibold">Calories</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {race.indoorResults.map((participant) => {
+                        const isPodium = participant.place <= 3;
+                        return (
+                          <tr
+                            key={participant.id}
+                            className={`border-b hover:bg-slate-50 ${isPodium ? "bg-amber-50" : ""}`}
+                          >
+                            <td className="py-3 px-3">
+                              <div className="flex items-center gap-2">
+                                {isPodium && (
+                                  <span className="text-lg">
+                                    {participant.place === 1 && "🥇"}
+                                    {participant.place === 2 && "🥈"}
+                                    {participant.place === 3 && "🥉"}
+                                  </span>
+                                )}
+                                <span className={`font-bold ${isPodium ? "text-lg" : ""}`}>
+                                  {participant.place}
+                                </span>
+                              </div>
+                            </td>
+                            <td className="py-3 px-3">
+                              {participant.crew ? (
+                                <div>
+                                  <div className="font-semibold">{participant.crew.club_name}</div>
+                                  <div className="text-xs text-muted-foreground">
+                                    {participant.crew.club_code}
+                                    {participant.crew.category && (
+                                      <span className="ml-2 px-2 py-0.5 bg-blue-100 text-blue-700 rounded text-xs">
+                                        {participant.crew.category.label}
+                                      </span>
+                                    )}
+                                  </div>
+                                </div>
+                              ) : (
+                                <div className="text-muted-foreground italic text-sm">
+                                  Non identifié
+                                </div>
+                              )}
+                            </td>
+                            <td className="py-3 px-3 font-mono font-semibold">
+                              {participant.time_display}
+                            </td>
+                            <td className="py-3 px-3">{participant.distance}m</td>
+                            <td className="py-3 px-3 font-mono">{participant.avg_pace}</td>
+                            <td className="py-3 px-3">{participant.spm}</td>
+                            <td className="py-3 px-3">{participant.calories}</td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </CardContent>
+            </Card>
+          );
+        }
+
+        // Pour les courses normales, utiliser l'affichage avec timing points
         // Trier les équipages par temps final (classement en temps réel)
         // Si pas de temps final, garder l'ordre du couloir
         const sortedCrews = [...race.crews].sort((a, b) => {
