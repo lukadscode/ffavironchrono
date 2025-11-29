@@ -1683,7 +1683,6 @@ export default function Results() {
           </DialogHeader>
           {selectedParticipantForChart && selectedParticipantForChart.splits_data && selectedParticipantForChart.splits_data.length > 0 && (
             <div className="space-y-6 mt-4">
-              {/* Graphique */}
               <div className="h-80">
                 <ResponsiveContainer width="100%" height="100%">
                   <LineChart data={selectedParticipantForChart.splits_data.map((split: any, idx: number) => {
@@ -1759,55 +1758,9 @@ export default function Results() {
                   </LineChart>
                 </ResponsiveContainer>
               </div>
-
-              {/* Tableau des splits */}
-              <div className="border rounded-lg overflow-hidden">
-                <div className="bg-slate-50 px-4 py-2 border-b">
-                  <h3 className="font-semibold text-sm">Détail des splits</h3>
-                </div>
-                <div className="overflow-x-auto">
-                  <table className="w-full text-sm">
-                    <thead>
-                      <tr className="border-b bg-slate-50">
-                        <th className="text-left py-2 px-4 font-semibold">Split</th>
-                        <th className="text-left py-2 px-4 font-semibold">Distance</th>
-                        <th className="text-left py-2 px-4 font-semibold">Temps</th>
-                        <th className="text-left py-2 px-4 font-semibold">Allure</th>
-                        <th className="text-left py-2 px-4 font-semibold">Cadence (SPM)</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {selectedParticipantForChart.splits_data.map((split: any, idx: number) => {
-                        const splitTime = split.split_time 
-                          ? formatSplitTime(split.split_time)
-                          : (split.split_time_display || split.time_display || 
-                            (split.split_time_ms ? formatTime(split.split_time_ms) : 
-                            (split.time_ms ? formatTime(split.time_ms) : "-")));
-                        const splitDist = split.split_distance || split.distance || "";
-                        const splitPace = split.split_avg_pace || split.avg_pace || "-";
-                        const splitSR = split.split_stroke_rate || split.stroke_rate || "-";
-                        
-                        return (
-                          <tr key={idx} className="border-b hover:bg-slate-50">
-                            <td className="py-2 px-4 font-medium">{idx + 1}</td>
-                            <td className="py-2 px-4">{splitDist ? `${splitDist}m` : "-"}</td>
-                            <td className="py-2 px-4 font-mono">{splitTime}</td>
-                            <td className="py-2 px-4 font-mono">{splitPace}</td>
-                            <td className="py-2 px-4">{splitSR}</td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-
-              {/* Informations générales */}
-              <div className="text-sm text-muted-foreground space-y-1">
+              <div className="text-sm text-muted-foreground">
                 <p>Distance totale: {selectedParticipantForChart.distance}m</p>
                 <p>Temps total: {selectedParticipantForChart.time_display}</p>
-                <p>Allure moyenne: {selectedParticipantForChart.avg_pace}</p>
-                <p>Cadence moyenne: {selectedParticipantForChart.spm} SPM</p>
               </div>
             </div>
           )}
