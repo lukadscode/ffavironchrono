@@ -72,13 +72,15 @@ export default function CategoriesList({ categories, eventId }: { categories: Ca
               // Si la catégorie a une distance_id, récupérer la distance
               if (categoryData.distance_id) {
                 const distance = distanceMap.get(categoryData.distance_id) as any;
-                if (distance && distance.id && distance.meters !== undefined) {
+                if (distance && distance.id) {
                   return { 
                     ...cat, 
                     distance_id: categoryData.distance_id,
                     distance: {
                       id: distance.id,
                       meters: distance.meters,
+                      is_time_based: distance.is_time_based || false,
+                      duration_seconds: distance.duration_seconds || null,
                       label: distance.label,
                     }
                   };

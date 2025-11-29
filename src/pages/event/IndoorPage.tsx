@@ -50,9 +50,6 @@ type FullRace = Race & {
     is_time_based: boolean;
     duration_seconds: number | null;
     label: string;
-    is_time_based: boolean;
-    duration_seconds: number | null;
-    label: string;
   } | null;
   distance_id?: string | null;
 };
