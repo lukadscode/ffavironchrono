@@ -276,7 +276,7 @@ export default function HomePage() {
               <div className="flex-1 h-px bg-gradient-to-r from-orange-600 to-transparent"></div>
             </div>
             
-            <div className="grid gap-3 grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6">
+            <div className="grid gap-3 grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
               {todayEvents.map((event) => (
                 <EventCard key={event.id} event={event} status="today" />
               ))}
@@ -293,7 +293,7 @@ export default function HomePage() {
               <div className="flex-1 h-px bg-gradient-to-r from-blue-600 to-transparent"></div>
             </div>
             
-            <div className="grid gap-3 grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6">
+            <div className="grid gap-3 grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
               {ongoingEvents.map((event) => (
                 <EventCard key={event.id} event={event} status="ongoing" />
               ))}
@@ -310,7 +310,7 @@ export default function HomePage() {
               <div className="flex-1 h-px bg-gradient-to-r from-green-600 to-transparent"></div>
             </div>
             
-            <div className="grid gap-3 grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6">
+            <div className="grid gap-3 grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
               {upcomingEvents.map((event) => (
                 <EventCard key={event.id} event={event} status="upcoming" />
               ))}
@@ -327,7 +327,7 @@ export default function HomePage() {
               <div className="flex-1 h-px bg-gradient-to-r from-slate-400 to-transparent"></div>
             </div>
             
-            <div className="grid gap-3 grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6">
+            <div className="grid gap-3 grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
               {pastEvents.map((event) => (
                 <EventCard key={event.id} event={event} status="past" />
               ))}
