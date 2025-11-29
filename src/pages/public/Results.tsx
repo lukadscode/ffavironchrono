@@ -234,9 +234,20 @@ export default function Results() {
                     indoorResults: [],
                     results: [],
                   };
+                } else if (indoorErr?.response?.status === 401) {
+                  // 401 signifie que l'endpoint n'est pas accessible publiquement
+                  console.error(`❌ Endpoint indoor-results non accessible publiquement pour course ${race.id} (401)`);
+                  console.error(`💡 L'endpoint /indoor-results/race/${race.id} doit être rendu accessible publiquement côté backend`);
+                  // Retourner la course comme indoor mais sans résultats (l'endpoint n'est pas public)
+                  return {
+                    ...race,
+                    isIndoor: true,
+                    indoorResults: [],
+                    results: [],
+                  };
                 } else {
                   console.error(`❌ Erreur chargement résultats indoor course ${race.id}:`, indoorErr);
-                  // En cas d'erreur autre que 404, retourner quand même la course comme indoor
+                  // En cas d'erreur autre que 404/401, retourner quand même la course comme indoor
                   return {
                     ...race,
                     isIndoor: true,

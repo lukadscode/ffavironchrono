@@ -430,7 +430,13 @@ export default function Live() {
                 }
               } catch (err: any) {
                 // 404 signifie qu'il n'y a pas encore de résultats, c'est normal
-                if (err?.response?.status !== 404) {
+                if (err?.response?.status === 404) {
+                  // Pas encore de résultats, c'est normal
+                } else if (err?.response?.status === 401) {
+                  // 401 signifie que l'endpoint n'est pas accessible publiquement
+                  console.error(`❌ Endpoint indoor-results non accessible publiquement pour course ${race.id} (401)`);
+                  console.error(`💡 L'endpoint /indoor-results/race/${race.id} doit être rendu accessible publiquement côté backend`);
+                } else {
                   console.error(`Erreur chargement résultats indoor course ${race.id}:`, err);
                 }
               }
