@@ -18,7 +18,7 @@ import {
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import clsx from "clsx";
-import { X, Search } from "lucide-react";
+import { X, Search, Pencil, Check, XCircle } from "lucide-react";
 import RaceFormDialog from "@/components/races/RaceFormDialog";
 import PhaseResultsPanel from "@/components/races/PhaseResultsPanel";
 
@@ -706,7 +706,7 @@ export default function RacePhaseDetailPage() {
     await persistRaceOrder(ordered);
   };
 
-  const onChangeRaceTime = (raceId: string, localValue: string) => {
+  const onChangeRaceTime = async (raceId: string, localValue: string) => {
     const idx = races.findIndex(r => r.id === raceId);
     if (idx < 0) return;
     const anchor = parseLocalInput(localValue);
@@ -718,9 +718,29 @@ export default function RacePhaseDetailPage() {
       localStorage.setItem(`phase_${phaseId}_firstStartLocal`, localValue);
       setFirstStartLocal(localValue);
     }
+
+    // Sauvegarder automatiquement en base de données
+    try {
+      const updatedRaces = next.slice(idx); // Toutes les courses à partir de celle modifiée
+      await Promise.all(
+        updatedRaces.map((r, offset) => 
+          api.put(`/races/${r.id}`, { 
+            start_time: r.start_time,
+            race_number: r.race_number || (idx + offset + 1)
+          })
+        )
+      );
+    } catch (err) {
+      console.error("Erreur lors de la sauvegarde des horaires:", err);
+      toast({ 
+        title: "Erreur lors de la sauvegarde", 
+        description: "Les horaires ont été mis à jour localement mais n'ont pas pu être sauvegardés.",
+        variant: "destructive" 
+      });
+    }
   };
 
-  const onChangeGapAfter = (raceId: string, minutes: number) => {
+  const onChangeGapAfter = async (raceId: string, minutes: number) => {
     const m = Math.max(1, minutes || 1);
     setGapsByRaceId(prev => {
       const updated = { ...prev, [raceId]: m };
@@ -737,6 +757,26 @@ export default function RacePhaseDetailPage() {
     const nextStartDate = addMinutes(currentDate, m);
     const next = recomputeTimesFrom(races, idx + 1, nextStartDate);
     setRaces(next);
+
+    // Sauvegarder automatiquement en base de données
+    try {
+      const updatedRaces = next.slice(idx + 1); // Toutes les courses après celle dont l'intervalle a changé
+      await Promise.all(
+        updatedRaces.map((r, offset) => 
+          api.put(`/races/${r.id}`, { 
+            start_time: r.start_time,
+            race_number: r.race_number || (idx + offset + 2)
+          })
+        )
+      );
+    } catch (err) {
+      console.error("Erreur lors de la sauvegarde des horaires:", err);
+      toast({ 
+        title: "Erreur lors de la sauvegarde", 
+        description: "Les horaires ont été mis à jour localement mais n'ont pas pu être sauvegardés.",
+        variant: "destructive" 
+      });
+    }
   };
 
   return (
@@ -1013,6 +1053,15 @@ export default function RacePhaseDetailPage() {
                         onGapChange={(m) => onChangeGapAfter(race.id, m)}
                         gapMinutes={idx === races.length - 1 ? undefined : gap}
                         onDelete={handleDeleteRace}
+                        onNameUpdate={async (newName: string) => {
+                          try {
+                            await api.put(`/races/${race.id}`, { name: newName });
+                            toast({ title: "Nom de la série mis à jour." });
+                            await fetchRaces();
+                          } catch {
+                            toast({ title: "Erreur lors de la mise à jour du nom", variant: "destructive" });
+                          }
+                        }}
                       >
                         {lanes.map((lane) => {
                           const entry = race.crews?.find((c) => c.lane === lane);
@@ -1183,6 +1232,7 @@ function TimelineRace({
   onGapChange,
   gapMinutes,
   onDelete,
+  onNameUpdate,
 }: {
   race: Race;
   timeLabel: string;
@@ -1191,9 +1241,22 @@ function TimelineRace({
   onGapChange: (minutes: number) => void;
   gapMinutes?: number;
   onDelete: (raceId: string) => void;
+  onNameUpdate?: (newName: string) => Promise<void>;
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: race.id });
   const style = { transform: CSS.Transform.toString(transform), transition } as React.CSSProperties;
+  const { toast } = useToast();
+
+  const [isEditingName, setIsEditingName] = useState(false);
+  const [editedName, setEditedName] = useState(race.name);
+  const [isSavingName, setIsSavingName] = useState(false);
+
+  // Mettre à jour editedName quand race.name change
+  useEffect(() => {
+    if (!isEditingName) {
+      setEditedName(race.name);
+    }
+  }, [race.name, isEditingName]);
 
   const validation = validateRaceDistances(race);
   const displayName = validation.isValid ? generateRaceNameWithCategories(race, race.name) : race.name;
@@ -1210,6 +1273,48 @@ function TimelineRace({
     return `${yyyy}-${mm}-${dd}T${hh}:${mi}`;
   })();
 
+  const handleStartEdit = () => {
+    setEditedName(race.name);
+    setIsEditingName(true);
+  };
+
+  const handleCancelEdit = () => {
+    setEditedName(race.name);
+    setIsEditingName(false);
+  };
+
+  const handleSaveName = async () => {
+    if (!onNameUpdate || editedName.trim() === race.name.trim()) {
+      setIsEditingName(false);
+      return;
+    }
+
+    if (!editedName.trim()) {
+      toast({ title: "Le nom ne peut pas être vide", variant: "destructive" });
+      return;
+    }
+
+    setIsSavingName(true);
+    try {
+      await onNameUpdate(editedName.trim());
+      setIsEditingName(false);
+    } catch {
+      // L'erreur est déjà gérée par onNameUpdate
+    } finally {
+      setIsSavingName(false);
+    }
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      handleSaveName();
+    } else if (e.key === "Escape") {
+      e.preventDefault();
+      handleCancelEdit();
+    }
+  };
+
   return (
     <div ref={setNodeRef} style={style} className={clsx("relative border-2 rounded-lg p-3 space-y-3 bg-white shadow-sm", isDragging ? "opacity-70 ring-2 ring-blue-400 shadow-lg" : "hover:border-gray-300", !validation.isValid && "border-red-300 bg-red-50")}>
       <div className="absolute -left-[11px] top-4 w-4 h-4 rounded-full bg-blue-500 border-3 border-white shadow-md" />
@@ -1218,7 +1323,49 @@ function TimelineRace({
         <div className="font-semibold text-sm flex items-center gap-2 flex-1 min-w-0">
           <span className="inline-flex items-center text-xs px-2 py-1 rounded-md bg-blue-100 text-blue-700 font-mono font-bold flex-shrink-0">{timeLabel}</span>
           <div className="flex-1 min-w-0">
-            <div className="text-gray-900 truncate">{displayName}</div>
+            {isEditingName ? (
+              <div className="flex items-center gap-2">
+                <input
+                  type="text"
+                  value={editedName}
+                  onChange={(e) => setEditedName(e.target.value)}
+                  onKeyDown={handleKeyDown}
+                  onBlur={handleSaveName}
+                  autoFocus
+                  disabled={isSavingName}
+                  className="flex-1 px-2 py-1 text-sm border border-blue-500 rounded-md focus:ring-2 focus:ring-blue-500 focus:outline-none"
+                />
+                <button
+                  onClick={handleSaveName}
+                  disabled={isSavingName}
+                  className="text-green-600 hover:text-green-700 transition-colors p-1 rounded-md hover:bg-green-50"
+                  title="Enregistrer"
+                >
+                  <Check className="w-4 h-4" />
+                </button>
+                <button
+                  onClick={handleCancelEdit}
+                  disabled={isSavingName}
+                  className="text-red-600 hover:text-red-700 transition-colors p-1 rounded-md hover:bg-red-50"
+                  title="Annuler"
+                >
+                  <XCircle className="w-4 h-4" />
+                </button>
+              </div>
+            ) : (
+              <div className="flex items-center gap-2 group">
+                <div className="text-gray-900 truncate flex-1">{displayName}</div>
+                {onNameUpdate && (
+                  <button
+                    onClick={handleStartEdit}
+                    className="opacity-0 group-hover:opacity-100 text-gray-500 hover:text-gray-700 transition-all p-1 rounded-md hover:bg-gray-100"
+                    title="Modifier le nom"
+                  >
+                    <Pencil className="w-3.5 h-3.5" />
+                  </button>
+                )}
+              </div>
+            )}
             {validation.error && (
               <div className="text-xs text-red-600 font-medium mt-1">{validation.error}</div>
             )}
