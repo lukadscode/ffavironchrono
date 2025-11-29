@@ -642,8 +642,39 @@ export default function ExportPage() {
       );
 
       if (format === "pdf") {
-        // Fonction pour charger le logo (une seule fois)
-        const loadLogo = (): Promise<string | null> => {
+        // Fonction pour charger le logo (une seule fois) avec plusieurs méthodes
+        const loadLogo = async (): Promise<string | null> => {
+          const logoUrl = "https://www.ffaviron.fr/wp-content/uploads/2025/06/FFAviron-nouveau-site.png";
+          
+          // Méthode 1 : Essayer avec fetch + FileReader
+          try {
+            const response = await fetch(logoUrl, {
+              mode: "cors",
+              cache: "no-cache",
+            });
+            if (response.ok) {
+              const blob = await response.blob();
+              return new Promise((resolve) => {
+                const reader = new FileReader();
+                reader.onloadend = () => {
+                  const base64data = reader.result as string;
+                  if (base64data && base64data.startsWith("data:image")) {
+                    resolve(base64data);
+                  } else {
+                    resolve(null);
+                  }
+                };
+                reader.onerror = () => {
+                  resolve(null);
+                };
+                reader.readAsDataURL(blob);
+              });
+            }
+          } catch (err) {
+            console.warn("Erreur fetch logo:", err);
+          }
+
+          // Méthode 2 : Fallback avec Image + Canvas
           return new Promise((resolve) => {
             const img = new Image();
             img.crossOrigin = "anonymous";
@@ -655,7 +686,12 @@ export default function ExportPage() {
                 const ctx = canvas.getContext("2d");
                 if (ctx) {
                   ctx.drawImage(img, 0, 0);
-                  resolve(canvas.toDataURL("image/png"));
+                  const dataUrl = canvas.toDataURL("image/png");
+                  if (dataUrl && dataUrl.startsWith("data:image")) {
+                    resolve(dataUrl);
+                  } else {
+                    resolve(null);
+                  }
                 } else {
                   resolve(null);
                 }
@@ -665,10 +701,10 @@ export default function ExportPage() {
               }
             };
             img.onerror = () => {
-              console.warn("Impossible de charger le logo");
+              console.warn("Impossible de charger le logo avec Image");
               resolve(null);
             };
-            img.src = "https://www.ffaviron.fr/wp-content/uploads/2025/06/FFAviron-nouveau-site.png";
+            img.src = logoUrl;
           });
         };
 
@@ -684,13 +720,18 @@ export default function ExportPage() {
 
         // Fonction pour ajouter l'en-tête avec logo sur chaque page
         const addHeader = (logoUrl: string | null) => {
-          if (logoUrl) {
-            // Logo à gauche (hauteur 12mm pour optimiser l'espace)
+          // Logo à gauche (hauteur 12mm pour optimiser l'espace)
+          if (logoUrl && logoUrl.startsWith("data:image")) {
             try {
-              doc.addImage(logoUrl, "PNG", 10, 5, 35, 12);
+              // Extraire le format de l'image depuis la data URL
+              const format = logoUrl.match(/data:image\/(\w+);/)?.[1] || "PNG";
+              doc.addImage(logoUrl, format.toUpperCase() as "PNG" | "JPEG", 10, 5, 35, 12);
             } catch (err) {
-              console.warn("Erreur ajout logo", err);
+              console.warn("Erreur ajout logo au PDF:", err);
+              // Continuer sans logo si erreur
             }
+          } else if (logoUrl) {
+            console.warn("Format logo invalide, data URL attendue");
           }
 
           // Titre centré
@@ -731,8 +772,16 @@ export default function ExportPage() {
         for (let raceIndex = 0; raceIndex < races.length; raceIndex++) {
           const race = races[raceIndex];
           
-          // Vérifier si on doit créer une nouvelle page (optimisé : plus d'espace disponible)
-          if (yPosition > 275) {
+          // Calculer l'espace nécessaire pour cette course
+          const raceCrews = (race.race_crews || []).sort((a, b) => a.lane - b.lane);
+          const headerHeight = 5 + (race.start_time || race.race_phase?.name || race.distance ? 4 : 0);
+          const estimatedTableHeight = raceCrews.length > 0 
+            ? (raceCrews.length * 4.5) + 8 // Hauteur estimée du tableau (4.5mm par ligne + en-tête)
+            : 6;
+          const totalHeight = headerHeight + estimatedTableHeight + 4; // +4 pour l'espacement
+
+          // Vérifier si on doit créer une nouvelle page AVANT d'ajouter la course
+          if (yPosition + totalHeight > 275) {
             doc.addPage();
             addHeader(logoDataUrl);
             yPosition = 32; // Réinitialiser après l'en-tête
@@ -765,8 +814,6 @@ export default function ExportPage() {
           }
 
           // Tableau des équipages
-          const raceCrews = (race.race_crews || []).sort((a, b) => a.lane - b.lane);
-          
           if (raceCrews.length === 0) {
             doc.setFontSize(8);
             doc.text("Aucun équipage assigné", 10, yPosition);
@@ -808,8 +855,13 @@ export default function ExportPage() {
               ];
             });
 
+            // Sauvegarder le numéro de page actuel
+            const pageBeforeTable = doc.getNumberOfPages();
+
+            // Utiliser startY qui correspond à la position après l'en-tête
+            // Sur les nouvelles pages, autoTable utilisera margin.top
             autoTable(doc, {
-              startY: yPosition,
+              startY: yPosition, // Position actuelle pour la première page
               head: [["C", "Club", "Code", "Catégorie", "Participants", "Licences"]],
               body: tableData,
               styles: { 
@@ -825,7 +877,7 @@ export default function ExportPage() {
                 fontSize: 7
               },
               alternateRowStyles: { fillColor: [250, 250, 250] },
-              margin: { left: 10, right: 10, top: 2 },
+              margin: { left: 10, right: 10, top: 32 }, // Marge supérieure pour l'en-tête sur les nouvelles pages
               columnStyles: {
                 0: { cellWidth: 8, halign: "center" }, // Couloir
                 1: { cellWidth: 35 }, // Club
@@ -835,10 +887,30 @@ export default function ExportPage() {
                 5: { cellWidth: 25 }, // Licences
               },
               tableWidth: "auto",
+              showHead: "everyPage",
+              // Ajouter l'en-tête sur chaque page (appelé après le dessin de la page)
+              didDrawPage: (data: any) => {
+                // Ajouter l'en-tête sur chaque page
+                // Comme margin.top est à 32, le tableau ne dessine pas dans cette zone
+                addHeader(logoDataUrl);
+              },
             });
 
+            // Vérifier et ajouter l'en-tête sur toutes les nouvelles pages créées
+            const pageAfterTable = doc.getNumberOfPages();
+            if (pageAfterTable > pageBeforeTable) {
+              // Pour chaque nouvelle page créée par autoTable
+              for (let p = pageBeforeTable + 1; p <= pageAfterTable; p++) {
+                doc.setPage(p);
+                // Ajouter l'en-tête (il sera dessiné par-dessus le contenu existant, mais c'est OK car il est en haut)
+                addHeader(logoDataUrl);
+              }
+              // Revenir à la dernière page
+              doc.setPage(pageAfterTable);
+            }
+
             // Récupérer la position Y après le tableau
-            const finalY = (doc as any).lastAutoTable.finalY || yPosition + (raceCrews.length * 5);
+            const finalY = (doc as any).lastAutoTable?.finalY || yPosition + (raceCrews.length * 5);
             yPosition = finalY + 4; // Espacement réduit entre les courses
           }
 

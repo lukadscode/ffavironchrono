@@ -55,6 +55,15 @@ type IndoorParticipantResult = {
       seat_position?: number;
     }>;
   } | null;
+  splits_data?: Array<{
+    distance?: number;
+    time_ms?: number;
+    time_display?: string;
+    pace?: string;
+    split_distance?: number;
+    split_time_ms?: number;
+    split_time_display?: string;
+  }> | null;
 };
 
 type LiveRace = {
@@ -824,10 +833,14 @@ export default function Live() {
                         <th className="text-left py-2 px-3 font-semibold">Allure</th>
                         <th className="text-left py-2 px-3 font-semibold">SPM</th>
                         <th className="text-left py-2 px-3 font-semibold">Calories</th>
+                        {race.indoorResults?.some(p => p.splits_data && p.splits_data.length > 0) && (
+                          <th className="text-left py-2 px-3 font-semibold">Splits</th>
+                        )}
                       </tr>
                     </thead>
                     <tbody>
                       {race.indoorResults.map((participant) => {
+                        const hasSplits = participant.splits_data && participant.splits_data.length > 0;
                         return (
                           <tr
                             key={participant.id}
@@ -894,6 +907,27 @@ export default function Live() {
                             <td className="py-3 px-3 font-mono">{participant.avg_pace}</td>
                             <td className="py-3 px-3">{participant.spm}</td>
                             <td className="py-3 px-3">{participant.calories}</td>
+                            {race.indoorResults?.some(p => p.splits_data && p.splits_data.length > 0) && (
+                              <td className="py-3 px-3">
+                                {hasSplits ? (
+                                  <div className="space-y-1">
+                                    {participant.splits_data!.map((split, idx) => {
+                                      const splitTime = split.split_time_display || split.time_display || 
+                                        (split.split_time_ms ? formatTime(split.split_time_ms) : 
+                                        (split.time_ms ? formatTime(split.time_ms) : "-"));
+                                      const splitDist = split.split_distance || split.distance || "";
+                                      return (
+                                        <div key={idx} className="text-xs font-mono">
+                                          {splitDist ? `${splitDist}m: ` : ""}{splitTime}
+                                        </div>
+                                      );
+                                    })}
+                                  </div>
+                                ) : (
+                                  <span className="text-muted-foreground text-xs">-</span>
+                                )}
+                              </td>
+                            )}
                           </tr>
                         );
                       })}

@@ -684,6 +684,31 @@ export default function IndoorRaceDetailPage() {
     handleFileUpload(file, type);
   };
 
+  // Fonction pour formater le temps en millisecondes
+  const formatTime = (ms: string | number) => {
+    const msStr = ms.toString();
+    
+    // Si c'est déjà formaté (contient ':'), retourner tel quel
+    if (msStr.includes(':')) {
+      return msStr;
+    }
+    
+    const diffMs = parseInt(msStr, 10);
+    if (isNaN(diffMs) || diffMs < 0) return "-";
+    
+    // Si le temps est trop grand (probablement un timestamp absolu), retourner N/A
+    if (diffMs > 1800000) {
+      return "-";
+    }
+    
+    const totalSeconds = Math.floor(diffMs / 1000);
+    const minutes = Math.floor(totalSeconds / 60);
+    const seconds = totalSeconds % 60;
+    const milliseconds = diffMs % 1000;
+    
+    return `${minutes}:${seconds.toString().padStart(2, "0")}.${milliseconds.toString().padStart(3, "0")}`;
+  };
+
   const generateRac2File = async () => {
     if (!race || !event) {
       toast({
@@ -1327,11 +1352,15 @@ export default function IndoorRaceDetailPage() {
                     <th className="text-left py-3 px-4 font-semibold">Allure</th>
                     <th className="text-left py-3 px-4 font-semibold">SPM</th>
                     <th className="text-left py-3 px-4 font-semibold">Calories</th>
+                    {indoorResults.participants.some(p => p.splits_data && p.splits_data.length > 0) && (
+                      <th className="text-left py-3 px-4 font-semibold">Splits</th>
+                    )}
                   </tr>
                 </thead>
                 <tbody>
                   {indoorResults.participants.map((participant, index) => {
                     const isPodium = participant.place <= 3;
+                    const hasSplits = participant.splits_data && participant.splits_data.length > 0;
                     return (
                       <tr
                         key={participant.id}
@@ -1389,6 +1418,27 @@ export default function IndoorRaceDetailPage() {
                           </div>
                         </td>
                         <td className="py-3 px-4">{participant.calories}</td>
+                        {indoorResults.participants.some(p => p.splits_data && p.splits_data.length > 0) && (
+                          <td className="py-3 px-4">
+                            {hasSplits ? (
+                              <div className="space-y-1">
+                                {participant.splits_data!.map((split: any, idx: number) => {
+                                  const splitTime = split.split_time_display || split.time_display || 
+                                    (split.split_time_ms ? formatTime(split.split_time_ms) : 
+                                    (split.time_ms ? formatTime(split.time_ms) : "-"));
+                                  const splitDist = split.split_distance || split.distance || "";
+                                  return (
+                                    <div key={idx} className="text-xs font-mono">
+                                      {splitDist ? `${splitDist}m: ` : ""}{splitTime}
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            ) : (
+                              <span className="text-muted-foreground text-xs">-</span>
+                            )}
+                          </td>
+                        )}
                       </tr>
                     );
                   })}
