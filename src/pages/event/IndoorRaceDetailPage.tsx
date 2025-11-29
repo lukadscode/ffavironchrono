@@ -5,10 +5,20 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import dayjs from "dayjs";
-import { ArrowLeft, Download, Upload, FileText, File, AlertTriangle, Save, Trophy, Clock, TrendingUp, Loader2 } from "lucide-react";
+import { ArrowLeft, Download, Upload, FileText, File, AlertTriangle, Save, Trophy, Clock, TrendingUp, Loader2, CheckCircle2, AlertCircle } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import NotificationDisplay from "@/components/notifications/NotificationDisplay";
+import { useAuth } from "@/context/AuthContext";
+import { ScrollArea } from "@/components/ui/scroll-area";
 
 type Category = {
   id: string;
@@ -138,6 +148,7 @@ type IndoorRaceResult = {
   race_start_time: string;
   race_end_time: string;
   duration: number;
+  raw_data?: any; // JSON brut ErgRace
 };
 
 type IndoorResultsData = {
@@ -165,6 +176,9 @@ export default function IndoorRaceDetailPage() {
   const [indoorResults, setIndoorResults] = useState<IndoorResultsData | null>(null);
   const [loadingResults, setLoadingResults] = useState(false);
   const [importingResults, setImportingResults] = useState(false);
+  const { user } = useAuth();
+  const isAdmin = user?.role === "admin" || user?.role === "superadmin";
+  const [showInstructionsDialog, setShowInstructionsDialog] = useState(false);
 
   useEffect(() => {
     if (raceId && eventId) {
@@ -507,9 +521,17 @@ export default function IndoorRaceDetailPage() {
 
       const response = await api.post("/indoor-results/import", payload);
 
+      // Mettre la course en statut "non_official" pour validation par les arbitres
+      try {
+        await api.put(`/races/${raceId}`, { status: "non_official" });
+      } catch (statusErr: any) {
+        console.error("Erreur mise à jour statut course:", statusErr);
+        // Ne pas bloquer si la mise à jour du statut échoue
+      }
+
       toast({
         title: "Résultats importés",
-        description: `${response.data.data.participants_count} participant(s) importé(s) (${response.data.data.linked_crews_count} équipage(s) lié(s))`,
+        description: `${response.data.data.participants_count} participant(s) importé(s) (${response.data.data.linked_crews_count} équipage(s) lié(s)). La course est en attente de validation par les arbitres.`,
       });
 
       // Recharger les résultats et la course
@@ -907,6 +929,9 @@ export default function IndoorRaceDetailPage() {
       title: "Fichier généré",
       description: "Le fichier .rac2 a été téléchargé avec succès",
     });
+
+    // Ouvrir la modal avec les instructions
+    setShowInstructionsDialog(true);
   };
 
   if (loading) {
@@ -1086,7 +1111,7 @@ export default function IndoorRaceDetailPage() {
           title={!hasDistance ? "Veuillez sélectionner une distance pour la course" : ""}
         >
           <Download className="w-4 h-4" />
-          Télécharger .rac2
+          Télécharger le fichier .rac2 (ErgRace)
         </Button>
       </div>
 
@@ -1386,6 +1411,129 @@ export default function IndoorRaceDetailPage() {
           </CardContent>
         </Card>
       )}
+
+      {/* Bloc JSON brut pour admins/superadmins */}
+      {isAdmin && indoorResults?.race_result?.raw_data && (
+        <Card className="border-amber-200 bg-amber-50/50">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-amber-900">
+              <FileText className="w-5 h-5" />
+              Données JSON brutes (Admin uniquement)
+            </CardTitle>
+            <p className="text-sm text-amber-700 mt-1">
+              Fichier JSON ErgRace complet importé - Visible uniquement pour les administrateurs
+            </p>
+          </CardHeader>
+          <CardContent>
+            <ScrollArea className="h-[400px] w-full rounded-md border bg-white p-4">
+              <pre className="text-xs font-mono whitespace-pre-wrap break-words">
+                {JSON.stringify(indoorResults.race_result.raw_data, null, 2)}
+              </pre>
+            </ScrollArea>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Modal d'instructions pour lancer la course dans ErgRace */}
+      <Dialog open={showInstructionsDialog} onOpenChange={setShowInstructionsDialog}>
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-xl">
+              <CheckCircle2 className="w-6 h-6 text-green-600" />
+              Comment lancer la course dans ErgRace
+            </DialogTitle>
+            <DialogDescription className="text-base mt-2">
+              Suivez ces étapes pour lancer la course dans le logiciel ErgRace
+            </DialogDescription>
+          </DialogHeader>
+          
+          <div className="space-y-4 py-4">
+            <div className="space-y-3">
+              <div className="flex items-start gap-3 p-4 bg-blue-50 border border-blue-200 rounded-lg">
+                <div className="flex-shrink-0 w-8 h-8 rounded-full bg-blue-600 text-white flex items-center justify-center font-bold text-sm mt-0.5">
+                  1
+                </div>
+                <div className="flex-1">
+                  <p className="font-semibold text-blue-900 mb-1">Ouvrir le logiciel ErgRace</p>
+                  <p className="text-sm text-blue-700">Lancez l'application ErgRace sur votre ordinateur</p>
+                </div>
+              </div>
+
+              <div className="flex items-start gap-3 p-4 bg-blue-50 border border-blue-200 rounded-lg">
+                <div className="flex-shrink-0 w-8 h-8 rounded-full bg-blue-600 text-white flex items-center justify-center font-bold text-sm mt-0.5">
+                  2
+                </div>
+                <div className="flex-1">
+                  <p className="font-semibold text-blue-900 mb-1">Dans le menu, cliquer sur "Lancer la course"</p>
+                  <p className="text-sm text-blue-700">Accédez au menu principal et sélectionnez l'option "Lancer la course"</p>
+                </div>
+              </div>
+
+              <div className="flex items-start gap-3 p-4 bg-blue-50 border border-blue-200 rounded-lg">
+                <div className="flex-shrink-0 w-8 h-8 rounded-full bg-blue-600 text-white flex items-center justify-center font-bold text-sm mt-0.5">
+                  3
+                </div>
+                <div className="flex-1">
+                  <p className="font-semibold text-blue-900 mb-1">Ouvrir un fichier course</p>
+                  <p className="text-sm text-blue-700">Sélectionnez le fichier .rac2 que vous venez de télécharger</p>
+                </div>
+              </div>
+
+              <div className="flex items-start gap-3 p-4 bg-blue-50 border border-blue-200 rounded-lg">
+                <div className="flex-shrink-0 w-8 h-8 rounded-full bg-blue-600 text-white flex items-center justify-center font-bold text-sm mt-0.5">
+                  4
+                </div>
+                <div className="flex-1">
+                  <p className="font-semibold text-blue-900 mb-1">Vérifier les informations</p>
+                  <p className="text-sm text-blue-700">Vérifiez que toutes les informations de la course sont correctes (équipages, couloirs, distance, etc.)</p>
+                </div>
+              </div>
+
+              <div className="flex items-start gap-3 p-4 bg-amber-50 border-2 border-amber-300 rounded-lg">
+                <AlertCircle className="w-5 h-5 text-amber-600 flex-shrink-0 mt-0.5" />
+                <div className="flex-1">
+                  <p className="font-semibold text-amber-900 mb-1">⚠️ Attention : Ne pas modifier le "Race Name"</p>
+                  <p className="text-sm text-amber-700">Le nom de la course doit rester identique pour permettre la liaison automatique des résultats</p>
+                </div>
+              </div>
+
+              <div className="flex items-start gap-3 p-4 bg-blue-50 border border-blue-200 rounded-lg">
+                <div className="flex-shrink-0 w-8 h-8 rounded-full bg-blue-600 text-white flex items-center justify-center font-bold text-sm mt-0.5">
+                  5
+                </div>
+                <div className="flex-1">
+                  <p className="font-semibold text-blue-900 mb-1">Cliquer sur le bouton "Save & Load Race"</p>
+                  <p className="text-sm text-blue-700">Enregistrez et chargez la course dans ErgRace</p>
+                </div>
+              </div>
+
+              <div className="flex items-start gap-3 p-4 bg-amber-50 border-2 border-amber-300 rounded-lg">
+                <AlertCircle className="w-5 h-5 text-amber-600 flex-shrink-0 mt-0.5" />
+                <div className="flex-1">
+                  <p className="font-semibold text-amber-900 mb-1">⚠️ Attention : Ne pas changer le nom du fichier</p>
+                  <p className="text-sm text-amber-700">Conservez le nom du fichier tel quel pour assurer la compatibilité avec l'import des résultats</p>
+                </div>
+              </div>
+
+              <div className="flex items-start gap-3 p-4 bg-green-50 border border-green-200 rounded-lg">
+                <div className="flex-shrink-0 w-8 h-8 rounded-full bg-green-600 text-white flex items-center justify-center font-bold text-sm mt-0.5">
+                  6
+                </div>
+                <div className="flex-1">
+                  <p className="font-semibold text-green-900 mb-1">Faire la course</p>
+                  <p className="text-sm text-green-700">Lancez la course dans ErgRace. Une fois terminée, vous pourrez importer les résultats JSON depuis cette page.</p>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button onClick={() => setShowInstructionsDialog(false)} className="w-full sm:w-auto">
+              J'ai compris
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
