@@ -269,14 +269,14 @@ export default function HomePage() {
 
         {/* Événements en cours aujourd'hui (courses de la journée) */}
         {todayEvents.length > 0 && (
-          <section className="mb-8 sm:mb-12 md:mb-16">
-            <div className="flex items-center gap-2 sm:gap-3 mb-4 sm:mb-6 md:mb-8">
-              <div className="w-1 h-6 sm:h-8 bg-orange-600 rounded-full"></div>
-              <h2 className="text-xl sm:text-2xl md:text-3xl font-bold text-slate-900">En cours aujourd'hui</h2>
+          <section className="mb-6">
+            <div className="flex items-center gap-2 mb-3">
+              <div className="w-1 h-5 bg-orange-600 rounded-full"></div>
+              <h2 className="text-base sm:text-lg font-bold text-slate-900">En cours aujourd'hui</h2>
               <div className="flex-1 h-px bg-gradient-to-r from-orange-600 to-transparent"></div>
             </div>
             
-            <div className="grid gap-4 sm:gap-6 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
+            <div className="grid gap-3 grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6">
               {todayEvents.map((event) => (
                 <EventCard key={event.id} event={event} status="today" />
               ))}
@@ -286,14 +286,14 @@ export default function HomePage() {
 
         {/* Événements en cours */}
         {ongoingEvents.length > 0 && (
-          <section className="mb-8 sm:mb-12 md:mb-16">
-            <div className="flex items-center gap-2 sm:gap-3 mb-4 sm:mb-6 md:mb-8">
-              <div className="w-1 h-6 sm:h-8 bg-blue-600 rounded-full"></div>
-              <h2 className="text-xl sm:text-2xl md:text-3xl font-bold text-slate-900">En cours</h2>
+          <section className="mb-6">
+            <div className="flex items-center gap-2 mb-3">
+              <div className="w-1 h-5 bg-blue-600 rounded-full"></div>
+              <h2 className="text-base sm:text-lg font-bold text-slate-900">En cours</h2>
               <div className="flex-1 h-px bg-gradient-to-r from-blue-600 to-transparent"></div>
             </div>
             
-            <div className="grid gap-4 sm:gap-6 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
+            <div className="grid gap-3 grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6">
               {ongoingEvents.map((event) => (
                 <EventCard key={event.id} event={event} status="ongoing" />
               ))}
@@ -303,14 +303,14 @@ export default function HomePage() {
 
         {/* Événements à venir */}
         {upcomingEvents.length > 0 && (
-          <section className="mb-8 sm:mb-12 md:mb-16">
-            <div className="flex items-center gap-2 sm:gap-3 mb-4 sm:mb-6 md:mb-8">
-              <div className="w-1 h-6 sm:h-8 bg-green-600 rounded-full"></div>
-              <h2 className="text-xl sm:text-2xl md:text-3xl font-bold text-slate-900">À venir</h2>
+          <section className="mb-6">
+            <div className="flex items-center gap-2 mb-3">
+              <div className="w-1 h-5 bg-green-600 rounded-full"></div>
+              <h2 className="text-base sm:text-lg font-bold text-slate-900">À venir</h2>
               <div className="flex-1 h-px bg-gradient-to-r from-green-600 to-transparent"></div>
             </div>
             
-            <div className="grid gap-4 sm:gap-6 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
+            <div className="grid gap-3 grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6">
               {upcomingEvents.map((event) => (
                 <EventCard key={event.id} event={event} status="upcoming" />
               ))}
@@ -320,14 +320,14 @@ export default function HomePage() {
 
         {/* Événements passés */}
         {pastEvents.length > 0 && (
-          <section className="mb-8 sm:mb-12 md:mb-16">
-            <div className="flex items-center gap-2 sm:gap-3 mb-4 sm:mb-6 md:mb-8">
-              <div className="w-1 h-6 sm:h-8 bg-slate-400 rounded-full"></div>
-              <h2 className="text-xl sm:text-2xl md:text-3xl font-bold text-slate-900">Archives</h2>
+          <section className="mb-6">
+            <div className="flex items-center gap-2 mb-3">
+              <div className="w-1 h-5 bg-slate-400 rounded-full"></div>
+              <h2 className="text-base sm:text-lg font-bold text-slate-900">Archives</h2>
               <div className="flex-1 h-px bg-gradient-to-r from-slate-400 to-transparent"></div>
             </div>
             
-            <div className="grid gap-4 sm:gap-6 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
+            <div className="grid gap-3 grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6">
               {pastEvents.map((event) => (
                 <EventCard key={event.id} event={event} status="past" />
               ))}
@@ -413,29 +413,29 @@ function EventCard({ event, status }: { event: Event; status: "today" | "ongoing
         }`}
       >
         {/* Badges de statut et type */}
-        <div className="absolute top-4 right-4 z-10 flex items-center gap-2 flex-wrap justify-end">
+        <div className="absolute top-2 right-2 z-10 flex items-center gap-1 flex-wrap justify-end">
           <span
-            className={`px-3 py-1 rounded-full text-xs font-semibold border backdrop-blur-sm ${config.badgeColor} ${
+            className={`px-1.5 py-0.5 rounded-full text-xs font-semibold border backdrop-blur-sm ${config.badgeColor} ${
               config.pulse ? "animate-pulse" : ""
             }`}
           >
             {config.badge}
           </span>
           {event.race_type && (
-            <span className="px-3 py-1 rounded-full text-xs font-semibold border backdrop-blur-sm bg-purple-100 text-purple-700 border-purple-200 capitalize">
+            <span className="px-1.5 py-0.5 rounded-full text-xs font-semibold border backdrop-blur-sm bg-purple-100 text-purple-700 border-purple-200 capitalize">
               {event.race_type}
             </span>
           )}
         </div>
 
         {/* Image/Header avec gradient */}
-        <div className="relative h-48 bg-gradient-to-br from-blue-600 via-blue-700 to-blue-800 overflow-hidden">
+        <div className="relative h-24 sm:h-28 bg-gradient-to-br from-blue-600 via-blue-700 to-blue-800 overflow-hidden">
           <div className="absolute inset-0 bg-[url('data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNjAiIGhlaWdodD0iNjAiIHZpZXdCb3g9IjAgMCA2MCA2MCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48ZyBmaWxsPSJub25lIiBmaWxsLXJ1bGU9ImV2ZW5vZGQiPjxnIGZpbGw9IiNmZmYiIGZpbGwtb3BhY2l0eT0iMC4xIj48cGF0aCBkPSJNMzYgMzRWMjJIMjR2MTJIMTJ2MTJIMjR2MTJIMzZWMzR6Ii8+PC9nPjwvZz48L3N2Zz4=')] opacity-20"></div>
           
           {/* Icône Timer au centre */}
           <div className="absolute inset-0 flex items-center justify-center">
-            <div className="w-20 h-20 rounded-full bg-white/10 backdrop-blur-md border border-white/20 flex items-center justify-center group-hover:scale-110 transition-transform">
-              <Timer className="w-10 h-10 text-white" />
+            <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-full bg-white/10 backdrop-blur-md border border-white/20 flex items-center justify-center group-hover:scale-110 transition-transform">
+              <Timer className="w-5 h-5 sm:w-6 sm:h-6 text-white" />
             </div>
           </div>
 
@@ -443,50 +443,51 @@ function EventCard({ event, status }: { event: Event; status: "today" | "ongoing
           <div className="absolute inset-0 bg-blue-900/0 group-hover:bg-blue-900/20 transition-colors"></div>
         </div>
 
-        <CardHeader className="pb-3">
-          <CardTitle className="text-xl font-bold text-slate-900 line-clamp-2 group-hover:text-blue-600 transition-colors">
+        <CardHeader className="pb-2 px-3 pt-3">
+          <CardTitle className="text-sm font-bold text-slate-900 line-clamp-2 group-hover:text-blue-600 transition-colors leading-tight">
             {event.name}
           </CardTitle>
         </CardHeader>
 
-        <CardContent className="space-y-4">
+        <CardContent className="space-y-2 px-3 pb-3">
           {/* Informations */}
-          <div className="space-y-3">
-            <div className="flex items-start gap-3">
-              <Calendar className="w-5 h-5 text-blue-600 mt-0.5 flex-shrink-0" />
-              <div className="flex-1">
-                <div className="text-sm font-semibold text-slate-700">Dates</div>
-                <div className="text-sm text-muted-foreground">
-                  {dayjs(event.start_date).format("DD MMM YYYY")} -{" "}
+          <div className="space-y-1.5">
+            <div className="flex items-start gap-1.5">
+              <Calendar className="w-3 h-3 text-blue-600 mt-0.5 flex-shrink-0" />
+              <div className="flex-1 min-w-0">
+                <div className="text-xs font-semibold text-slate-700">Dates</div>
+                <div className="text-xs text-muted-foreground leading-tight">
+                  {dayjs(event.start_date).format("DD MMM")} -{" "}
                   {dayjs(event.end_date).format("DD MMM YYYY")}
                 </div>
                 {daysUntil !== null && daysUntil >= 0 && (
-                  <div className="text-xs text-blue-600 font-medium mt-1">
-                    Dans {daysUntil === 0 ? "aujourd'hui" : `${daysUntil} jour${daysUntil > 1 ? "s" : ""}`}
+                  <div className="text-xs text-blue-600 font-medium mt-0.5">
+                    Dans {daysUntil === 0 ? "aujourd'hui" : `${daysUntil}j`}
                   </div>
                 )}
               </div>
             </div>
 
-            <div className="flex items-start gap-3">
-              <MapPin className="w-5 h-5 text-blue-600 mt-0.5 flex-shrink-0" />
-              <div className="flex-1">
-                <div className="text-sm font-semibold text-slate-700">Lieu</div>
-                <div className="text-sm text-muted-foreground line-clamp-2">{event.location}</div>
+            <div className="flex items-start gap-1.5">
+              <MapPin className="w-3 h-3 text-blue-600 mt-0.5 flex-shrink-0" />
+              <div className="flex-1 min-w-0">
+                <div className="text-xs font-semibold text-slate-700">Lieu</div>
+                <div className="text-xs text-muted-foreground line-clamp-2 leading-tight">{event.location}</div>
               </div>
             </div>
           </div>
 
           {/* Bouton d'action */}
           <Button
-            className="w-full mt-4 group-hover:bg-blue-600 group-hover:text-white transition-colors"
+            className="w-full mt-2 h-7 text-xs group-hover:bg-blue-600 group-hover:text-white transition-colors"
             variant={isToday || isOngoing ? "default" : "outline"}
+            size="sm"
           >
-            {isToday && "Suivre en direct"}
-            {isOngoing && "Suivre en direct"}
-            {isUpcoming && "Voir les détails"}
-            {isPast && "Voir les résultats"}
-            <Timer className="w-4 h-4 ml-2" />
+            {isToday && "En direct"}
+            {isOngoing && "En direct"}
+            {isUpcoming && "Détails"}
+            {isPast && "Résultats"}
+            <Timer className="w-3 h-3 ml-1" />
           </Button>
         </CardContent>
 
