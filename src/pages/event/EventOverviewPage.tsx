@@ -386,21 +386,19 @@ export default function EventOverviewPage() {
                         </p>
                         <div className="text-xs text-orange-700 mt-1 space-y-1">
                           {alerts.phasesWithUnassignedCrews.map((phase) => (
-                            <div key={phase.phaseId} className="flex items-center justify-between">
-                              <span>
-                                {phase.phaseName}: {phase.count} {phase.count === 1 ? "équipage" : "équipages"} non affecté{phase.count > 1 ? "s" : ""}
-                              </span>
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                className="h-6 px-2 text-xs text-orange-700 hover:bg-orange-200"
-                                onClick={() => navigate(`/event/${eventId}/racePhases/${phase.phaseId}`)}
-                              >
-                                Voir
-                              </Button>
+                            <div key={phase.phaseId}>
+                              {phase.phaseName}: {phase.count} {phase.count === 1 ? "équipage" : "équipages"} non affecté{phase.count > 1 ? "s" : ""}
                             </div>
                           ))}
                         </div>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="mt-2 border-orange-300 text-orange-700 hover:bg-orange-200"
+                          onClick={() => navigate(`/event/${eventId}/racePhases`)}
+                        >
+                          Voir les phases
+                        </Button>
                       </div>
                     </div>
                   )}
