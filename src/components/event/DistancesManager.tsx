@@ -75,17 +75,17 @@ function DraggableCategory({ category }: { category: Category }) {
       {...listeners}
       {...attributes}
       className={clsx(
-        "p-3 border rounded-lg bg-white cursor-move hover:shadow-md hover:border-blue-300 transition-all border-gray-200 group",
+        "p-2 border rounded-lg bg-white cursor-move hover:shadow-md hover:border-blue-300 transition-all border-gray-200 group",
         isDragging && "opacity-50 scale-95"
       )}
     >
-      <div className="font-semibold text-sm text-slate-900 group-hover:text-blue-600 transition-colors">
+      <div className="font-semibold text-xs text-slate-900 group-hover:text-blue-600 transition-colors truncate">
         {category.label || category.code}
       </div>
       {category.crew_count !== undefined && (
         <div className="text-xs text-slate-500 mt-1 flex items-center gap-1">
-          <Trophy className="w-3 h-3" />
-          {category.crew_count} {category.crew_count === 1 ? "équipage" : "équipages"}
+          <Trophy className="w-3 h-3 flex-shrink-0" />
+          <span className="truncate">{category.crew_count} {category.crew_count === 1 ? "équipage" : "équipages"}</span>
         </div>
       )}
     </div>
@@ -111,17 +111,17 @@ function DraggableRace({ race }: { race: Race }) {
       {...listeners}
       {...attributes}
       className={clsx(
-        "p-3 border rounded-lg bg-white cursor-move hover:shadow-md hover:border-amber-300 transition-all border-gray-200 group",
+        "p-2 border rounded-lg bg-white cursor-move hover:shadow-md hover:border-amber-300 transition-all border-gray-200 group",
         isDragging && "opacity-50 scale-95"
       )}
     >
-      <div className="font-semibold text-sm text-slate-900 group-hover:text-amber-600 transition-colors">
+      <div className="font-semibold text-xs text-slate-900 group-hover:text-amber-600 transition-colors truncate">
         Course {race.race_number} - {race.name}
       </div>
       {race.race_phase && (
         <div className="text-xs text-slate-500 mt-1 flex items-center gap-1">
           <Sparkles className="w-3 h-3" />
-          Phase: {race.race_phase.name}
+          <span className="truncate">Phase: {race.race_phase.name}</span>
         </div>
       )}
     </div>
@@ -155,7 +155,7 @@ function DroppableDistance({
     <Card
       ref={setNodeRef}
       className={clsx(
-        "min-w-[300px] flex-1 rounded-xl shadow-sm hover:shadow-md transition-all border-2",
+        "min-w-[280px] max-w-[320px] flex-shrink-0 rounded-xl shadow-sm hover:shadow-md transition-all border-2",
         distance.id === "unassigned" 
           ? "border-gray-200" 
           : "border-blue-200",
@@ -163,22 +163,22 @@ function DroppableDistance({
       )}
     >
       <CardHeader className={clsx(
-        "pb-3 border-b rounded-t-xl",
+        "pb-2 border-b rounded-t-xl",
         distance.id === "unassigned" 
           ? "bg-gradient-to-r from-slate-50 to-gray-50" 
           : "bg-gradient-to-r from-blue-50 via-indigo-50 to-purple-50"
       )}>
-        <CardTitle className="text-base flex items-center justify-between">
-          <span className="flex items-center gap-2 text-slate-900 font-semibold">
+        <CardTitle className="text-sm flex items-center justify-between gap-2">
+          <span className="flex items-center gap-1.5 text-slate-900 font-semibold truncate min-w-0 flex-1">
             {distance.id === "unassigned" ? (
-              <Tag className="w-5 h-5 text-slate-600" />
+              <Tag className="w-4 h-4 text-slate-600 flex-shrink-0" />
             ) : (
-              <Gauge className="w-5 h-5 text-blue-600" />
+              <Gauge className="w-4 h-4 text-blue-600 flex-shrink-0" />
             )}
-            {displayLabel}
+            <span className="truncate">{displayLabel}</span>
           </span>
           <span className={clsx(
-            "px-2.5 py-1 text-xs font-bold rounded-full shadow-sm",
+            "px-2 py-0.5 text-xs font-bold rounded-full shadow-sm flex-shrink-0",
             distance.id === "unassigned"
               ? "bg-gray-200 text-gray-700"
               : "bg-blue-600 text-white"
@@ -187,7 +187,7 @@ function DroppableDistance({
           </span>
         </CardTitle>
       </CardHeader>
-      <CardContent className="space-y-2 min-h-[250px] max-h-[500px] overflow-y-auto p-4 bg-white/50">
+      <CardContent className="space-y-2 min-h-[200px] max-h-[400px] overflow-y-auto p-3 bg-white/50">
         {items.length === 0 ? (
           <div className="text-center py-12 text-slate-400 text-sm">
             <div className="flex flex-col items-center gap-2">
@@ -620,7 +620,7 @@ export default function DistancesPage() {
     : null;
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 max-w-full overflow-hidden">
       {/* Header amélioré */}
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
@@ -880,9 +880,11 @@ export default function DistancesPage() {
           onDragStart={handleDragStart}
           onDragEnd={handleDragEnd}
         >
-          <div className="space-y-4">
-
-            <div className="flex gap-4 overflow-x-auto pb-4 scrollbar-thin scrollbar-thumb-blue-200 scrollbar-track-transparent">
+          <div className="space-y-4 w-full">
+            <div className="flex gap-4 overflow-x-auto pb-4 px-1 -mx-1" style={{ 
+              scrollbarWidth: 'thin',
+              scrollbarColor: '#93c5fd transparent'
+            }}>
               {/* Zone "Non affecté" */}
               <DroppableDistance
                 distance={{ id: "unassigned", label: "Non affecté" }}
