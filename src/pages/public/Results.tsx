@@ -154,6 +154,20 @@ export default function Results() {
   useEffect(() => {
     const fetchResults = async () => {
       try {
+        // Vérifier le type d'événement si pas encore déterminé
+        let currentIsIndoor = isIndoorEvent;
+        if (!currentIsIndoor) {
+          try {
+            const eventRes = await api.get(`/events/${eventId}`);
+            const eventData = eventRes.data.data;
+            const raceType = eventData.race_type?.toLowerCase() || "";
+            currentIsIndoor = raceType.includes("indoor");
+            setIsIndoorEvent(currentIsIndoor);
+          } catch (err) {
+            console.error("Erreur vérification type événement", err);
+          }
+        }
+
         // Récupérer les phases
         const phasesRes = await publicApi.get(`/race-phases/${eventId}`);
         const phasesData = phasesRes.data.data || [];
@@ -164,8 +178,8 @@ export default function Results() {
         const racesData = res.data.data || [];
 
         // Pour les événements indoor, ne pas attendre les timing points
-        if (!isIndoorEvent && !lastTimingPoint) {
-          // Attendre que les timing points soient chargés
+        if (!currentIsIndoor && !lastTimingPoint) {
+          // Attendre que les timing points soient chargés pour les événements normaux
           setRaces(racesData.map((r: any) => ({ ...r, results: [] })));
           return;
         }
@@ -178,10 +192,12 @@ export default function Results() {
             }
 
             // Pour les événements indoor, essayer d'abord de récupérer les résultats indoor
-            if (isIndoorEvent) {
+            if (currentIsIndoor) {
               try {
+                console.log(`🏠 Tentative chargement résultats indoor pour course ${race.id} (${race.name})`);
                 const indoorRes = await publicApi.get(`/indoor-results/race/${race.id}`);
                 const indoorData = indoorRes.data.data;
+                console.log(`✅ Résultats indoor reçus pour course ${race.id}:`, indoorData);
                 
                 if (indoorData && indoorData.participants && indoorData.participants.length > 0) {
                   // C'est une course indoor avec des résultats
@@ -189,22 +205,49 @@ export default function Results() {
                     a.place - b.place
                   );
                   
+                  console.log(`✅ Course ${race.id} a ${participants.length} participants indoor`);
+                  
                   return {
                     ...race,
                     isIndoor: true,
                     indoorResults: participants,
                     results: [], // Pas de résultats de timing pour les courses indoor
                   };
+                } else {
+                  // Course indoor mais pas encore de résultats
+                  console.log(`⚠️ Course ${race.id} est indoor mais n'a pas encore de participants`);
+                  return {
+                    ...race,
+                    isIndoor: true,
+                    indoorResults: [],
+                    results: [],
+                  };
                 }
               } catch (indoorErr: any) {
-                // 404 signifie qu'il n'y a pas de résultats indoor, on continue avec les timings normaux
-                if (indoorErr?.response?.status !== 404) {
-                  console.error(`Erreur chargement résultats indoor course ${race.id}:`, indoorErr);
+                // 404 signifie qu'il n'y a pas encore de résultats indoor, c'est normal
+                if (indoorErr?.response?.status === 404) {
+                  console.log(`⚠️ Course ${race.id} est indoor mais pas encore de résultats (404)`);
+                  // Course indoor mais pas encore de résultats
+                  return {
+                    ...race,
+                    isIndoor: true,
+                    indoorResults: [],
+                    results: [],
+                  };
+                } else {
+                  console.error(`❌ Erreur chargement résultats indoor course ${race.id}:`, indoorErr);
+                  // En cas d'erreur autre que 404, retourner quand même la course comme indoor
+                  return {
+                    ...race,
+                    isIndoor: true,
+                    indoorResults: [],
+                    results: [],
+                  };
                 }
               }
             }
 
-            // Pour les courses normales ou si pas de résultats indoor, utiliser les timings
+            // Pour les courses normales, utiliser les timings
             if (!lastTimingPoint) {
               return { ...race, results: [], isIndoor: false };
             }
@@ -337,10 +380,22 @@ export default function Results() {
           })
         );
 
+        // Pour les événements indoor, afficher toutes les courses (même sans résultats)
+        // Pour les courses normales, afficher seulement celles avec des résultats
         const sorted = racesWithResults
-          .filter((r) => (r.isIndoor ? (r.indoorResults?.length || 0) > 0 : r.results.length > 0))
+          .filter((r) => {
+            if (r.isIndoor) {
+              // Pour les courses indoor, afficher toutes les courses (même sans résultats pour l'instant)
+              console.log(`📊 Course indoor ${r.id} (${r.name}): ${r.indoorResults?.length || 0} participants`);
+              return true;
+            } else {
+              // Pour les courses normales, afficher seulement celles avec des résultats
+              return r.results.length > 0;
+            }
+          })
           .sort((a, b) => a.race_number - b.race_number);
 
+        console.log(`📋 Total courses à afficher: ${sorted.length} (${sorted.filter(r => r.isIndoor).length} indoor)`);
         setRaces(sorted);
       } catch (err) {
         console.error("Erreur chargement résultats", err);
@@ -349,11 +404,15 @@ export default function Results() {
       }
     };
 
-    if (eventId && (isIndoorEvent || (lastTimingPoint && timingPoints.length > 0))) {
+    // Déclencher le chargement des résultats
+    // fetchResults vérifie lui-même le type d'événement si nécessaire
+    // Pour les événements indoor, on peut charger immédiatement
+    // Pour les événements normaux, attendre les timing points (mais fetchResults gère ça)
+    if (eventId) {
       fetchResults();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [eventId, lastTimingPoint, timingPoints, isIndoorEvent]);
+  }, [eventId, lastTimingPoint, timingPoints.length, isIndoorEvent]);
 
   // Extraire les valeurs uniques pour les filtres
   const { uniqueClubs, uniqueCategories } = useMemo(() => {
