@@ -12,7 +12,7 @@ import { DndContext, closestCenter, useDroppable } from "@dnd-kit/core";
 import type { DragEndEvent } from "@dnd-kit/core";
 import { SortableContext, verticalListSortingStrategy, useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { Loader2, GripVertical, Tag, Info, ArrowLeft, Save, Sparkles, Plus, X, Minus } from "lucide-react";
+import { Loader2, GripVertical, Tag, Info, ArrowLeft, Save, Sparkles, Plus, X, Minus, FileText, Download } from "lucide-react";
 
 interface Category {
   id: string;
@@ -322,6 +322,9 @@ export default function GenerateRacesPage() {
   const [series, setSeries] = useState<Series[]>([]);
   const [loadingCategories, setLoadingCategories] = useState(false);
   const [loadingPhases, setLoadingPhases] = useState(true);
+  const [loadingSchema, setLoadingSchema] = useState(false);
+  const [savingDraft, setSavingDraft] = useState(false);
+  const [hasSavedSchema, setHasSavedSchema] = useState(false);
 
   // Charger les phases
   useEffect(() => {
@@ -346,6 +349,52 @@ export default function GenerateRacesPage() {
 
     fetchPhases();
   }, [eventId, toast]);
+
+  // Charger le schéma existant quand la phase change
+  useEffect(() => {
+    const fetchSchema = async () => {
+      if (!phaseId) {
+        setHasSavedSchema(false);
+        return;
+      }
+      
+      try {
+        setLoadingSchema(true);
+        const res = await api.get(`/race-phases/${phaseId}/generation-schema`);
+        const schema = res.data.data?.generation_schema;
+        
+        if (schema) {
+          // Pré-remplir les champs avec le schéma existant
+          setLaneCount(schema.lane_count || 6);
+          if (schema.start_time) {
+            const date = new Date(schema.start_time);
+            const localDate = new Date(date.getTime() - date.getTimezoneOffset() * 60000);
+            setStartTime(localDate.toISOString().slice(0, 16));
+          }
+          setIntervalMinutes(schema.interval_minutes || 5);
+          
+          // Restaurer les séries
+          if (schema.series && Array.isArray(schema.series)) {
+            setSeries(schema.series);
+          }
+          
+          setHasSavedSchema(true);
+        } else {
+          setHasSavedSchema(false);
+        }
+      } catch (err: any) {
+        // Si 404 ou pas de schéma, c'est normal
+        if (err?.response?.status !== 404) {
+          console.error("Erreur chargement schéma:", err);
+        }
+        setHasSavedSchema(false);
+      } finally {
+        setLoadingSchema(false);
+      }
+    };
+    
+    fetchSchema();
+  }, [phaseId]);
 
   // Charger les catégories de l'événement
   useEffect(() => {
@@ -743,6 +792,202 @@ export default function GenerateRacesPage() {
     }
   };
 
+  // Charger le schéma existant
+  const handleLoadSchema = async () => {
+    if (!phaseId) {
+      toast({
+        title: "Erreur",
+        description: "Veuillez sélectionner une phase",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    try {
+      setLoadingSchema(true);
+      const res = await api.get(`/race-phases/${phaseId}/generation-schema`);
+      const schema = res.data.data?.generation_schema;
+      
+      if (schema) {
+        setLaneCount(schema.lane_count || 6);
+        if (schema.start_time) {
+          const date = new Date(schema.start_time);
+          const localDate = new Date(date.getTime() - date.getTimezoneOffset() * 60000);
+          setStartTime(localDate.toISOString().slice(0, 16));
+        }
+        setIntervalMinutes(schema.interval_minutes || 5);
+        
+        if (schema.series && Array.isArray(schema.series)) {
+          setSeries(schema.series);
+        }
+        
+        setHasSavedSchema(true);
+        toast({
+          title: "Schéma chargé",
+          description: "Le schéma enregistré a été chargé avec succès",
+        });
+      } else {
+        toast({
+          title: "Aucun schéma",
+          description: "Aucun schéma enregistré pour cette phase",
+          variant: "destructive",
+        });
+      }
+    } catch (err: any) {
+      console.error("Erreur chargement schéma:", err);
+      toast({
+        title: "Erreur",
+        description: err?.response?.data?.message || "Impossible de charger le schéma",
+        variant: "destructive",
+      });
+    } finally {
+      setLoadingSchema(false);
+    }
+  };
+
+  // Sauvegarder en brouillon
+  const handleSaveDraft = async () => {
+    if (!phaseId || !laneCount || !eventId) {
+      toast({
+        title: "Erreur",
+        description: "Veuillez sélectionner une phase et définir le nombre de lignes d'eau",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    if (series.length === 0) {
+      toast({
+        title: "Erreur",
+        description: "Veuillez organiser au moins une catégorie",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    // Validation des séries avant envoi
+    const validationErrors: string[] = [];
+    
+    series.forEach((s, index) => {
+      const seriesNumber = index + 1;
+      
+      const totalParticipants = Object.values(s.categories).reduce((sum, count) => sum + count, 0);
+      if (totalParticipants > laneCount) {
+        validationErrors.push(`Série ${seriesNumber}: Le nombre total de participants (${totalParticipants}) dépasse le nombre de lignes d'eau (${laneCount})`);
+      }
+      
+      const categoryCodes = Object.keys(s.categories);
+      if (categoryCodes.length > 0) {
+        const distances = categoryCodes
+          .map(code => {
+            const cat = categories.find(c => c.code === code);
+            return cat ? getCategoryDistance(cat) : null;
+          })
+          .filter((d): d is number => d !== null);
+        
+        if (distances.length > 0) {
+          const uniqueDistances = [...new Set(distances)];
+          if (uniqueDistances.length > 1) {
+            validationErrors.push(`Série ${seriesNumber}: Les catégories ont des distances différentes (${uniqueDistances.join("m, ")}m). Toutes les catégories d'une série doivent avoir la même distance.`);
+          }
+        }
+      }
+    });
+    
+    if (validationErrors.length > 0) {
+      toast({
+        title: "Erreurs de validation",
+        description: validationErrors.join("\n"),
+        variant: "destructive",
+      });
+      return;
+    }
+
+    try {
+      setSavingDraft(true);
+
+      const payload: any = {
+        phase_id: phaseId,
+        lane_count: laneCount,
+        start_time: startTime ? new Date(startTime).toISOString() : undefined,
+        interval_minutes: intervalMinutes || 5,
+        series: series.map(s => ({
+          id: s.id,
+          categories: s.categories
+        })),
+        save_only: true, // Mode brouillon
+      };
+
+      await api.post("/races/generate-from-series", payload);
+      
+      setHasSavedSchema(true);
+      toast({ 
+        title: "Brouillon enregistré",
+        description: "Le schéma a été enregistré en brouillon. Vous pourrez le modifier et générer les courses plus tard."
+      });
+    } catch (err: any) {
+      const errorData = err?.response?.data;
+      if (errorData?.errors && Array.isArray(errorData.errors)) {
+        toast({
+          title: "Erreurs de validation",
+          description: errorData.errors.join("\n"),
+          variant: "destructive",
+        });
+      } else {
+        toast({
+          title: "Erreur lors de l'enregistrement",
+          description: errorData?.message || err?.message || "Une erreur est survenue",
+          variant: "destructive",
+        });
+      }
+    } finally {
+      setSavingDraft(false);
+    }
+  };
+
+  // Générer depuis le schéma enregistré
+  const handleGenerateFromSchema = async () => {
+    if (!phaseId) {
+      toast({
+        title: "Erreur",
+        description: "Veuillez sélectionner une phase",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    try {
+      setLoading(true);
+
+      const response = await api.post(`/race-phases/${phaseId}/generate-from-schema`, {});
+      
+      const data = response.data.data;
+      toast({ 
+        title: "Succès",
+        description: `${data.races_created} course${data.races_created > 1 ? 's' : ''} générée${data.races_created > 1 ? 's' : ''} avec succès depuis le schéma enregistré (${data.crews_assigned} équipages assignés)` 
+      });
+      
+      navigate(`/event/${eventId}/racePhases/${phaseId}`);
+    } catch (err: any) {
+      const errorData = err?.response?.data;
+      if (errorData?.errors && Array.isArray(errorData.errors)) {
+        toast({
+          title: "Erreurs de validation",
+          description: errorData.errors.join("\n"),
+          variant: "destructive",
+        });
+      } else {
+        toast({
+          title: "Erreur lors de la génération",
+          description: errorData?.message || err?.message || "Une erreur est survenue",
+          variant: "destructive",
+        });
+      }
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const handleGenerate = async () => {
     if (!phaseId || !laneCount || !eventId) {
       toast({
@@ -899,8 +1144,9 @@ export default function GenerateRacesPage() {
                 onValueChange={(v) => {
                   setPhaseId(v);
                   setSeries([]);
+                  setHasSavedSchema(false);
                 }}
-                disabled={loadingPhases}
+                disabled={loadingPhases || loadingSchema}
               >
                 <SelectTrigger>
                   <SelectValue placeholder={loadingPhases ? "Chargement..." : "Choisir une phase"} />
@@ -1065,28 +1311,109 @@ export default function GenerateRacesPage() {
         </Card>
       )}
 
-      {/* Bouton de génération */}
-      {phaseId && series.length > 0 && (
+      {/* Boutons d'action */}
+      {phaseId && (
         <Card>
-          <CardContent className="pt-6">
-            <Button 
-              onClick={handleGenerate} 
-              disabled={loading || !phaseId}
-              className="w-full"
-              size="lg"
-            >
-              {loading ? (
-                <>
-                  <Loader2 className="h-4 w-4 animate-spin mr-2" />
-                  Génération...
-                </>
-              ) : (
-                <>
-                  <Save className="h-4 w-4 mr-2" />
-                  Générer les courses
-                </>
+          <CardContent className="pt-6 space-y-3">
+            {/* Indicateur de schéma enregistré */}
+            {hasSavedSchema && (
+              <div className="flex items-center gap-2 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                <Info className="w-4 h-4 text-blue-600" />
+                <span className="text-sm text-blue-700">
+                  Un schéma est enregistré pour cette phase. Vous pouvez le charger, le modifier ou générer directement les courses.
+                </span>
+              </div>
+            )}
+
+            <div className="flex flex-col sm:flex-row gap-3">
+              {/* Bouton charger le schéma */}
+              {hasSavedSchema && (
+                <Button 
+                  onClick={handleLoadSchema} 
+                  disabled={loadingSchema || loading}
+                  variant="outline"
+                  className="flex-1"
+                >
+                  {loadingSchema ? (
+                    <>
+                      <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                      Chargement...
+                    </>
+                  ) : (
+                    <>
+                      <Download className="h-4 w-4 mr-2" />
+                      Charger le schéma
+                    </>
+                  )}
+                </Button>
               )}
-            </Button>
+
+              {/* Bouton générer depuis le schéma */}
+              {hasSavedSchema && (
+                <Button 
+                  onClick={handleGenerateFromSchema} 
+                  disabled={loading || savingDraft}
+                  variant="secondary"
+                  className="flex-1"
+                >
+                  {loading ? (
+                    <>
+                      <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                      Génération...
+                    </>
+                  ) : (
+                    <>
+                      <Sparkles className="h-4 w-4 mr-2" />
+                      Générer depuis le schéma
+                    </>
+                  )}
+                </Button>
+              )}
+
+              {/* Bouton sauvegarder en brouillon */}
+              {series.length > 0 && (
+                <Button 
+                  onClick={handleSaveDraft} 
+                  disabled={loading || savingDraft || !phaseId}
+                  variant="outline"
+                  className="flex-1"
+                >
+                  {savingDraft ? (
+                    <>
+                      <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                      Enregistrement...
+                    </>
+                  ) : (
+                    <>
+                      <FileText className="h-4 w-4 mr-2" />
+                      Enregistrer en brouillon
+                    </>
+                  )}
+                </Button>
+              )}
+
+              {/* Bouton générer les courses */}
+              {series.length > 0 && (
+                <Button 
+                  onClick={handleGenerate} 
+                  disabled={loading || savingDraft || !phaseId}
+                  className="flex-1"
+                  size="lg"
+                >
+                  {loading ? (
+                    <>
+                      <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                      Génération...
+                    </>
+                  ) : (
+                    <>
+                      <Save className="h-4 w-4 mr-2" />
+                      Générer les courses
+                    </>
+                  )}
+                </Button>
+              )}
+            </div>
           </CardContent>
         </Card>
       )}
