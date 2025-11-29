@@ -46,9 +46,12 @@ type Race = {
   distance_id?: string;
   distance?: {
     id: string;
-    meters: number;
-    label?: string;
+    meters: number | null;
+    is_time_based: boolean;
+    duration_seconds: number | null;
+    label: string;
     is_relay?: boolean;
+    relay_count?: number | null;
   };
   race_crews?: Array<{
     lane: number;
@@ -196,12 +199,15 @@ export default function ExportPage() {
           // Si la course n'a pas de distance mais a un distance_id, la récupérer
           if (!race.distance && race.distance_id) {
             const distance = distanceMap.get(race.distance_id) as any;
-            if (distance && distance.id && distance.meters !== undefined) {
+            if (distance && distance.id) {
               race.distance = {
                 id: distance.id,
                 meters: distance.meters,
+                is_time_based: distance.is_time_based || false,
+                duration_seconds: distance.duration_seconds || null,
                 label: distance.label,
                 is_relay: distance.is_relay,
+                relay_count: distance.relay_count || null,
               };
             }
           }
@@ -239,7 +245,7 @@ export default function ExportPage() {
                       status: race.status,
                       phase: race.race_phase?.name || "",
                       phase_id: race.race_phase?.id || "",
-                      distance: race.distance?.meters || race.distance?.label || "",
+                      distance: race.distance?.label || "",
                       distance_label: race.distance?.label || "",
                       is_relay: race.distance?.is_relay || false,
                       is_indoor: true,
@@ -805,7 +811,7 @@ export default function ExportPage() {
             raceInfo.push(`Phase: ${race.race_phase.name}`);
           }
           if (race.distance?.label || race.distance?.meters) {
-            raceInfo.push(`${race.distance.label || `${race.distance.meters}m`}`);
+            raceInfo.push(race.distance.label);
           }
           
           if (raceInfo.length > 0) {

@@ -22,8 +22,10 @@ interface Category {
   distance_id?: string;
   distance?: {
     id: string;
-    meters: number;
-    label?: string;
+    meters: number | null;
+    is_time_based: boolean;
+    duration_seconds: number | null;
+    label: string;
   };
 }
 
@@ -128,6 +130,10 @@ function SeriesCard({
     const distances = categoryCodes
       .map(code => {
         const cat = categories.find(c => c.code === code);
+        // Pour les distances basées sur le temps, retourner null car on ne peut pas les utiliser pour le tri par distance
+        if (cat?.distance?.is_time_based) {
+          return null;
+        }
         return cat?.distance?.meters ?? null;
       })
       .filter((d): d is number => d !== null);
@@ -260,7 +266,7 @@ function SeriesCard({
                     </span>
                     {cat.distance && (
                       <span className="text-xs px-1.5 py-0.5 bg-slate-100 text-slate-600 rounded">
-                        {cat.distance.label || `${cat.distance.meters}m`}
+                        {cat.distance.label}
                       </span>
                     )}
                   </div>
@@ -429,20 +435,24 @@ export default function GenerateRacesPage() {
               let distanceData = null;
               if (categoryDetail.distance_id) {
                 const distance = distanceMap.get(categoryDetail.distance_id);
-                if (distance && distance.meters !== undefined && distance.meters !== null) {
+                if (distance) {
                   distanceData = {
                     id: distance.id,
                     meters: distance.meters,
+                    is_time_based: distance.is_time_based || false,
+                    duration_seconds: distance.duration_seconds || null,
                     label: distance.label,
                   };
                 }
               }
               
               // Si la catégorie a déjà une distance complète dans categoryDetail, l'utiliser
-              if (categoryDetail.distance && categoryDetail.distance.meters !== undefined && categoryDetail.distance.meters !== null) {
+              if (categoryDetail.distance) {
                 distanceData = {
                   id: categoryDetail.distance.id,
                   meters: categoryDetail.distance.meters,
+                  is_time_based: categoryDetail.distance.is_time_based || false,
+                  duration_seconds: categoryDetail.distance.duration_seconds || null,
                   label: categoryDetail.distance.label,
                 };
               }
@@ -458,10 +468,12 @@ export default function GenerateRacesPage() {
               let distanceData = null;
               if (cat.distance_id) {
                 const distance = distanceMap.get(cat.distance_id);
-                if (distance && distance.meters !== undefined && distance.meters !== null) {
+                if (distance) {
                   distanceData = {
                     id: distance.id,
                     meters: distance.meters,
+                    is_time_based: distance.is_time_based || false,
+                    duration_seconds: distance.duration_seconds || null,
                     label: distance.label,
                   };
                 }
@@ -533,7 +545,11 @@ export default function GenerateRacesPage() {
 
   // Fonction pour obtenir la distance d'une catégorie
   const getCategoryDistance = (category: Category): number | null => {
-    if (category.distance?.meters !== undefined) {
+    // Pour les distances basées sur le temps, retourner null car on ne peut pas les utiliser pour le tri par distance
+    if (category.distance?.is_time_based) {
+      return null;
+    }
+    if (category.distance?.meters !== undefined && category.distance.meters !== null) {
       return category.distance.meters;
     }
     return null;

@@ -46,8 +46,10 @@ interface Category {
   distance_id?: string;
   distance?: {
     id: string;
-    meters: number;
-    label?: string;
+    meters: number | null;
+    is_time_based: boolean;
+    duration_seconds: number | null;
+    label: string;
   };
 }
 
@@ -78,10 +80,12 @@ interface Race {
   distance_id?: string;
   distance?: {
     id: string;
-    meters: number;
+    meters: number | null;
     is_relay?: boolean;
-    relay_count?: number;
-    label?: string; // Label formaté depuis l'API (ex: "8x250m" ou "2000m")
+    relay_count?: number | null;
+    is_time_based: boolean;
+    duration_seconds: number | null;
+    label: string; // Label formaté depuis l'API (ex: "8x250m", "2000m", "2min", "2min 30s")
   };
   crews: RaceCrew[];
 }
@@ -164,7 +168,11 @@ interface RacePhase {
 // Fonction pour obtenir la distance d'un crew (via catégorie ou course)
 // Note: Ces fonctions sont définies après les interfaces pour être utilisées à la fois dans le composant principal et dans TimelineRace
 function getCrewDistance(crew: Crew, race?: Race): number | null {
+  // Pour les distances basées sur le temps, retourner null car on ne peut pas les utiliser pour le tri par distance
   // Priorité 1: distance via la catégorie du crew
+  if (crew.category?.distance?.is_time_based) {
+    return null;
+  }
   if (crew.category?.distance?.meters) {
     return crew.category.distance.meters;
   }
@@ -172,6 +180,9 @@ function getCrewDistance(crew: Crew, race?: Race): number | null {
     return crew.category.distance.meters;
   }
   // Priorité 2: distance via la course
+  if (race?.distance?.is_time_based) {
+    return null;
+  }
   if (race?.distance?.meters) {
     return race.distance.meters;
   }

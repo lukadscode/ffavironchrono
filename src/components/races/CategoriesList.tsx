@@ -11,8 +11,10 @@ interface Category {
   distance_id?: string;
   distance?: {
     id: string;
-    meters: number;
-    label?: string;
+    meters: number | null;
+    is_time_based: boolean;
+    duration_seconds: number | null;
+    label: string;
   };
 }
 
@@ -49,12 +51,14 @@ export default function CategoriesList({ categories, eventId }: { categories: Ca
               // Sinon, essayer de récupérer la catégorie complète
               if (cat.distance_id) {
                 const distance = distanceMap.get(cat.distance_id) as any;
-                if (distance && distance.id && distance.meters !== undefined) {
+                if (distance && distance.id) {
                   return { 
                     ...cat, 
                     distance: {
                       id: distance.id,
                       meters: distance.meters,
+                      is_time_based: distance.is_time_based || false,
+                      duration_seconds: distance.duration_seconds || null,
                       label: distance.label,
                     }
                   };
@@ -100,8 +104,21 @@ export default function CategoriesList({ categories, eventId }: { categories: Ca
   }, [eventId, categories]);
 
   // Trier les catégories par distance (en mètres) puis par nom
+  // Les distances basées sur le temps sont triées après les distances en mètres
   const sortedCategories = useMemo(() => {
     return [...categoriesWithDistances].sort((a, b) => {
+      // Si une distance est basée sur le temps, la mettre après
+      if (a.distance?.is_time_based && !b.distance?.is_time_based) return 1;
+      if (!a.distance?.is_time_based && b.distance?.is_time_based) return -1;
+      
+      // Si les deux sont basées sur le temps, trier par duration_seconds
+      if (a.distance?.is_time_based && b.distance?.is_time_based) {
+        const durationA = a.distance?.duration_seconds || 0;
+        const durationB = b.distance?.duration_seconds || 0;
+        if (durationA !== durationB) return durationA - durationB;
+      }
+      
+      // Sinon, trier par meters
       const distanceA = a.distance?.meters || 0;
       const distanceB = b.distance?.meters || 0;
       
@@ -223,7 +240,7 @@ export default function CategoriesList({ categories, eventId }: { categories: Ca
                     </div>
                     {cat.distance && (
                       <div className="text-xs text-slate-500">
-                        {cat.distance.label || `${cat.distance.meters}m`}
+                        {cat.distance.label}
                       </div>
                     )}
                   </div>

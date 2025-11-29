@@ -22,10 +22,12 @@ interface RaceFormDialogProps {
 
 interface Distance {
   id: string;
-  label?: string; // Label formaté depuis l'API (ex: "8x250m" ou "2000m")
-  meters: number;
+  label: string; // Label formaté depuis l'API (ex: "8x250m", "2000m", "2min", "2min 30s")
+  meters: number | null;
   is_relay?: boolean;
-  relay_count?: number;
+  relay_count?: number | null;
+  is_time_based: boolean;
+  duration_seconds: number | null;
 }
 
 export default function RaceFormDialog({ phaseId, eventId, onSuccess }: RaceFormDialogProps) {
@@ -107,18 +109,25 @@ export default function RaceFormDialog({ phaseId, eventId, onSuccess }: RaceForm
                 <SelectValue placeholder="Distance" />
               </SelectTrigger>
               <SelectContent>
-                {distances.map((dist) => {
-                  // Utiliser le label formaté de l'API s'il existe, sinon construire
-                  const displayLabel = dist.label || 
-                    (dist.is_relay && dist.relay_count 
-                      ? `${dist.relay_count}x${dist.meters}m`
-                      : `${dist.meters}m`);
-                  return (
+                {distances
+                  .filter((d) => !d.is_time_based)
+                  .map((dist) => (
                     <SelectItem key={dist.id} value={dist.id}>
-                      {displayLabel}
+                      {dist.label}
                     </SelectItem>
-                  );
-                })}
+                  ))}
+                {distances.some((d) => d.is_time_based) && distances.some((d) => !d.is_time_based) && (
+                  <div className="px-2 py-1.5 text-xs font-semibold text-muted-foreground border-t">
+                    Durées (temps)
+                  </div>
+                )}
+                {distances
+                  .filter((d) => d.is_time_based)
+                  .map((dist) => (
+                    <SelectItem key={dist.id} value={dist.id}>
+                      {dist.label}
+                    </SelectItem>
+                  ))}
               </SelectContent>
             </Select>
           </div>

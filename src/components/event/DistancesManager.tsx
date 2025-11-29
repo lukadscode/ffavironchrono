@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
 import { PlusIcon, Tag, Trophy, ArrowLeft, ArrowRight, Save, Gauge, Sparkles, Loader2 } from "lucide-react";
 import {
@@ -28,10 +29,12 @@ import clsx from "clsx";
 type Distance = {
   id: string;
   event_id: string;
-  meters: number;
+  meters: number | null;
   is_relay?: boolean;
-  relay_count?: number;
-  label?: string;
+  relay_count?: number | null;
+  is_time_based: boolean;
+  duration_seconds: number | null;
+  label: string;
 };
 
 type Category = {
@@ -144,10 +147,8 @@ function DroppableDistance({
     ? "Non affecté" 
     : (() => {
         const dist = distance as Distance;
-        return dist.label || 
-          (dist.is_relay && dist.relay_count 
-            ? `${dist.relay_count}x${dist.meters}m`
-            : `${dist.meters}m`);
+        // Utiliser le label du backend qui est toujours formaté correctement
+        return dist.label || "Distance inconnue";
       })();
 
   return (
@@ -232,6 +233,9 @@ export default function DistancesPage() {
   const [newMeters, setNewMeters] = useState("");
   const [isRelay, setIsRelay] = useState(false);
   const [relayCount, setRelayCount] = useState<number | "">("");
+  const [distanceType, setDistanceType] = useState<"meters" | "time">("meters");
+  const [durationMinutes, setDurationMinutes] = useState<number | "">("");
+  const [durationSeconds, setDurationSeconds] = useState<number | "">("");
   const [loading, setLoading] = useState(true);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [viewMode, setViewMode] = useState<"categories" | "races">("categories");
@@ -320,43 +324,85 @@ export default function DistancesPage() {
 
   const handleAdd = async () => {
     try {
-      const meters = parseInt(newMeters, 10);
-      if (isNaN(meters) || !eventId) return;
+      if (!eventId) return;
 
-      if (isRelay) {
-        const count = typeof relayCount === "number" ? relayCount : parseInt(String(relayCount), 10);
-        if (isNaN(count) || count < 2 || count > 20) {
+      // Validation selon le type de distance
+      if (distanceType === "meters") {
+        const meters = parseInt(newMeters, 10);
+        if (isNaN(meters) || meters <= 0) {
           toast({
             title: "Erreur de validation",
-            description: "Pour un relais, le nombre de relais doit être entre 2 et 20.",
+            description: "Veuillez entrer une distance valide en mètres.",
             variant: "destructive",
           });
           return;
         }
+
+        if (isRelay) {
+          const count = typeof relayCount === "number" ? relayCount : parseInt(String(relayCount), 10);
+          if (isNaN(count) || count < 2 || count > 20) {
+            toast({
+              title: "Erreur de validation",
+              description: "Pour un relais, le nombre de relais doit être entre 2 et 20.",
+              variant: "destructive",
+            });
+            return;
+          }
+        }
+
+        const payload: any = {
+          event_id: eventId,
+          meters,
+          is_time_based: false,
+          duration_seconds: null,
+          is_relay: isRelay,
+        };
+
+        if (isRelay && typeof relayCount === "number") {
+          payload.relay_count = relayCount;
+        }
+
+        await api.post("/distances", payload);
+      } else {
+        // Distance basée sur le temps
+        const mins = typeof durationMinutes === "number" ? durationMinutes : 0;
+        const secs = typeof durationSeconds === "number" ? durationSeconds : 0;
+        const totalSeconds = mins * 60 + secs;
+
+        if (totalSeconds <= 0) {
+          toast({
+            title: "Erreur de validation",
+            description: "Veuillez entrer une durée valide (au moins 1 seconde).",
+            variant: "destructive",
+          });
+          return;
+        }
+
+        const payload: any = {
+          event_id: eventId,
+          duration_seconds: totalSeconds,
+          is_time_based: true,
+          meters: null,
+          is_relay: false,
+          relay_count: null,
+        };
+
+        await api.post("/distances", payload);
       }
-
-      const payload: any = {
-        event_id: eventId,
-        meters,
-        is_relay: isRelay,
-      };
-
-      if (isRelay && typeof relayCount === "number") {
-        payload.relay_count = relayCount;
-      }
-
-      await api.post("/distances", payload);
 
       toast({ title: "Distance ajoutée avec succès." });
       setNewMeters("");
       setIsRelay(false);
       setRelayCount("");
+      setDistanceType("meters");
+      setDurationMinutes("");
+      setDurationSeconds("");
       setDialogOpen(false);
       fetchDistances();
-    } catch (err) {
+    } catch (err: any) {
       toast({
         title: "Erreur à l'ajout",
-        description: "Impossible d'ajouter la distance.",
+        description: err?.response?.data?.message || "Impossible d'ajouter la distance.",
         variant: "destructive",
       });
     }
@@ -642,23 +688,24 @@ export default function DistancesPage() {
           ) : (
             <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
               {distances.map((distance) => {
-                const displayLabel = distance.label ||
-                  (distance.is_relay && distance.relay_count
-                    ? `${distance.relay_count}x${distance.meters}m`
-                    : `${distance.meters}m`);
                 return (
                   <Card 
                     key={distance.id} 
                     className="text-center p-4 flex flex-col items-center hover:shadow-lg transition-all border-2 border-blue-100 hover:border-blue-300 bg-gradient-to-br from-blue-50 to-white group"
                   >
                     <div className="w-16 h-16 rounded-full bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center text-white text-lg font-bold mb-2 shadow-md group-hover:scale-110 transition-transform">
-                      {displayLabel}
+                      {distance.label}
                     </div>
                     <div className="text-xs font-medium text-blue-700 mb-3 flex items-center gap-1">
                       {distance.is_relay ? (
                         <>
                           <Sparkles className="w-3 h-3" />
                           Relais
+                        </>
+                      ) : distance.is_time_based ? (
+                        <>
+                          <Gauge className="w-3 h-3" />
+                          Temps
                         </>
                       ) : (
                         <>
@@ -696,55 +743,124 @@ export default function DistancesPage() {
                   </DialogHeader>
                   <div className="grid gap-4 py-4">
                     <div>
-                      <Label>Type de course</Label>
-                      <div className="flex items-center space-x-2 mt-2">
-                        <Checkbox
-                          id="is-relay"
-                          checked={isRelay}
-                          onCheckedChange={(checked) => {
-                            setIsRelay(checked === true);
-                            if (!checked) {
-                              setRelayCount("");
-                            }
-                          }}
-                        />
-                        <Label htmlFor="is-relay" className="font-normal cursor-pointer">
-                          Course en relais
-                        </Label>
-                      </div>
+                      <Label>Type de distance</Label>
+                      <Select
+                        value={distanceType}
+                        onValueChange={(val) => {
+                          setDistanceType(val as "meters" | "time");
+                          if (val === "time") {
+                            setIsRelay(false);
+                            setRelayCount("");
+                          }
+                        }}
+                      >
+                        <SelectTrigger>
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="meters">Distance (mètres)</SelectItem>
+                          <SelectItem value="time">Durée (temps)</SelectItem>
+                        </SelectContent>
+                      </Select>
                     </div>
-                    <div>
-                      <Label htmlFor="new-distance">
-                        {isRelay ? "Distance d'un relais (en mètres)" : "Distance (en mètres)"}
-                      </Label>
-                      <Input
-                        id="new-distance"
-                        type="number"
-                        placeholder={isRelay ? "Ex: 250 (pour 8x250m)" : "Ex: 1000"}
-                        value={newMeters}
-                        onChange={(e) => setNewMeters(e.target.value)}
-                      />
-                    </div>
-                    {isRelay && (
-                      <div>
-                        <Label htmlFor="relay-count">Nombre de relais *</Label>
-                        <Input
-                          id="relay-count"
-                          type="number"
-                          min="2"
-                          max="20"
-                          placeholder="Ex: 8 (pour 8x250m)"
-                          value={relayCount}
-                          onChange={(e) => {
-                            const val = e.target.value === "" ? "" : parseInt(e.target.value, 10);
-                            setRelayCount(val);
-                          }}
-                        />
-                        <p className="text-xs text-muted-foreground mt-1">
-                          Entre 2 et 20 relais (ex: 8 pour 8x250m, 4 pour 4x500m)
+
+                    {distanceType === "meters" ? (
+                      <>
+                        <div>
+                          <Label>Type de course</Label>
+                          <div className="flex items-center space-x-2 mt-2">
+                            <Checkbox
+                              id="is-relay"
+                              checked={isRelay}
+                              onCheckedChange={(checked) => {
+                                setIsRelay(checked === true);
+                                if (!checked) {
+                                  setRelayCount("");
+                                }
+                              }}
+                            />
+                            <Label htmlFor="is-relay" className="font-normal cursor-pointer">
+                              Course en relais
+                            </Label>
+                          </div>
+                        </div>
+                        <div>
+                          <Label htmlFor="new-distance">
+                            {isRelay ? "Distance d'un relais (en mètres)" : "Distance (en mètres)"}
+                          </Label>
+                          <Input
+                            id="new-distance"
+                            type="number"
+                            min="100"
+                            placeholder={isRelay ? "Ex: 250 (pour 8x250m)" : "Ex: 1000"}
+                            value={newMeters}
+                            onChange={(e) => setNewMeters(e.target.value)}
+                          />
+                        </div>
+                        {isRelay && (
+                          <div>
+                            <Label htmlFor="relay-count">Nombre de relais *</Label>
+                            <Input
+                              id="relay-count"
+                              type="number"
+                              min="2"
+                              max="20"
+                              placeholder="Ex: 8 (pour 8x250m)"
+                              value={relayCount}
+                              onChange={(e) => {
+                                const val = e.target.value === "" ? "" : parseInt(e.target.value, 10);
+                                setRelayCount(val);
+                              }}
+                            />
+                            <p className="text-xs text-muted-foreground mt-1">
+                              Entre 2 et 20 relais (ex: 8 pour 8x250m, 4 pour 4x500m)
+                            </p>
+                          </div>
+                        )}
+                      </>
+                    ) : (
+                      <div className="space-y-4">
+                        <div className="grid grid-cols-2 gap-4">
+                          <div>
+                            <Label htmlFor="duration-minutes">Minutes</Label>
+                            <Input
+                              id="duration-minutes"
+                              type="number"
+                              min="0"
+                              placeholder="Ex: 2"
+                              value={durationMinutes}
+                              onChange={(e) => {
+                                const val = e.target.value === "" ? "" : parseInt(e.target.value, 10);
+                                setDurationMinutes(val);
+                              }}
+                            />
+                          </div>
+                          <div>
+                            <Label htmlFor="duration-seconds">Secondes</Label>
+                            <Input
+                              id="duration-seconds"
+                              type="number"
+                              min="0"
+                              max="59"
+                              placeholder="Ex: 30"
+                              value={durationSeconds}
+                              onChange={(e) => {
+                                const val = e.target.value === "" ? "" : parseInt(e.target.value, 10);
+                                if (typeof val === "number" && val >= 60) {
+                                  setDurationSeconds(59);
+                                } else {
+                                  setDurationSeconds(val);
+                                }
+                              }}
+                            />
+                          </div>
+                        </div>
+                        <p className="text-xs text-muted-foreground">
+                          Exemples : 2 minutes = 2 min 0 sec, 1 minute 30 secondes = 1 min 30 sec
                         </p>
                       </div>
                     )}
+
                     <div className="flex justify-end">
                       <Button onClick={handleAdd}>Ajouter</Button>
                     </div>

@@ -81,10 +81,12 @@ type RaceCrew = {
 
 type Distance = {
   id: string;
-  meters: number;
+  meters: number | null;
   is_relay?: boolean;
-  relay_count?: number;
-  label?: string;
+  relay_count?: number | null;
+  is_time_based: boolean;
+  duration_seconds: number | null;
+  label: string;
 };
 
 type Race = {
@@ -421,10 +423,7 @@ export default function RacesPage() {
                     <div className="flex justify-between">
                       <span className="text-muted-foreground">Distance:</span>
                       <span className="font-medium">
-                        {selectedRace.distance.label || `${selectedRace.distance.meters}m`}
-                        {selectedRace.distance.is_relay &&
-                          selectedRace.distance.relay_count &&
-                          ` (Relais ${selectedRace.distance.relay_count}x${selectedRace.distance.meters}m)`}
+                        {selectedRace.distance.label}
                       </span>
                     </div>
                   )}
@@ -560,14 +559,25 @@ export default function RacesPage() {
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="__none__">Aucune distance</SelectItem>
-                  {availableDistances.map((dist) => (
-                    <SelectItem key={dist.id} value={dist.id}>
-                      {dist.label || `${dist.meters}m`}
-                      {dist.is_relay &&
-                        dist.relay_count &&
-                        ` (Relais ${dist.relay_count}x${dist.meters}m)`}
-                    </SelectItem>
-                  ))}
+                  {availableDistances
+                    .filter((d) => !d.is_time_based)
+                    .map((dist) => (
+                      <SelectItem key={dist.id} value={dist.id}>
+                        {dist.label}
+                      </SelectItem>
+                    ))}
+                  {availableDistances.some((d) => d.is_time_based) && availableDistances.some((d) => !d.is_time_based) && (
+                    <div className="px-2 py-1.5 text-xs font-semibold text-muted-foreground border-t">
+                      Durées (temps)
+                    </div>
+                  )}
+                  {availableDistances
+                    .filter((d) => d.is_time_based)
+                    .map((dist) => (
+                      <SelectItem key={dist.id} value={dist.id}>
+                        {dist.label}
+                      </SelectItem>
+                    ))}
                 </SelectContent>
               </Select>
             </div>

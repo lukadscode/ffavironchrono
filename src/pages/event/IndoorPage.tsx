@@ -44,10 +44,15 @@ type FullRace = Race & {
   lane_count?: number;
   distance?: {
     id: string;
-    meters: number;
+    meters: number | null;
     is_relay?: boolean;
-    relay_count?: number;
-    label?: string;
+    relay_count?: number | null;
+    is_time_based: boolean;
+    duration_seconds: number | null;
+    label: string;
+    is_time_based: boolean;
+    duration_seconds: number | null;
+    label: string;
   } | null;
   distance_id?: string | null;
 };
@@ -173,16 +178,20 @@ export default function IndoorPage() {
       }
     }
 
-    // Déterminer si c'est un relais
+    // Déterminer si c'est une distance basée sur le temps
     const currentDistance = finalRaceDistance;
-    const isRelay = currentDistance?.is_relay === true || (typeof currentDistance?.is_relay === 'number' && currentDistance.is_relay === 1);
+    const isTimeBased = currentDistance?.is_time_based === true;
+    const durationSeconds = currentDistance?.duration_seconds ? Number(currentDistance.duration_seconds) : null;
+    
+    // Déterminer si c'est un relais (les courses basées sur le temps ne peuvent pas être des relais)
+    const isRelay = !isTimeBased && (currentDistance?.is_relay === true || (typeof currentDistance?.is_relay === 'number' && currentDistance.is_relay === 1));
     const relayCount = currentDistance?.relay_count ? Number(currentDistance.relay_count) : null;
     const relayDistance = currentDistance?.meters ? Number(currentDistance.meters) : 500; // Par défaut 500m pour indoor
     const distance = relayDistance;
 
     const totalDistance = isRelay && relayCount && relayDistance 
       ? relayDistance * relayCount 
-      : distance;
+      : (currentDistance?.meters ? Number(currentDistance.meters) : distance);
 
     // Déterminer le type de course
     let raceType: string;
@@ -199,9 +208,8 @@ export default function IndoorPage() {
 
     // Construire le nom long
     let nameLong = race.name;
-    if (isRelay && currentDistance) {
-      const distanceLabel = currentDistance.label || 
-        (relayCount && relayDistance ? `${relayCount}x${relayDistance}m` : race.name);
+    if (currentDistance) {
+      const distanceLabel = currentDistance.label || race.name;
       const firstCrew = race.race_crews[0];
       if (firstCrew?.crew?.category?.label) {
         nameLong = `${distanceLabel} ${firstCrew.crew.category.label}`;
@@ -210,17 +218,21 @@ export default function IndoorPage() {
       }
     }
 
-    const finalDuration = isRelay && relayCount && relayDistance 
-      ? relayDistance * relayCount 
-      : totalDistance;
+    // Valeurs finales pour le fichier .rac2
+    const finalDuration = isTimeBased && durationSeconds
+      ? durationSeconds
+      : (isRelay && relayCount && relayDistance 
+        ? relayDistance * relayCount 
+        : totalDistance);
     // Pour les courses indoor, le split est toujours fixé à 250m
     const finalSplitValue = 250;
+    const finalDurationType = isTimeBased ? "seconds" : "meters";
 
     // Construire l'objet rac2
     const rac2Data: any = {
       race_definition: {
         duration: finalDuration,
-        duration_type: "meters",
+        duration_type: finalDurationType,
         event_name: event.name.toUpperCase(),
         name_long: nameLong,
         name_short: race.id,

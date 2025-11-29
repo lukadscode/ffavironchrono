@@ -32,10 +32,12 @@ type Category = {
   distance_id?: string | null;
   distance?: {
     id: string;
-    meters: number;
+    meters: number | null;
     is_relay?: boolean;
-    relay_count?: number;
-    label?: string;
+    relay_count?: number | null;
+    is_time_based: boolean;
+    duration_seconds: number | null;
+    label: string;
   } | null;
 };
 
@@ -80,10 +82,12 @@ type RaceCrew = {
 
 type Distance = {
   id: string;
-  meters: number;
+  meters: number | null;
   is_relay?: boolean | number;
-  relay_count?: number;
-  label?: string; // Label formaté depuis l'API (ex: "8x250m" ou "2000m")
+  relay_count?: number | null;
+  is_time_based: boolean;
+  duration_seconds: number | null;
+  label: string; // Label formaté depuis l'API (ex: "8x250m", "2000m", "2min", "2min 30s")
 };
 
 type Race = {
@@ -374,16 +378,24 @@ export default function IndoorRaceDetailPage() {
         console.log("📏 Distance récupérée:", distanceData);
         setRaceDistance(distanceData);
         // Utiliser la distance de la course au lieu des timing points
-        // Vérifier is_relay (peut être 0/1 ou true/false selon l'API)
-        const isRelay = distanceData.is_relay === true || (typeof distanceData.is_relay === 'number' && distanceData.is_relay === 1);
-        if (isRelay && distanceData.relay_count) {
-          // Pour un relais, la distance totale = meters * relay_count
-          const totalDist = distanceData.meters * distanceData.relay_count;
-          console.log(`🔄 Relais détecté: ${distanceData.relay_count}x${distanceData.meters}m = ${totalDist}m`);
-          setDistance(totalDist);
+        // Vérifier si c'est une distance basée sur le temps
+        if (distanceData.is_time_based && distanceData.duration_seconds) {
+          // Pour une course basée sur le temps, on ne peut pas utiliser setDistance (qui est en mètres)
+          // On garde juste la distance par défaut pour l'affichage, mais le fichier .rac2 utilisera duration_seconds
+          console.log(`⏱️ Course basée sur le temps: ${distanceData.duration_seconds}s (${distanceData.label})`);
+          setDistance(500); // Valeur par défaut pour l'affichage, ne sera pas utilisée pour .rac2
         } else {
-          console.log(`📏 Course normale: ${distanceData.meters}m`);
-          setDistance(distanceData.meters);
+          // Vérifier is_relay (peut être 0/1 ou true/false selon l'API)
+          const isRelay = distanceData.is_relay === true || (typeof distanceData.is_relay === 'number' && distanceData.is_relay === 1);
+          if (isRelay && distanceData.relay_count && distanceData.meters) {
+            // Pour un relais, la distance totale = meters * relay_count
+            const totalDist = distanceData.meters * distanceData.relay_count;
+            console.log(`🔄 Relais détecté: ${distanceData.relay_count}x${distanceData.meters}m = ${totalDist}m`);
+            setDistance(totalDist);
+          } else if (distanceData.meters) {
+            console.log(`📏 Course normale: ${distanceData.meters}m`);
+            setDistance(distanceData.meters);
+          }
         }
       } else {
         console.warn("⚠️ Aucune distance trouvée pour la course. distance_id:", raceData.distance_id);
@@ -768,7 +780,11 @@ export default function IndoorRaceDetailPage() {
           finalRaceDistance = distanceData;
           setRaceDistance(distanceData);
           // Mettre à jour la distance si nécessaire
-          if (distanceData.is_relay === true || (typeof distanceData.is_relay === 'number' && distanceData.is_relay === 1)) {
+          if (distanceData.is_time_based && distanceData.duration_seconds) {
+            // Course basée sur le temps - on garde la distance par défaut
+            console.log(`⏱️ Course basée sur le temps: ${distanceData.duration_seconds}s (${distanceData.label})`);
+            setDistance(500); // Valeur par défaut
+          } else if (distanceData.is_relay === true || (typeof distanceData.is_relay === 'number' && distanceData.is_relay === 1)) {
             if (distanceData.relay_count && distanceData.meters) {
               setDistance(distanceData.meters * distanceData.relay_count);
             }
@@ -868,24 +884,30 @@ export default function IndoorRaceDetailPage() {
       });
     }
 
-    // Vérifier is_relay (peut être 0, false, ou absent)
-    const isRelay = currentDistance?.is_relay === true || (typeof currentDistance?.is_relay === 'number' && currentDistance.is_relay === 1);
+    // Vérifier si c'est une distance basée sur le temps
+    const isTimeBased = currentDistance?.is_time_based === true;
+    const durationSeconds = currentDistance?.duration_seconds ? Number(currentDistance.duration_seconds) : null;
+    
+    // Vérifier is_relay (peut être 0, false, ou absent) - les courses basées sur le temps ne peuvent pas être des relais
+    const isRelay = !isTimeBased && (currentDistance?.is_relay === true || (typeof currentDistance?.is_relay === 'number' && currentDistance.is_relay === 1));
     const relayCount = currentDistance?.relay_count ? Number(currentDistance.relay_count) : null;
     const relayDistance = currentDistance?.meters ? Number(currentDistance.meters) : distance;
     
-    console.log("🏁 Paramètres relais:", {
+    console.log("🏁 Paramètres course:", {
+      isTimeBased,
+      durationSeconds,
       isRelay,
       relayCount,
       relayDistance,
       currentDistance,
-      "is_relay value": currentDistance?.is_relay,
     });
     
     // Pour un relais : duration = distance totale (meters * relay_count), split_value = distance d'un relais
-    // Pour une course normale : duration = split_value = distance totale
+    // Pour une course normale basée sur distance : duration = split_value = distance totale
+    // Pour une course basée sur le temps : duration = durée en secondes, duration_type = "seconds"
     const totalDistance = isRelay && relayCount && relayDistance 
       ? relayDistance * relayCount 
-      : distance;
+      : (currentDistance?.meters ? Number(currentDistance.meters) : distance);
 
     // Déterminer le type de course
     let raceType: string;
@@ -901,12 +923,11 @@ export default function IndoorRaceDetailPage() {
       raceType = isIndividual ? "individual" : "team";
     }
 
-    // Construire le nom long formaté pour les relais
+    // Construire le nom long formaté
     let nameLong = race.name;
-    if (isRelay && currentDistance) {
-      // Utiliser le label formaté de l'API (ex: "8x250m") ou construire
-      const distanceLabel = currentDistance.label || 
-        (relayCount && relayDistance ? `${relayCount}x${relayDistance}m` : race.name);
+    if (currentDistance) {
+      // Utiliser le label formaté de l'API
+      const distanceLabel = currentDistance.label || race.name;
       
       // Ajouter la catégorie si disponible
       const firstCrew = race.race_crews[0];
@@ -918,13 +939,17 @@ export default function IndoorRaceDetailPage() {
     }
 
     // Valeurs finales pour le fichier .rac2
+    // Pour une course basée sur le temps : duration = durée en secondes, duration_type = "seconds"
     // Pour un relais: duration = distance totale, split_value = 250m (fixe pour indoor)
-    // Pour une course normale: duration = distance totale, split_value = 250m (fixe pour indoor)
-    const finalDuration = isRelay && relayCount && relayDistance 
-      ? relayDistance * relayCount 
-      : totalDistance;
-    // Pour les courses indoor, le split est toujours fixé à 250m
+    // Pour une course normale basée sur distance : duration = distance totale, split_value = 250m (fixe pour indoor)
+    const finalDuration = isTimeBased && durationSeconds
+      ? durationSeconds
+      : (isRelay && relayCount && relayDistance 
+        ? relayDistance * relayCount 
+        : totalDistance);
+    // Pour les courses indoor, le split est toujours fixé à 250m (même pour les courses basées sur le temps)
     const finalSplitValue = 250;
+    const finalDurationType = isTimeBased ? "seconds" : "meters";
 
     console.log("📐 Calculs finaux:", {
       isRelay,
@@ -939,8 +964,8 @@ export default function IndoorRaceDetailPage() {
     // Construire l'objet rac2
     const rac2Data: any = {
       race_definition: {
-        duration: finalDuration, // Distance totale (ex: 2000 pour 8x250m)
-        duration_type: "meters",
+        duration: finalDuration, // Distance totale (ex: 2000 pour 8x250m) ou durée en secondes (ex: 120 pour 2min)
+        duration_type: finalDurationType, // "meters" ou "seconds"
         event_name: event.name.toUpperCase(),
         name_long: nameLong,
         name_short: race.id,
@@ -948,7 +973,7 @@ export default function IndoorRaceDetailPage() {
         race_type: raceType,
         boats: boats,
         split_type: "even",
-        split_value: finalSplitValue, // Distance d'un relais pour les relais (ex: 250), distance totale sinon
+        split_value: finalSplitValue, // Toujours 250m pour les courses indoor
         team_size: 1,
         handicap_enabled: false,
         time_cap: 0,
@@ -1060,21 +1085,35 @@ export default function IndoorRaceDetailPage() {
                           <SelectValue placeholder="Choisir une distance..." />
                         </SelectTrigger>
                         <SelectContent>
-                          {availableDistances.map((dist) => (
-                            <SelectItem key={dist.id} value={dist.id}>
-                              {dist.label || `${dist.meters}m`}
-                              {dist.is_relay && dist.relay_count && (
-                                <span className="ml-2 text-xs text-muted-foreground">
-                                  (Relais {dist.relay_count}x{dist.meters}m)
-                                </span>
-                              )}
-                              {selectedDistanceId === dist.id && isSuggestedDistance && (
-                                <span className="ml-2 text-xs text-blue-600 font-medium">
-                                  (Suggérée)
-                                </span>
-                              )}
-                            </SelectItem>
-                          ))}
+                          {availableDistances
+                            .filter((d) => !d.is_time_based)
+                            .map((dist) => (
+                              <SelectItem key={dist.id} value={dist.id}>
+                                {dist.label}
+                                {selectedDistanceId === dist.id && isSuggestedDistance && (
+                                  <span className="ml-2 text-xs text-blue-600 font-medium">
+                                    (Suggérée)
+                                  </span>
+                                )}
+                              </SelectItem>
+                            ))}
+                          {availableDistances.some((d) => d.is_time_based) && availableDistances.some((d) => !d.is_time_based) && (
+                            <div className="px-2 py-1.5 text-xs font-semibold text-muted-foreground border-t">
+                              Durées (temps)
+                            </div>
+                          )}
+                          {availableDistances
+                            .filter((d) => d.is_time_based)
+                            .map((dist) => (
+                              <SelectItem key={dist.id} value={dist.id}>
+                                {dist.label}
+                                {selectedDistanceId === dist.id && isSuggestedDistance && (
+                                  <span className="ml-2 text-xs text-blue-600 font-medium">
+                                    (Suggérée)
+                                  </span>
+                                )}
+                              </SelectItem>
+                            ))}
                         </SelectContent>
                       </Select>
                     </div>
@@ -1143,14 +1182,21 @@ export default function IndoorRaceDetailPage() {
                   <span className="text-sm font-bold text-blue-800">
                     {(() => {
                       const currentDist = race.distance || raceDistance;
-                      if (currentDist?.is_relay === true || (typeof currentDist?.is_relay === 'number' && currentDist.is_relay === 1)) {
-                        if (currentDist?.relay_count) {
+                      if (!currentDist) return `${distance}m`;
+                      
+                      // Utiliser le label du backend qui est toujours formaté correctement
+                      if (currentDist.label) {
+                        return currentDist.label;
+                      }
+                      
+                      // Fallback pour les anciennes distances sans label
+                      if (currentDist.is_relay === true || (typeof currentDist.is_relay === 'number' && currentDist.is_relay === 1)) {
+                        if (currentDist.relay_count && currentDist.meters) {
                           const totalDist = currentDist.meters * currentDist.relay_count;
-                          const label = currentDist.label || `${currentDist.relay_count}x${currentDist.meters}m`;
-                          return `${label} (${totalDist}m total)`;
+                          return `${currentDist.relay_count}x${currentDist.meters}m (${totalDist}m total)`;
                         }
                       }
-                      return currentDist?.label || `${currentDist?.meters || distance}m`;
+                      return currentDist.meters ? `${currentDist.meters}m` : `${distance}m`;
                     })()}
                   </span>
                   {((race.distance?.is_relay === true || (typeof race.distance?.is_relay === 'number' && race.distance.is_relay === 1)) || 

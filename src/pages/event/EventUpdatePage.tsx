@@ -28,7 +28,9 @@ interface UpdateResult {
   }>;
   new_distances?: Array<{
     id: string;
-    meters: number;
+    meters: number | null;
+    is_time_based: boolean;
+    duration_seconds: number | null;
     is_relay: boolean;
     relay_count: number | null;
     label: string;
