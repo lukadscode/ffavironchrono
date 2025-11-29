@@ -213,9 +213,8 @@ export default function IndoorPage() {
     const finalDuration = isRelay && relayCount && relayDistance 
       ? relayDistance * relayCount 
       : totalDistance;
-    const finalSplitValue = isRelay && relayDistance 
-      ? relayDistance 
-      : totalDistance;
+    // Pour les courses indoor, le split est toujours fixé à 250m
+    const finalSplitValue = 250;
 
     // Construire l'objet rac2
     const rac2Data: any = {

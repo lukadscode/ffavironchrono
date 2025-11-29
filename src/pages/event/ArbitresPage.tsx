@@ -5,7 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
 import dayjs from "dayjs";
-import { CheckCircle2, Clock } from "lucide-react";
+import { CheckCircle2, Clock, Trophy, TrendingUp } from "lucide-react";
 
 type Category = {
   id: string;
@@ -33,6 +33,29 @@ type TimingResult = {
   category?: Category;
 };
 
+// Type pour les résultats indoor
+type IndoorParticipantResult = {
+  id: string;
+  place: number;
+  time_display: string;
+  time_ms: number;
+  distance: number;
+  avg_pace: string;
+  spm: number;
+  calories: number;
+  crew_id?: string | null;
+  crew?: {
+    id: string;
+    club_name: string;
+    club_code: string;
+    category?: {
+      id: string;
+      code: string;
+      label: string;
+    };
+  } | null;
+};
+
 type Race = {
   id: string;
   name: string;
@@ -45,6 +68,8 @@ type Race = {
     name: string;
   };
   results: TimingResult[];
+  isIndoor?: boolean;
+  indoorResults?: IndoorParticipantResult[];
 };
 
 export default function ArbitresPage() {
@@ -54,13 +79,27 @@ export default function ArbitresPage() {
   const [selectedRaceId, setSelectedRaceId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [lastTimingPoint, setLastTimingPoint] = useState<TimingPoint | null>(null);
+  const [isIndoorEvent, setIsIndoorEvent] = useState<boolean>(false);
 
   useEffect(() => {
     if (eventId) {
+      fetchEventType();
       fetchTimingPoints();
       fetchRaces();
     }
   }, [eventId]);
+
+  const fetchEventType = async () => {
+    try {
+      const res = await api.get(`/events/${eventId}`);
+      const eventData = res.data.data;
+      const raceType = eventData.race_type?.toLowerCase() || "";
+      setIsIndoorEvent(raceType.includes("indoor"));
+    } catch (err) {
+      console.error("Erreur chargement type événement", err);
+      setIsIndoorEvent(false);
+    }
+  };
 
   const fetchTimingPoints = async () => {
     try {
@@ -84,15 +123,47 @@ export default function ArbitresPage() {
       // Filtrer uniquement les courses en statut "non_official"
       const nonOfficialRaces = racesData.filter((r: any) => r.status === "non_official");
 
-      if (!lastTimingPoint) {
-        // Attendre que les timing points soient chargés
-        setRaces(nonOfficialRaces.map((r: any) => ({ ...r, results: [] })));
+      if (!lastTimingPoint && !isIndoorEvent) {
+        // Attendre que les timing points soient chargés pour les courses normales
+        setRaces(nonOfficialRaces.map((r: any) => ({ ...r, results: [], isIndoor: false })));
         return;
       }
 
       const racesWithResults = await Promise.all(
         nonOfficialRaces.map(async (race: any) => {
           try {
+            // Pour les événements indoor, essayer d'abord de récupérer les résultats indoor
+            if (isIndoorEvent) {
+              try {
+                const indoorRes = await api.get(`/indoor-results/race/${race.id}`);
+                const indoorData = indoorRes.data.data;
+                
+                if (indoorData && indoorData.participants && indoorData.participants.length > 0) {
+                  // C'est une course indoor avec des résultats
+                  const participants = indoorData.participants.sort((a: IndoorParticipantResult, b: IndoorParticipantResult) => 
+                    a.place - b.place
+                  );
+                  
+                  return {
+                    ...race,
+                    isIndoor: true,
+                    indoorResults: participants,
+                    results: [], // Pas de résultats de timing pour les courses indoor
+                  };
+                }
+              } catch (indoorErr: any) {
+                // 404 signifie qu'il n'y a pas de résultats indoor, on continue avec les timings normaux
+                if (indoorErr?.response?.status !== 404) {
+                  console.error(`Erreur chargement résultats indoor course ${race.id}:`, indoorErr);
+                }
+              }
+            }
+
+            // Pour les courses normales ou si pas de résultats indoor, utiliser les timings
+            if (!lastTimingPoint) {
+              return { ...race, results: [], isIndoor: false };
+            }
+
             // Récupérer les timings de la course
             const timingsRes = await api.get(`/timings/race/${race.id}`);
             const allTimings = timingsRes.data.data || [];
@@ -160,11 +231,12 @@ export default function ArbitresPage() {
 
             return {
               ...race,
+              isIndoor: false,
               results: sorted,
             };
           } catch (err) {
             console.error(`Erreur chargement résultats course ${race.id}:`, err);
-            return { ...race, results: [] };
+            return { ...race, results: [], isIndoor: false };
           }
         })
       );
@@ -183,13 +255,13 @@ export default function ArbitresPage() {
     }
   };
 
-  // Recharger les courses quand le dernier timing point est disponible
+  // Recharger les courses quand le dernier timing point est disponible ou quand le type d'événement change
   useEffect(() => {
-    if (lastTimingPoint && eventId) {
+    if (eventId && (lastTimingPoint || isIndoorEvent)) {
       fetchRaces();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [lastTimingPoint]);
+  }, [lastTimingPoint, isIndoorEvent]);
 
   const handleValidateRace = async (raceId: string) => {
     try {
@@ -291,7 +363,8 @@ export default function ArbitresPage() {
                           </p>
                         )}
                         <p className={`text-xs mt-1 ${selectedRaceId === race.id ? "text-primary-foreground/70" : "text-muted-foreground"}`}>
-                          {dayjs(race.start_time).format("HH:mm")} • {race.results.length} résultats
+                          {dayjs(race.start_time).format("HH:mm")} • {race.isIndoor ? (race.indoorResults?.length || 0) : race.results.length} résultats
+                          {race.isIndoor && <span className="ml-1 text-xs">(Indoor)</span>}
                         </p>
                       </div>
                       <Clock className={`w-5 h-5 ${selectedRaceId === race.id ? "text-primary-foreground" : "text-yellow-500"}`} />
@@ -328,11 +401,97 @@ export default function ArbitresPage() {
               <p className="text-center text-muted-foreground py-8">
                 Sélectionnez une course pour voir ses résultats
               </p>
-            ) : selectedRace.results.length === 0 ? (
+            ) : (selectedRace.isIndoor ? (!selectedRace.indoorResults || selectedRace.indoorResults.length === 0) : (selectedRace.results.length === 0)) ? (
               <p className="text-center text-muted-foreground py-8">
                 Aucun résultat disponible pour cette course
               </p>
+            ) : selectedRace.isIndoor && selectedRace.indoorResults && selectedRace.indoorResults.length > 0 ? (
+              // Affichage des résultats indoor
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b bg-slate-50">
+                      <th className="text-left py-2 px-4 font-semibold">Place</th>
+                      <th className="text-left py-2 px-4 font-semibold">Équipage</th>
+                      <th className="text-left py-2 px-4 font-semibold">Temps</th>
+                      <th className="text-left py-2 px-4 font-semibold">Distance</th>
+                      <th className="text-left py-2 px-4 font-semibold">Allure</th>
+                      <th className="text-left py-2 px-4 font-semibold">SPM</th>
+                      <th className="text-left py-2 px-4 font-semibold">Calories</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {selectedRace.indoorResults.map((participant) => {
+                      const isPodium = participant.place <= 3;
+                      return (
+                        <tr
+                          key={participant.id}
+                          className={`border-b hover:bg-slate-50 ${
+                            isPodium ? "bg-amber-50" : ""
+                          }`}
+                        >
+                          <td className="py-3 px-4">
+                            <div className="flex items-center gap-2">
+                              {isPodium && (
+                                <Trophy
+                                  className={`w-4 h-4 ${
+                                    participant.place === 1
+                                      ? "text-amber-500"
+                                      : participant.place === 2
+                                      ? "text-gray-400"
+                                      : "text-amber-700"
+                                  }`}
+                                />
+                              )}
+                              <span className={`font-bold ${isPodium ? "text-lg" : ""}`}>
+                                {participant.place === 1 && "🥇"}
+                                {participant.place === 2 && "🥈"}
+                                {participant.place === 3 && "🥉"}
+                                <span className={participant.place <= 3 ? "ml-1" : ""}>
+                                  {participant.place}
+                                </span>
+                              </span>
+                            </div>
+                          </td>
+                          <td className="py-3 px-4">
+                            {participant.crew ? (
+                              <div>
+                                <div className="font-semibold">{participant.crew.club_name}</div>
+                                <div className="text-xs text-muted-foreground">
+                                  {participant.crew.club_code}
+                                  {participant.crew.category && (
+                                    <span className="ml-2 px-2 py-0.5 bg-blue-100 text-blue-700 rounded text-xs">
+                                      {participant.crew.category.label}
+                                    </span>
+                                  )}
+                                </div>
+                              </div>
+                            ) : (
+                              <div className="text-muted-foreground italic text-sm">
+                                Non identifié
+                              </div>
+                            )}
+                          </td>
+                          <td className="py-3 px-4 font-mono font-semibold">
+                            {participant.time_display}
+                          </td>
+                          <td className="py-3 px-4">{participant.distance}m</td>
+                          <td className="py-3 px-4 font-mono">{participant.avg_pace}</td>
+                          <td className="py-3 px-4">
+                            <div className="flex items-center gap-1">
+                              <TrendingUp className="w-3 h-3 text-muted-foreground" />
+                              {participant.spm}
+                            </div>
+                          </td>
+                          <td className="py-3 px-4">{participant.calories}</td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
             ) : (
+              // Affichage des résultats normaux (timing)
               <div className="overflow-x-auto">
                 <table className="w-full text-sm">
                   <thead>

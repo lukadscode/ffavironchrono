@@ -857,14 +857,13 @@ export default function IndoorRaceDetailPage() {
     }
 
     // Valeurs finales pour le fichier .rac2
-    // Pour un relais: duration = distance totale, split_value = distance d'un relais
-    // Pour une course normale: duration = split_value = distance totale
+    // Pour un relais: duration = distance totale, split_value = 250m (fixe pour indoor)
+    // Pour une course normale: duration = distance totale, split_value = 250m (fixe pour indoor)
     const finalDuration = isRelay && relayCount && relayDistance 
       ? relayDistance * relayCount 
       : totalDistance;
-    const finalSplitValue = isRelay && relayDistance 
-      ? relayDistance 
-      : totalDistance;
+    // Pour les courses indoor, le split est toujours fixé à 250m
+    const finalSplitValue = 250;
 
     console.log("📐 Calculs finaux:", {
       isRelay,
