@@ -13,8 +13,9 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from "recharts";
 import dayjs from "dayjs";
-import { ArrowLeft, Download, Upload, FileText, File, AlertTriangle, Save, Trophy, Clock, TrendingUp, Loader2, CheckCircle2, AlertCircle } from "lucide-react";
+import { ArrowLeft, Download, Upload, FileText, File, AlertTriangle, Save, Trophy, Clock, TrendingUp, Loader2, CheckCircle2, AlertCircle, BarChart3 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import NotificationDisplay from "@/components/notifications/NotificationDisplay";
 import { useAuth } from "@/context/AuthContext";
@@ -138,7 +139,18 @@ type IndoorParticipantResult = {
       label: string;
     };
   } | null;
-  splits_data?: any;
+  splits_data?: Array<{
+    distance?: number;
+    time_ms?: number;
+    time_display?: string;
+    pace?: string;
+    split_distance?: number;
+    split_time_ms?: number;
+    split_time_display?: string;
+    split_time?: string;
+    split_avg_pace?: string;
+    split_stroke_rate?: number;
+  }> | null;
 };
 
 type IndoorRaceResult = {
@@ -179,6 +191,7 @@ export default function IndoorRaceDetailPage() {
   const { user } = useAuth();
   const isAdmin = user?.role === "admin" || user?.role === "superadmin";
   const [showInstructionsDialog, setShowInstructionsDialog] = useState(false);
+  const [selectedParticipantForChart, setSelectedParticipantForChart] = useState<IndoorParticipantResult | null>(null);
 
   useEffect(() => {
     if (raceId && eventId) {
@@ -1423,7 +1436,7 @@ export default function IndoorRaceDetailPage() {
                             {hasSplits ? (
                               <div className="space-y-1">
                                 {participant.splits_data!.map((split: any, idx: number) => {
-                                  const splitTime = split.split_time_display || split.time_display || 
+                                  const splitTime = split.split_time || split.split_time_display || split.time_display || 
                                     (split.split_time_ms ? formatTime(split.split_time_ms) : 
                                     (split.time_ms ? formatTime(split.time_ms) : "-"));
                                   const splitDist = split.split_distance || split.distance || "";
@@ -1433,6 +1446,15 @@ export default function IndoorRaceDetailPage() {
                                     </div>
                                   );
                                 })}
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  className="mt-2 h-6 text-xs"
+                                  onClick={() => setSelectedParticipantForChart(participant)}
+                                >
+                                  <BarChart3 className="w-3 h-3 mr-1" />
+                                  Graphique
+                                </Button>
                               </div>
                             ) : (
                               <span className="text-muted-foreground text-xs">-</span>
@@ -1581,6 +1603,83 @@ export default function IndoorRaceDetailPage() {
               J'ai compris
             </Button>
           </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Modal avec graphique des splits */}
+      <Dialog open={!!selectedParticipantForChart} onOpenChange={(open) => !open && setSelectedParticipantForChart(null)}>
+        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>
+              Graphique des splits - {selectedParticipantForChart?.crew?.club_name || selectedParticipantForChart?.ergrace_participant_id || "Participant"}
+            </DialogTitle>
+          </DialogHeader>
+          {selectedParticipantForChart && selectedParticipantForChart.splits_data && selectedParticipantForChart.splits_data.length > 0 && (
+            <div className="space-y-6 mt-4">
+              <div className="h-80">
+                <ResponsiveContainer width="100%" height="100%">
+                  <LineChart data={selectedParticipantForChart.splits_data.map((split: any, idx: number) => ({
+                    split: `Split ${idx + 1}`,
+                    distance: split.split_distance || split.distance || 0,
+                    split_time_ms: split.split_time_ms || split.time_ms || 0,
+                    split_avg_pace: split.split_avg_pace ? parseFloat(String(split.split_avg_pace).replace(/[^\d.]/g, '')) : 0,
+                    split_stroke_rate: split.split_stroke_rate || 0,
+                  }))}>
+                    <CartesianGrid strokeDasharray="3 3" />
+                    <XAxis dataKey="split" />
+                    <YAxis yAxisId="left" label={{ value: 'Temps (ms)', angle: -90, position: 'insideLeft' }} />
+                    <YAxis yAxisId="right" orientation="right" label={{ value: 'Allure / SPM', angle: 90, position: 'insideRight' }} />
+                    <Tooltip 
+                      formatter={(value: any, name: string) => {
+                        if (name === 'split_time_ms') {
+                          return [formatTime(value), 'Temps'];
+                        }
+                        if (name === 'split_avg_pace') {
+                          return [value.toFixed(2) + ' s/500m', 'Allure'];
+                        }
+                        if (name === 'split_stroke_rate') {
+                          return [value + ' SPM', 'Cadence'];
+                        }
+                        return [value, name];
+                      }}
+                    />
+                    <Legend />
+                    <Line 
+                      yAxisId="left" 
+                      type="monotone" 
+                      dataKey="split_time_ms" 
+                      stroke="#3b82f6" 
+                      strokeWidth={2}
+                      name="Temps"
+                      dot={{ r: 4 }}
+                    />
+                    <Line 
+                      yAxisId="right" 
+                      type="monotone" 
+                      dataKey="split_avg_pace" 
+                      stroke="#10b981" 
+                      strokeWidth={2}
+                      name="Allure (s/500m)"
+                      dot={{ r: 4 }}
+                    />
+                    <Line 
+                      yAxisId="right" 
+                      type="monotone" 
+                      dataKey="split_stroke_rate" 
+                      stroke="#f59e0b" 
+                      strokeWidth={2}
+                      name="Cadence (SPM)"
+                      dot={{ r: 4 }}
+                    />
+                  </LineChart>
+                </ResponsiveContainer>
+              </div>
+              <div className="text-sm text-muted-foreground">
+                <p>Distance totale: {selectedParticipantForChart.distance}m</p>
+                <p>Temps total: {selectedParticipantForChart.time_display}</p>
+              </div>
+            </div>
+          )}
         </DialogContent>
       </Dialog>
     </div>
