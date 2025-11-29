@@ -23,6 +23,7 @@ import {
   FileDown,
   RefreshCw,
   Menu,
+  Tag,
 } from "lucide-react";
 
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -42,6 +43,7 @@ const allNavItems = [
   { to: "participants", label: "Participants", icon: Users, permission: "participants" },
   { to: "crews", label: "Équipages", icon: Rows, permission: "crews" },
   { to: "distances", label: "Distances", icon: MapPin, permission: "distances" },
+  { to: "categories", label: "Catégories", icon: Tag, permission: "overview" },
   { to: "races", label: "Courses", icon: Flag, permission: "races" },
   { to: "racePhases", label: "Phases", icon: Flag, permission: "racePhases" },
   { to: "notifications", label: "Notifications", icon: Bell, permission: "notifications" },

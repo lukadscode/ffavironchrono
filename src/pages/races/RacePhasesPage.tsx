@@ -7,7 +7,6 @@ import { Button } from "@/components/ui/button";
 import { Trophy, Plus, Sparkles, Users } from "lucide-react";
 
 import PhaseFormDialog from "@/components/races/PhaseFormDialog";
-import CategoriesList from "@/components/races/CategoriesList";
 import PhaseListDnd from "@/components/races/PhaseListDnd";
 
 interface RacePhase {
@@ -35,8 +34,12 @@ export default function RacesPage() {
   };
 
   const fetchCategories = async () => {
-    const res = await api.get(`/categories/event/${eventId}/with-crews`);
-    setCategories(res.data.data);
+    try {
+      const res = await api.get(`/categories/event/${eventId}/with-crews`);
+      setCategories(res.data.data || []);
+    } catch (err) {
+      console.error("Erreur chargement catégories:", err);
+    }
   };
 
   const handleCreatePhase = async (name: string, order: number) => {
@@ -118,19 +121,11 @@ export default function RacesPage() {
         </div>
         <div className="flex gap-3 flex-wrap">
           <PhaseFormDialog onSubmit={handleCreatePhase} />
-          <Button
-            variant="secondary"
-            onClick={() => navigate(`/event/${eventId}/generate-races`)}
-            disabled={phases.length === 0}
-          >
-            <Sparkles className="w-4 h-4 mr-2" />
-            Générer les courses
-          </Button>
         </div>
       </div>
 
       {/* Statistiques rapides */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
         <Card className="border-blue-200 bg-gradient-to-br from-blue-50 to-white">
           <CardHeader className="pb-3">
             <div className="flex items-center justify-between">
@@ -181,10 +176,32 @@ export default function RacesPage() {
             </p>
           </CardContent>
         </Card>
-      </div>
 
-      {/* Liste des catégories améliorée */}
-      <CategoriesList categories={categories} eventId={eventId} />
+        <Card className="border-amber-200 bg-gradient-to-br from-amber-50 to-white">
+          <CardHeader className="pb-3">
+            <div className="flex items-center justify-between">
+              <CardTitle className="text-sm font-medium text-amber-900">
+                Générer
+              </CardTitle>
+              <Sparkles className="w-5 h-5 text-amber-600" />
+            </div>
+          </CardHeader>
+          <CardContent>
+            <Button
+              variant="secondary"
+              onClick={() => navigate(`/event/${eventId}/generate-races`)}
+              disabled={phases.length === 0}
+              className="w-full"
+            >
+              <Sparkles className="w-4 h-4 mr-2" />
+              Générer les courses
+            </Button>
+            <p className="text-xs text-amber-700 mt-2">
+              Créer les courses automatiquement
+            </p>
+          </CardContent>
+        </Card>
+      </div>
 
       {/* Phases avec titre amélioré */}
       <div className="space-y-4">

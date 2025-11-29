@@ -28,6 +28,7 @@ import RacePhasesPage from "@/pages/races/RacePhasesPage";
 import TimingOverviewPage from "@/pages/timing/TimingOverviewPage";
 import RacePhaseDetailPage from "@/pages/races/RacePhaseDetailPage";
 import GenerateRacesPage from "@/pages/races/GenerateRacesPage";
+import CategoriesPage from "@/pages/races/CategoriesPage";
 import ArbitresPage from "@/pages/event/ArbitresPage";
 import IndoorPage from "@/pages/event/IndoorPage";
 import IndoorRaceDetailPage from "@/pages/event/IndoorRaceDetailPage";
@@ -207,6 +208,15 @@ const router = createBrowserRouter([
         element: (
           <EventProtectedRoute allowedRoles={["organiser"]}>
             <NotificationsPage />
+          </EventProtectedRoute>
+        )
+      },
+      // Catégories - organisateur et éditeur
+      { 
+        path: "categories", 
+        element: (
+          <EventProtectedRoute allowedRoles={["organiser", "editor"]}>
+            <CategoriesPage />
           </EventProtectedRoute>
         )
       },
