@@ -148,14 +148,33 @@ function DroppableDistance({
     : (() => {
         const dist = distance as Distance;
         // Utiliser le label du backend qui est toujours formaté correctement
-        return dist.label || "Distance inconnue";
+        if (dist.label && dist.label.trim() !== "") {
+          return dist.label;
+        }
+        // Fallback : formater manuellement si le label n'est pas présent
+        if (dist.is_time_based && dist.duration_seconds) {
+          const minutes = Math.floor(dist.duration_seconds / 60);
+          const seconds = dist.duration_seconds % 60;
+          if (minutes > 0 && seconds > 0) {
+            return `${minutes}min ${seconds}s`;
+          } else if (minutes > 0) {
+            return `${minutes}min`;
+          } else {
+            return `${dist.duration_seconds}s`;
+          }
+        } else if (dist.is_relay && dist.relay_count && dist.meters) {
+          return `${dist.relay_count}x${dist.meters}m`;
+        } else if (dist.meters) {
+          return `${dist.meters}m`;
+        }
+        return "Distance inconnue";
       })();
 
   return (
     <Card
       ref={setNodeRef}
       className={clsx(
-        "min-w-[280px] max-w-[320px] flex-shrink-0 rounded-xl shadow-sm hover:shadow-md transition-all border-2",
+        "w-full rounded-xl shadow-sm hover:shadow-md transition-all border-2",
         distance.id === "unassigned" 
           ? "border-gray-200" 
           : "border-blue-200",
@@ -694,7 +713,25 @@ export default function DistancesPage() {
                     className="text-center p-4 flex flex-col items-center hover:shadow-lg transition-all border-2 border-blue-100 hover:border-blue-300 bg-gradient-to-br from-blue-50 to-white group"
                   >
                     <div className="w-16 h-16 rounded-full bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center text-white text-lg font-bold mb-2 shadow-md group-hover:scale-110 transition-transform">
-                      {distance.label}
+                      {distance.label && distance.label.trim() !== "" 
+                        ? distance.label 
+                        : (distance.is_time_based && distance.duration_seconds
+                          ? (() => {
+                              const minutes = Math.floor(distance.duration_seconds / 60);
+                              const seconds = distance.duration_seconds % 60;
+                              if (minutes > 0 && seconds > 0) {
+                                return `${minutes}min ${seconds}s`;
+                              } else if (minutes > 0) {
+                                return `${minutes}min`;
+                              } else {
+                                return `${distance.duration_seconds}s`;
+                              }
+                            })()
+                          : distance.is_relay && distance.relay_count && distance.meters
+                          ? `${distance.relay_count}x${distance.meters}m`
+                          : distance.meters
+                          ? `${distance.meters}m`
+                          : "?")}
                     </div>
                     <div className="text-xs font-medium text-blue-700 mb-3 flex items-center gap-1">
                       {distance.is_relay ? (
@@ -881,10 +918,7 @@ export default function DistancesPage() {
           onDragEnd={handleDragEnd}
         >
           <div className="space-y-4 w-full">
-            <div className="flex gap-4 overflow-x-auto pb-4 px-1 -mx-1" style={{ 
-              scrollbarWidth: 'thin',
-              scrollbarColor: '#93c5fd transparent'
-            }}>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
               {/* Zone "Non affecté" */}
               <DroppableDistance
                 distance={{ id: "unassigned", label: "Non affecté" }}
