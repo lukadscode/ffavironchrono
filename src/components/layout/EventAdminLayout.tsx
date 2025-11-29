@@ -1,5 +1,5 @@
 import { useEffect, useState, useMemo } from "react";
-import { Outlet, useParams, NavLink } from "react-router-dom";
+import { Outlet, useParams, NavLink, Link } from "react-router-dom";
 import clsx from "clsx";
 import { useEventRole } from "@/hooks/useEventRole";
 import { ROLE_PERMISSIONS } from "@/router/EventProtectedRoute";
@@ -122,9 +122,15 @@ export default function EventAdminLayout() {
       >
         {/* LOGO + TOGGLE */}
         <div className="p-3 sm:p-4 border-b flex items-center justify-between">
-          <h1 className={clsx("font-bold tracking-wide transition-all", collapsed ? "text-sm" : "text-base sm:text-lg")}>
+          <Link 
+            to="/dashboard" 
+            className={clsx(
+              "font-bold tracking-wide transition-all hover:text-primary cursor-pointer",
+              collapsed ? "text-sm" : "text-base sm:text-lg"
+            )}
+          >
             {!collapsed ? "FFAVIRON - TIMING" : "FFA"}
-          </h1>
+          </Link>
           <Button onClick={() => setCollapsed(!collapsed)} size="icon" variant="ghost" className="h-8 w-8 sm:h-9 sm:w-9">
             {collapsed ? (
               <ChevronRight className="w-4 h-4" />
@@ -194,9 +200,13 @@ export default function EventAdminLayout() {
               <SheetContent side="left" className="w-[280px] sm:w-80 p-0">
                 <div className="flex flex-col h-full">
                   <div className="p-4 border-b">
-                    <h1 className="text-lg sm:text-xl font-bold">
+                    <Link 
+                      to="/dashboard" 
+                      className="text-lg sm:text-xl font-bold hover:text-primary cursor-pointer block"
+                      onClick={() => setMobileMenuOpen(false)}
+                    >
                       {collapsed ? "FFA" : "FFAVIRON - TIMING"}
-                    </h1>
+                    </Link>
                     <p className="text-xs sm:text-sm text-muted-foreground mt-1 truncate">
                       {eventName}
                     </p>
