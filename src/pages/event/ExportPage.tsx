@@ -642,6 +642,39 @@ export default function ExportPage() {
       );
 
       if (format === "pdf") {
+        // Fonction pour charger le logo (une seule fois)
+        const loadLogo = (): Promise<string | null> => {
+          return new Promise((resolve) => {
+            const img = new Image();
+            img.crossOrigin = "anonymous";
+            img.onload = () => {
+              try {
+                const canvas = document.createElement("canvas");
+                canvas.width = img.width;
+                canvas.height = img.height;
+                const ctx = canvas.getContext("2d");
+                if (ctx) {
+                  ctx.drawImage(img, 0, 0);
+                  resolve(canvas.toDataURL("image/png"));
+                } else {
+                  resolve(null);
+                }
+              } catch (err) {
+                console.warn("Erreur conversion logo", err);
+                resolve(null);
+              }
+            };
+            img.onerror = () => {
+              console.warn("Impossible de charger le logo");
+              resolve(null);
+            };
+            img.src = "https://www.ffaviron.fr/wp-content/uploads/2025/06/FFAviron-nouveau-site.png";
+          });
+        };
+
+        // Charger le logo une seule fois
+        const logoDataUrl = await loadLogo();
+
         // Générer le PDF côté frontend avec jsPDF
         const doc = new jsPDF({
           orientation: "portrait",
@@ -649,79 +682,97 @@ export default function ExportPage() {
           format: "a4",
         });
 
-        // En-tête
-        doc.setFontSize(18);
-        doc.setFont("helvetica", "bold");
-        doc.text("LISTE DE DÉPART", 105, 15, { align: "center" });
-        
-        if (event) {
-          doc.setFontSize(12);
-          doc.setFont("helvetica", "normal");
-          doc.text(event.name, 105, 22, { align: "center" });
-          if (event.location) {
-            doc.setFontSize(10);
-            doc.text(event.location, 105, 27, { align: "center" });
+        // Fonction pour ajouter l'en-tête avec logo sur chaque page
+        const addHeader = (logoUrl: string | null) => {
+          if (logoUrl) {
+            // Logo à gauche (hauteur 12mm pour optimiser l'espace)
+            try {
+              doc.addImage(logoUrl, "PNG", 10, 5, 35, 12);
+            } catch (err) {
+              console.warn("Erreur ajout logo", err);
+            }
           }
-          if (event.start_date) {
-            const startDate = dayjs(event.start_date);
-            const endDate = event.end_date ? dayjs(event.end_date) : null;
-            const dateStr = endDate && !startDate.isSame(endDate, "day")
-              ? `${startDate.format("DD/MM/YYYY")} - ${endDate.format("DD/MM/YYYY")}`
-              : startDate.format("DD/MM/YYYY");
-            doc.text(dateStr, 105, 32, { align: "center" });
-          }
-        }
 
-        let yPosition = 40;
+          // Titre centré
+          doc.setFontSize(15);
+          doc.setFont("helvetica", "bold");
+          doc.text("LISTE DE DÉPART", 105, 12, { align: "center" });
+          
+          if (event) {
+            doc.setFontSize(10);
+            doc.setFont("helvetica", "normal");
+            doc.text(event.name, 105, 17, { align: "center" });
+            if (event.location) {
+              doc.setFontSize(8);
+              doc.text(event.location, 105, 21, { align: "center" });
+            }
+            if (event.start_date) {
+              const startDate = dayjs(event.start_date);
+              const endDate = event.end_date ? dayjs(event.end_date) : null;
+              const dateStr = endDate && !startDate.isSame(endDate, "day")
+                ? `${startDate.format("DD/MM/YYYY")} - ${endDate.format("DD/MM/YYYY")}`
+                : startDate.format("DD/MM/YYYY");
+              doc.text(dateStr, 105, 24, { align: "center" });
+            }
+          }
+
+          // Ligne de séparation
+          doc.setDrawColor(200, 200, 200);
+          doc.setLineWidth(0.3);
+          doc.line(10, 27, 200, 27);
+        };
+
+        // Ajouter l'en-tête sur la première page
+        addHeader(logoDataUrl);
+
+        let yPosition = 32; // Commencer juste après l'en-tête
 
         // Pour chaque course
         for (let raceIndex = 0; raceIndex < races.length; raceIndex++) {
           const race = races[raceIndex];
           
-          // Vérifier si on doit créer une nouvelle page
-          if (yPosition > 250) {
+          // Vérifier si on doit créer une nouvelle page (optimisé : plus d'espace disponible)
+          if (yPosition > 275) {
             doc.addPage();
-            yPosition = 20;
+            addHeader(logoDataUrl);
+            yPosition = 32; // Réinitialiser après l'en-tête
           }
 
-          // En-tête de course
-          doc.setFontSize(14);
+          // En-tête de course (plus compact)
+          doc.setFontSize(11);
           doc.setFont("helvetica", "bold");
           const raceTitle = `Course ${race.race_number}: ${race.name}`;
-          doc.text(raceTitle, 14, yPosition);
-          yPosition += 7;
+          doc.text(raceTitle, 10, yPosition);
+          yPosition += 5;
 
-          // Informations de la course
-          doc.setFontSize(10);
+          // Informations de la course (plus compact)
+          doc.setFontSize(8);
           doc.setFont("helvetica", "normal");
           const raceInfo: string[] = [];
           if (race.start_time) {
-            raceInfo.push(`Départ: ${dayjs(race.start_time).format("DD/MM/YYYY à HH:mm")}`);
+            raceInfo.push(`Départ: ${dayjs(race.start_time).format("DD/MM/YYYY HH:mm")}`);
           }
           if (race.race_phase?.name) {
             raceInfo.push(`Phase: ${race.race_phase.name}`);
           }
           if (race.distance?.label || race.distance?.meters) {
-            raceInfo.push(`Distance: ${race.distance.label || `${race.distance.meters}m`}`);
-          }
-          if (race.status) {
-            raceInfo.push(`Statut: ${race.status}`);
+            raceInfo.push(`${race.distance.label || `${race.distance.meters}m`}`);
           }
           
           if (raceInfo.length > 0) {
-            doc.text(raceInfo.join(" • "), 14, yPosition);
-            yPosition += 6;
+            doc.text(raceInfo.join(" • "), 10, yPosition);
+            yPosition += 4;
           }
 
           // Tableau des équipages
           const raceCrews = (race.race_crews || []).sort((a, b) => a.lane - b.lane);
           
           if (raceCrews.length === 0) {
-            doc.setFontSize(10);
-            doc.text("Aucun équipage assigné", 14, yPosition);
-            yPosition += 10;
+            doc.setFontSize(8);
+            doc.text("Aucun équipage assigné", 10, yPosition);
+            yPosition += 6;
           } else {
-            // Préparer les données pour le tableau
+            // Préparer les données pour le tableau (format compact)
             const tableData = raceCrews.map((rc) => {
               const crew = rc.crew;
               const participants = crew.crew_participants || [];
@@ -731,15 +782,17 @@ export default function ExportPage() {
                 return (a.seat_position || 0) - (b.seat_position || 0);
               });
 
+              // Format compact des noms : NOM Prénom (Pos) ou NOM Prénom (B)
               const participantNames = sortedParticipants
                 .map((cp) => {
                   const p = cp.participant;
-                  const name = `${p.last_name.toUpperCase()}, ${p.first_name}`;
-                  const position = cp.is_coxswain ? " (Barreur)" : ` (Pos. ${cp.seat_position})`;
+                  const name = `${p.last_name.toUpperCase()} ${p.first_name}`;
+                  const position = cp.is_coxswain ? " (B)" : ` (${cp.seat_position})`;
                   return `${name}${position}`;
                 })
-                .join(" • ");
+                .join(", ");
 
+              // Licences compactes
               const licenses = sortedParticipants
                 .map((cp) => cp.participant.license_number || "")
                 .filter(Boolean)
@@ -750,7 +803,6 @@ export default function ExportPage() {
                 crew.club_name || "",
                 crew.club_code || "",
                 crew.category?.label || "",
-                crew.category?.code || "",
                 participantNames || "Aucun participant",
                 licenses || "",
               ];
@@ -758,48 +810,68 @@ export default function ExportPage() {
 
             autoTable(doc, {
               startY: yPosition,
-              head: [["Couloir", "Club", "Code", "Catégorie", "Code Cat.", "Participants", "Licences"]],
+              head: [["C", "Club", "Code", "Catégorie", "Participants", "Licences"]],
               body: tableData,
-              styles: { fontSize: 8, cellPadding: 2 },
-              headStyles: { fillColor: [66, 139, 202], textColor: 255, fontStyle: "bold" },
-              alternateRowStyles: { fillColor: [245, 245, 245] },
-              margin: { left: 14, right: 14 },
-              columnStyles: {
-                0: { cellWidth: 15 },
-                1: { cellWidth: 40 },
-                2: { cellWidth: 20 },
-                3: { cellWidth: 35 },
-                4: { cellWidth: 20 },
-                5: { cellWidth: 50 },
-                6: { cellWidth: 30 },
+              styles: { 
+                fontSize: 7, 
+                cellPadding: 1.5,
+                lineWidth: 0.1,
+                lineColor: [200, 200, 200]
               },
+              headStyles: { 
+                fillColor: [66, 139, 202], 
+                textColor: 255, 
+                fontStyle: "bold",
+                fontSize: 7
+              },
+              alternateRowStyles: { fillColor: [250, 250, 250] },
+              margin: { left: 10, right: 10, top: 2 },
+              columnStyles: {
+                0: { cellWidth: 8, halign: "center" }, // Couloir
+                1: { cellWidth: 35 }, // Club
+                2: { cellWidth: 18 }, // Code
+                3: { cellWidth: 30 }, // Catégorie
+                4: { cellWidth: 60 }, // Participants
+                5: { cellWidth: 25 }, // Licences
+              },
+              tableWidth: "auto",
             });
 
             // Récupérer la position Y après le tableau
-            const finalY = (doc as any).lastAutoTable.finalY || yPosition + (raceCrews.length * 8);
-            yPosition = finalY + 10;
+            const finalY = (doc as any).lastAutoTable.finalY || yPosition + (raceCrews.length * 5);
+            yPosition = finalY + 4; // Espacement réduit entre les courses
           }
 
-          // Séparateur entre les courses
+          // Séparateur entre les courses (plus discret)
           if (raceIndex < races.length - 1) {
-            doc.setDrawColor(200, 200, 200);
-            doc.line(14, yPosition, 196, yPosition);
-            yPosition += 5;
+            doc.setDrawColor(220, 220, 220);
+            doc.setLineWidth(0.2);
+            doc.line(10, yPosition, 200, yPosition);
+            yPosition += 3;
           }
         }
 
-        // Pied de page
+        // Ajouter l'en-tête sur toutes les pages (sauf la première déjà faite) et le pied de page
         const pageCount = doc.getNumberOfPages();
         for (let i = 1; i <= pageCount; i++) {
           doc.setPage(i);
-          doc.setFontSize(8);
+          
+          // Réajouter l'en-tête sur les pages suivantes (la première a déjà l'en-tête)
+          if (i > 1) {
+            addHeader(logoDataUrl);
+          }
+          
+          // Pied de page
+          doc.setFontSize(7);
           doc.setFont("helvetica", "italic");
+          doc.setTextColor(120, 120, 120);
           doc.text(
             `Page ${i} / ${pageCount} - Généré le ${dayjs().format("DD/MM/YYYY à HH:mm")}`,
             105,
-            285,
+            287,
             { align: "center" }
           );
+          doc.setTextColor(0, 0, 0); // Réinitialiser la couleur
         }
 
         // Télécharger le PDF
