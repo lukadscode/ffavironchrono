@@ -1,6 +1,6 @@
 import { useEffect, useState, useRef } from "react";
 import { useParams } from "react-router-dom";
-import { publicApi } from "@/lib/axios";
+import { publicApi, api } from "@/lib/axios";
 import { initSocket, getSocket } from "@/lib/socket";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import dayjs from "dayjs";
@@ -43,6 +43,7 @@ export default function Live() {
   const [races, setRaces] = useState<LiveRace[]>([]);
   const [timingPoints, setTimingPoints] = useState<TimingPoint[]>([]);
   const [loading, setLoading] = useState(true);
+  const [isIndoorEvent, setIsIndoorEvent] = useState<boolean>(false);
   const timingPointsRef = useRef<TimingPoint[]>([]);
 
   useEffect(() => {
@@ -191,10 +192,31 @@ export default function Live() {
   useEffect(() => {
     const fetchData = async () => {
       try {
-        const [racesRes, timingPointsRes] = await Promise.all([
-          publicApi.get(`/races/event/${eventId}`),
-          publicApi.get(`/timing-points/event/${eventId}`)
-        ]);
+        // D'abord, déterminer le type d'événement
+        let isIndoor = false;
+        try {
+          const eventRes = await api.get(`/events/${eventId}`);
+          const eventData = eventRes.data.data;
+          const raceType = eventData.race_type?.toLowerCase() || "";
+          isIndoor = raceType.includes("indoor");
+          setIsIndoorEvent(isIndoor);
+        } catch (err) {
+          console.error("Erreur chargement type événement", err);
+          setIsIndoorEvent(false);
+        }
+        
+        const promises: Promise<any>[] = [
+          publicApi.get(`/races/event/${eventId}`)
+        ];
+        
+        // Pour les événements indoor, ne pas charger les timing points
+        if (!isIndoor) {
+          promises.push(publicApi.get(`/timing-points/event/${eventId}`));
+        }
+        
+        const results = await Promise.all(promises);
+        const racesRes = results[0];
+        const timingPointsRes = isIndoor ? { data: { data: [] } } : results[1];
 
         const allRaces = racesRes.data.data || [];
         const points = timingPointsRes.data.data || [];
@@ -204,6 +226,36 @@ export default function Live() {
         const sortedPoints = points.sort((a: TimingPoint, b: TimingPoint) => a.order_index - b.order_index);
         setTimingPoints(sortedPoints);
         timingPointsRef.current = sortedPoints; // Mettre à jour la ref
+        
+        // Pour les événements indoor, ne pas traiter les timing points
+        if (isIndoor) {
+          // Pour les événements indoor, on peut afficher les courses mais sans timing points
+          const nonOfficialRaces = allRaces.filter((r: any) => r.status !== "official");
+          const sorted = nonOfficialRaces.sort((a: any, b: any) => (a.race_number || 0) - (b.race_number || 0));
+          const upcoming = sorted.slice(0, 6);
+          
+          const enriched = upcoming.map((race: any) => ({
+            id: race.id,
+            name: race.name,
+            race_number: race.race_number || 0,
+            start_time: race.start_time,
+            status: race.status || "not_started",
+            crews: (race.race_crews || [])
+              .sort((a: any, b: any) => a.lane - b.lane)
+              .map((rc: any) => ({
+                crew_id: rc.crew?.id || rc.crew_id,
+                lane: rc.lane,
+                club_name: rc.crew?.club_name || "N/A",
+                club_code: rc.crew?.club_code || "N/A",
+                intermediate_times: [],
+                final_time: null,
+              })),
+          }));
+          
+          setRaces(enriched);
+          setLoading(false);
+          return;
+        }
 
         // Filtrer les courses officielles (ne pas les afficher en live)
         const nonOfficialRaces = allRaces.filter((r: any) => r.status !== "official");
