@@ -14,7 +14,7 @@ import {
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import dayjs from "dayjs";
-import { Search, Filter, X, Trophy, TrendingUp } from "lucide-react";
+import { Search, Filter, X, TrendingUp } from "lucide-react";
 
 type Category = {
   id: string;
@@ -96,6 +96,17 @@ type IndoorParticipantResult = {
       code: string;
       label: string;
     };
+    crew_participants?: Array<{
+      id?: string;
+      participant: {
+        id: string;
+        first_name: string;
+        last_name: string;
+        license_number?: string;
+      };
+      is_coxswain: boolean;
+      seat_position?: number;
+    }>;
   } | null;
 };
 
@@ -195,6 +206,7 @@ export default function Results() {
             if (currentIsIndoor) {
               try {
                 console.log(`🏠 Tentative chargement résultats indoor pour course ${race.id} (${race.name})`);
+                console.log(`📊 Statut de la course: ${race.status} (doit être "non_official" ou "official" pour accès public)`);
                 const indoorRes = await publicApi.get(`/indoor-results/race/${race.id}`);
                 const indoorData = indoorRes.data.data;
                 console.log(`✅ Résultats indoor reçus pour course ${race.id}:`, indoorData);
@@ -205,14 +217,52 @@ export default function Results() {
                     a.place - b.place
                   );
                   
-                  console.log(`✅ Course ${race.id} a ${participants.length} participants indoor`);
-                  
-                  return {
-                    ...race,
-                    isIndoor: true,
-                    indoorResults: participants,
-                    results: [], // Pas de résultats de timing pour les courses indoor
-                  };
+                  // Enrichir avec les participants des équipages
+                  try {
+                    const raceCrewsRes = await publicApi.get(`/race-crews/${race.id}`);
+                    const raceCrews = raceCrewsRes.data.data || [];
+                    
+                    // Créer un map crew_id -> crew avec participants
+                    const crewMap = new Map();
+                    raceCrews.forEach((rc: any) => {
+                      if (rc.crew_id && rc.crew) {
+                        crewMap.set(rc.crew_id, rc.crew);
+                      }
+                    });
+                    
+                    // Enrichir les participants avec les infos des équipages
+                    const enrichedParticipants = participants.map((p: IndoorParticipantResult) => {
+                      if (p.crew_id && crewMap.has(p.crew_id)) {
+                        const crew = crewMap.get(p.crew_id);
+                        return {
+                          ...p,
+                          crew: {
+                            ...p.crew,
+                            crew_participants: crew.crew_participants || [],
+                          },
+                        };
+                      }
+                      return p;
+                    });
+                    
+                    console.log(`✅ Course ${race.id} a ${enrichedParticipants.length} participants indoor (enrichis)`);
+                    
+                    return {
+                      ...race,
+                      isIndoor: true,
+                      indoorResults: enrichedParticipants,
+                      results: [], // Pas de résultats de timing pour les courses indoor
+                    };
+                  } catch (crewErr: any) {
+                    // Si erreur lors de la récupération des équipages, retourner quand même les résultats
+                    console.warn(`⚠️ Erreur récupération équipages pour course ${race.id}:`, crewErr);
+                    return {
+                      ...race,
+                      isIndoor: true,
+                      indoorResults: participants,
+                      results: [],
+                    };
+                  }
                 } else {
                   // Course indoor mais pas encore de résultats
                   console.log(`⚠️ Course ${race.id} est indoor mais n'a pas encore de participants`);
@@ -237,7 +287,11 @@ export default function Results() {
                 } else if (indoorErr?.response?.status === 401) {
                   // 401 signifie que l'endpoint n'est pas accessible publiquement
                   console.error(`❌ Endpoint indoor-results non accessible publiquement pour course ${race.id} (401)`);
-                  console.error(`💡 L'endpoint /indoor-results/race/${race.id} doit être rendu accessible publiquement côté backend`);
+                  console.error(`📊 Statut de la course: ${race.status}`);
+                  console.error(`💡 Vérifier que:`);
+                  console.error(`   1. La course a le statut "non_official" ou "official"`);
+                  console.error(`   2. L'endpoint /indoor-results/race/${race.id} est bien configuré pour l'accès public côté backend`);
+                  console.error(`   3. L'implémentation backend est bien déployée`);
                   // Retourner la course comme indoor mais sans résultats (l'endpoint n'est pas public)
                   return {
                     ...race,
@@ -712,7 +766,7 @@ export default function Results() {
         </CardContent>
       </Card>
 
-      {/* Boutons pour choisir la vue (scratch ou par catégorie) */}
+      {/* Boutons pour choisir la vue (par séries ou par catégorie) */}
       {filteredRaces.length > 0 && (
         <Card>
           <CardContent className="pt-6">
@@ -722,7 +776,7 @@ export default function Results() {
                 onClick={() => setViewMode("scratch")}
                 className="flex-1"
               >
-                Vue scratch
+                Vue par séries
               </Button>
               <Button
                 variant={viewMode === "category" ? "default" : "outline"}
@@ -801,7 +855,7 @@ export default function Results() {
                   // Si c'est une course indoor avec des résultats
                   if (race.isIndoor && race.indoorResults && race.indoorResults.length > 0) {
                     if (viewMode === "scratch") {
-                      // Mode scratch : tous les résultats ensemble
+                      // Mode par séries : tous les résultats ensemble
                       return (
                         <div className="overflow-x-auto -mx-4 sm:mx-0">
                           <table className="w-full text-xs sm:text-sm">
@@ -809,6 +863,7 @@ export default function Results() {
                               <tr className="border-b bg-slate-50">
                                 <th className="text-left py-2 px-3 font-semibold">Place</th>
                                 <th className="text-left py-2 px-3 font-semibold min-w-[140px]">Équipage</th>
+                                <th className="text-left py-2 px-3 font-semibold min-w-[200px]">Participants</th>
                                 <th className="text-left py-2 px-3 font-semibold">Temps</th>
                                 <th className="text-left py-2 px-3 font-semibold">Distance</th>
                                 <th className="text-left py-2 px-3 font-semibold">Allure</th>
@@ -818,34 +873,15 @@ export default function Results() {
                             </thead>
                             <tbody>
                               {race.indoorResults.map((participant) => {
-                                const isPodium = participant.place <= 3;
                                 return (
                                   <tr
                                     key={participant.id}
-                                    className={`border-b hover:bg-slate-50 ${isPodium ? "bg-amber-50" : ""}`}
+                                    className="border-b hover:bg-slate-50"
                                   >
                                     <td className="py-3 px-3">
-                                      <div className="flex items-center gap-2">
-                                        {isPodium && (
-                                          <Trophy
-                                            className={`w-4 h-4 ${
-                                              participant.place === 1
-                                                ? "text-amber-500"
-                                                : participant.place === 2
-                                                ? "text-gray-400"
-                                                : "text-amber-700"
-                                            }`}
-                                          />
-                                        )}
-                                        <span className={`font-bold ${isPodium ? "text-lg" : ""}`}>
-                                          {participant.place === 1 && "🥇"}
-                                          {participant.place === 2 && "🥈"}
-                                          {participant.place === 3 && "🥉"}
-                                          <span className={participant.place <= 3 ? "ml-1" : ""}>
-                                            {participant.place}
-                                          </span>
-                                        </span>
-                                      </div>
+                                      <span className="font-semibold">
+                                        {participant.place}
+                                      </span>
                                     </td>
                                     <td className="py-3 px-3">
                                       {participant.crew ? (
@@ -864,6 +900,36 @@ export default function Results() {
                                         <div className="text-muted-foreground italic text-sm">
                                           Non identifié
                                         </div>
+                                      )}
+                                    </td>
+                                    <td className="py-3 px-3">
+                                      {participant.crew?.crew_participants && participant.crew.crew_participants.length > 0 ? (
+                                        <div className="space-y-1">
+                                          {participant.crew.crew_participants
+                                            .sort((a, b) => (a.seat_position || 0) - (b.seat_position || 0))
+                                            .map((cp, idx) => {
+                                              const isCoxswain = cp.is_coxswain || false;
+                                              const firstName = cp.participant?.first_name || "";
+                                              const lastName = cp.participant?.last_name || "";
+                                              const displayName = firstName && lastName
+                                                ? `${firstName} ${lastName}`
+                                                : lastName || firstName || "N/A";
+                                              
+                                              return (
+                                                <div
+                                                  key={cp.id || idx}
+                                                  className={`text-sm ${isCoxswain ? "font-semibold" : ""}`}
+                                                >
+                                                  {displayName}
+                                                  {isCoxswain && (
+                                                    <span className="text-muted-foreground ml-1 text-xs">(B)</span>
+                                                  )}
+                                                </div>
+                                              );
+                                            })}
+                                        </div>
+                                      ) : (
+                                        <span className="text-muted-foreground text-sm">-</span>
                                       )}
                                     </td>
                                     <td className="py-3 px-3 font-mono font-semibold">
@@ -918,6 +984,7 @@ export default function Results() {
                                       <tr className="border-b bg-slate-50">
                                         <th className="text-left py-2 px-3 font-semibold">Place</th>
                                         <th className="text-left py-2 px-3 font-semibold min-w-[140px]">Équipage</th>
+                                        <th className="text-left py-2 px-3 font-semibold min-w-[200px]">Participants</th>
                                         <th className="text-left py-2 px-3 font-semibold">Temps</th>
                                         <th className="text-left py-2 px-3 font-semibold">Distance</th>
                                         <th className="text-left py-2 px-3 font-semibold">Allure</th>
@@ -928,34 +995,15 @@ export default function Results() {
                                     <tbody>
                                       {categoryResults.map((participant, index) => {
                                         const categoryPosition = index + 1;
-                                        const isPodium = categoryPosition <= 3;
                                         return (
                                           <tr
                                             key={participant.id}
-                                            className={`border-b hover:bg-slate-50 ${isPodium ? "bg-amber-50" : ""}`}
+                                            className="border-b hover:bg-slate-50"
                                           >
                                             <td className="py-3 px-3">
-                                              <div className="flex items-center gap-2">
-                                                {isPodium && (
-                                                  <Trophy
-                                                    className={`w-4 h-4 ${
-                                                      categoryPosition === 1
-                                                        ? "text-amber-500"
-                                                        : categoryPosition === 2
-                                                        ? "text-gray-400"
-                                                        : "text-amber-700"
-                                                    }`}
-                                                  />
-                                                )}
-                                                <span className={`font-bold ${isPodium ? "text-lg" : ""}`}>
-                                                  {categoryPosition === 1 && "🥇"}
-                                                  {categoryPosition === 2 && "🥈"}
-                                                  {categoryPosition === 3 && "🥉"}
-                                                  <span className={categoryPosition <= 3 ? "ml-1" : ""}>
-                                                    {categoryPosition}
-                                                  </span>
-                                                </span>
-                                              </div>
+                                              <span className="font-semibold">
+                                                {categoryPosition}
+                                              </span>
                                             </td>
                                             <td className="py-3 px-3">
                                               {participant.crew ? (
@@ -969,6 +1017,36 @@ export default function Results() {
                                                 <div className="text-muted-foreground italic text-sm">
                                                   Non identifié
                                                 </div>
+                                              )}
+                                            </td>
+                                            <td className="py-3 px-3">
+                                              {participant.crew?.crew_participants && participant.crew.crew_participants.length > 0 ? (
+                                                <div className="space-y-1">
+                                                  {participant.crew.crew_participants
+                                                    .sort((a, b) => (a.seat_position || 0) - (b.seat_position || 0))
+                                                    .map((cp, idx) => {
+                                                      const isCoxswain = cp.is_coxswain || false;
+                                                      const firstName = cp.participant?.first_name || "";
+                                                      const lastName = cp.participant?.last_name || "";
+                                                      const displayName = firstName && lastName
+                                                        ? `${firstName} ${lastName}`
+                                                        : lastName || firstName || "N/A";
+                                                      
+                                                      return (
+                                                        <div
+                                                          key={cp.id || idx}
+                                                          className={`text-sm ${isCoxswain ? "font-semibold" : ""}`}
+                                                        >
+                                                          {displayName}
+                                                          {isCoxswain && (
+                                                            <span className="text-muted-foreground ml-1 text-xs">(B)</span>
+                                                          )}
+                                                        </div>
+                                                      );
+                                                    })}
+                                                </div>
+                                              ) : (
+                                                <span className="text-muted-foreground text-sm">-</span>
                                               )}
                                             </td>
                                             <td className="py-3 px-3 font-mono font-semibold">
