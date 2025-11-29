@@ -20,6 +20,7 @@ import {
   UserCheck,
   Award,
   Link as LinkIcon,
+  AlertTriangle,
 } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Input } from "@/components/ui/input";
@@ -48,6 +49,13 @@ export default function EventOverviewPage() {
   const [editing, setEditing] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [stats, setStats] = useState<any>(null);
+  const [alerts, setAlerts] = useState<{
+    categoriesWithoutDistance: any[];
+    phasesWithUnassignedCrews: Array<{ phaseId: string; phaseName: string; count: number }>;
+  }>({
+    categoriesWithoutDistance: [],
+    phasesWithUnassignedCrews: [],
+  });
 
   const [form, setForm] = useState({
     name: "",
@@ -61,6 +69,7 @@ export default function EventOverviewPage() {
   useEffect(() => {
     fetchEvent();
     fetchStats();
+    fetchAlerts();
   }, [eventId]);
 
   const fetchEvent = async () => {
@@ -106,6 +115,70 @@ export default function EventOverviewPage() {
       });
     } catch (err) {
       console.error("Erreur chargement statistiques:", err);
+    }
+  };
+
+  const fetchAlerts = async () => {
+    if (!eventId) return;
+    
+    try {
+      // Vérifier les catégories sans distance
+      const categoriesRes = await api.get(`/categories/event/${eventId}/with-crews`).catch(() => ({ data: { data: [] } }));
+      const categories = categoriesRes.data.data || [];
+      const categoriesWithoutDistance = categories.filter((cat: any) => 
+        cat.crew_count > 0 && (!cat.distance_id || cat.distance_id === null)
+      );
+
+      // Vérifier les phases avec équipages non affectés
+      const phasesRes = await api.get(`/race-phases/${eventId}`).catch(() => ({ data: { data: [] } }));
+      const phases = phasesRes.data.data || [];
+      
+      const phasesWithUnassignedCrews: Array<{ phaseId: string; phaseName: string; count: number }> = [];
+      
+      for (const phase of phases) {
+        try {
+          // Récupérer les courses de la phase
+          const racesRes = await api.get(`/races/event/${eventId}`).catch(() => ({ data: { data: [] } }));
+          const allRaces = racesRes.data.data || [];
+          const phaseRaces = allRaces.filter((race: any) => race.race_phase?.id === phase.id);
+          
+          // Récupérer tous les équipages de l'événement
+          const crewsRes = await api.get(`/crews/event/${eventId}`).catch(() => ({ data: { data: [] } }));
+          const allCrews = crewsRes.data.data || [];
+          
+          // Récupérer les équipages affectés aux courses de cette phase
+          const assignedCrewIds = new Set<string>();
+          phaseRaces.forEach((race: any) => {
+            if (race.race_crews) {
+              race.race_crews.forEach((rc: any) => {
+                if (rc.crew_id) {
+                  assignedCrewIds.add(rc.crew_id);
+                }
+              });
+            }
+          });
+          
+          // Compter les équipages non affectés
+          const unassignedCrews = allCrews.filter((crew: any) => !assignedCrewIds.has(crew.id));
+          
+          if (unassignedCrews.length > 0) {
+            phasesWithUnassignedCrews.push({
+              phaseId: phase.id,
+              phaseName: phase.name,
+              count: unassignedCrews.length,
+            });
+          }
+        } catch (err) {
+          console.error(`Erreur vérification phase ${phase.id}:`, err);
+        }
+      }
+
+      setAlerts({
+        categoriesWithoutDistance,
+        phasesWithUnassignedCrews,
+      });
+    } catch (err) {
+      console.error("Erreur chargement alertes:", err);
     }
   };
 
@@ -269,6 +342,74 @@ export default function EventOverviewPage() {
           </div>
         </div>
       </div>
+
+      {/* Alertes */}
+      {(alerts.categoriesWithoutDistance.length > 0 || alerts.phasesWithUnassignedCrews.length > 0) && (
+        <Card className="border-orange-300 bg-gradient-to-br from-orange-50 to-orange-100/50 shadow-md">
+          <CardContent className="p-6">
+            <div className="flex items-start gap-3">
+              <div className="p-2 rounded-lg bg-orange-200">
+                <AlertTriangle className="w-5 h-5 text-orange-700" />
+              </div>
+              <div className="flex-1">
+                <h3 className="text-lg font-semibold text-orange-900 mb-3">
+                  Avertissements
+                </h3>
+                <div className="space-y-2">
+                  {alerts.categoriesWithoutDistance.length > 0 && (
+                    <div className="flex items-start gap-2">
+                      <AlertTriangle className="w-4 h-4 text-orange-600 mt-0.5 flex-shrink-0" />
+                      <div className="flex-1">
+                        <p className="text-sm text-orange-800 font-medium">
+                          {alerts.categoriesWithoutDistance.length} {alerts.categoriesWithoutDistance.length === 1 ? "catégorie" : "catégories"} non affectée{alerts.categoriesWithoutDistance.length > 1 ? "s" : ""} à une distance
+                        </p>
+                        <p className="text-xs text-orange-700 mt-1">
+                          {alerts.categoriesWithoutDistance.map((cat: any) => cat.label || cat.code).join(", ")}
+                        </p>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="mt-2 border-orange-300 text-orange-700 hover:bg-orange-200"
+                          onClick={() => navigate(`/event/${eventId}/distances`)}
+                        >
+                          Voir les distances
+                        </Button>
+                      </div>
+                    </div>
+                  )}
+                  {alerts.phasesWithUnassignedCrews.length > 0 && (
+                    <div className="flex items-start gap-2">
+                      <AlertTriangle className="w-4 h-4 text-orange-600 mt-0.5 flex-shrink-0" />
+                      <div className="flex-1">
+                        <p className="text-sm text-orange-800 font-medium">
+                          Équipages non affectés dans {alerts.phasesWithUnassignedCrews.length} {alerts.phasesWithUnassignedCrews.length === 1 ? "phase" : "phases"}
+                        </p>
+                        <div className="text-xs text-orange-700 mt-1 space-y-1">
+                          {alerts.phasesWithUnassignedCrews.map((phase) => (
+                            <div key={phase.phaseId} className="flex items-center justify-between">
+                              <span>
+                                {phase.phaseName}: {phase.count} {phase.count === 1 ? "équipage" : "équipages"} non affecté{phase.count > 1 ? "s" : ""}
+                              </span>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className="h-6 px-2 text-xs text-orange-700 hover:bg-orange-200"
+                                onClick={() => navigate(`/event/${eventId}/racePhases/${phase.phaseId}`)}
+                              >
+                                Voir
+                              </Button>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Statistiques */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
