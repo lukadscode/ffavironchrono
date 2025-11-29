@@ -79,7 +79,7 @@ function DraggableCategory({ category }: { category: Category }) {
         isDragging && "opacity-50 scale-95"
       )}
     >
-      <div className="font-semibold text-xs text-slate-900 group-hover:text-blue-600 transition-colors truncate">
+      <div className="font-semibold text-xs text-slate-900 group-hover:text-blue-600 transition-colors break-words">
         {category.label || category.code}
       </div>
       {category.crew_count !== undefined && (
@@ -115,7 +115,7 @@ function DraggableRace({ race }: { race: Race }) {
         isDragging && "opacity-50 scale-95"
       )}
     >
-      <div className="font-semibold text-xs text-slate-900 group-hover:text-amber-600 transition-colors truncate">
+      <div className="font-semibold text-xs text-slate-900 group-hover:text-amber-600 transition-colors break-words">
         Course {race.race_number} - {race.name}
       </div>
       {race.race_phase && (
@@ -188,13 +188,13 @@ function DroppableDistance({
           : "bg-gradient-to-r from-blue-50 via-indigo-50 to-purple-50"
       )}>
         <CardTitle className="text-sm flex items-center justify-between gap-2">
-          <span className="flex items-center gap-1.5 text-slate-900 font-semibold truncate min-w-0 flex-1">
+          <span className="flex items-center gap-1.5 text-slate-900 font-semibold min-w-0 flex-1">
             {distance.id === "unassigned" ? (
               <Tag className="w-4 h-4 text-slate-600 flex-shrink-0" />
             ) : (
               <Gauge className="w-4 h-4 text-blue-600 flex-shrink-0" />
             )}
-            <span className="truncate">{displayLabel}</span>
+            <span className="break-words">{displayLabel}</span>
           </span>
           <span className={clsx(
             "px-2 py-0.5 text-xs font-bold rounded-full shadow-sm flex-shrink-0",
