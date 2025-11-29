@@ -5,6 +5,7 @@ import { useToast } from "@/hooks/use-toast";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Trophy, Plus, Sparkles, Users } from "lucide-react";
+import clsx from "clsx";
 
 import PhaseFormDialog from "@/components/races/PhaseFormDialog";
 import PhaseListDnd from "@/components/races/PhaseListDnd";
@@ -126,6 +127,40 @@ export default function RacesPage() {
 
       {/* Statistiques rapides */}
       <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+        <Card 
+          className={clsx(
+            "border-amber-200 bg-gradient-to-br from-amber-50 to-white transition-all",
+            phases.length > 0 
+              ? "cursor-pointer hover:shadow-lg hover:border-amber-300" 
+              : "opacity-60 cursor-not-allowed"
+          )}
+          onClick={() => {
+            if (phases.length > 0) {
+              navigate(`/event/${eventId}/generate-races`);
+            }
+          }}
+        >
+          <CardHeader className="pb-3">
+            <div className="flex items-center justify-between">
+              <CardTitle className="text-sm font-medium text-amber-900">
+                Générer
+              </CardTitle>
+              <Sparkles className="w-5 h-5 text-amber-600" />
+            </div>
+          </CardHeader>
+          <CardContent>
+            <div className="text-3xl font-bold text-amber-900 flex items-center gap-2">
+              <Sparkles className="w-6 h-6" />
+              Courses
+            </div>
+            <p className="text-xs text-amber-700 mt-1">
+              {phases.length === 0 
+                ? "Créez d'abord une phase" 
+                : "Créer les courses automatiquement"}
+            </p>
+          </CardContent>
+        </Card>
+
         <Card className="border-blue-200 bg-gradient-to-br from-blue-50 to-white">
           <CardHeader className="pb-3">
             <div className="flex items-center justify-between">
@@ -173,31 +208,6 @@ export default function RacesPage() {
             <div className="text-3xl font-bold text-purple-900">{totalCrews}</div>
             <p className="text-xs text-purple-700 mt-1">
               {totalCrews === 1 ? "équipage enregistré" : "équipages enregistrés"}
-            </p>
-          </CardContent>
-        </Card>
-
-        <Card className="border-amber-200 bg-gradient-to-br from-amber-50 to-white">
-          <CardHeader className="pb-3">
-            <div className="flex items-center justify-between">
-              <CardTitle className="text-sm font-medium text-amber-900">
-                Générer
-              </CardTitle>
-              <Sparkles className="w-5 h-5 text-amber-600" />
-            </div>
-          </CardHeader>
-          <CardContent>
-            <Button
-              variant="secondary"
-              onClick={() => navigate(`/event/${eventId}/generate-races`)}
-              disabled={phases.length === 0}
-              className="w-full"
-            >
-              <Sparkles className="w-4 h-4 mr-2" />
-              Générer les courses
-            </Button>
-            <p className="text-xs text-amber-700 mt-2">
-              Créer les courses automatiquement
             </p>
           </CardContent>
         </Card>

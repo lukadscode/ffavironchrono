@@ -41,18 +41,18 @@ const allNavItems = [
   { to: "", label: "Accueil", icon: Home, permission: "overview" },
   { to: "permissions", label: "Droits", icon: Shield, permission: "permissions" },
   { to: "participants", label: "Participants", icon: Users, permission: "participants" },
+  { to: "categories", label: "Catégories", icon: Tag, permission: "overview" },
   { to: "crews", label: "Équipages", icon: Rows, permission: "crews" },
   { to: "distances", label: "Distances", icon: MapPin, permission: "distances" },
-  { to: "categories", label: "Catégories", icon: Tag, permission: "overview" },
-  { to: "races", label: "Courses", icon: Flag, permission: "races" },
   { to: "racePhases", label: "Phases", icon: Flag, permission: "racePhases" },
+  { to: "races", label: "Courses", icon: Flag, permission: "races" },
   { to: "notifications", label: "Notifications", icon: Bell, permission: "notifications" },
-  { to: "timingPoint", label: "Points", icon: Timer, permission: "timingPoint" },
-  { to: "timing", label: "Chrono", icon: Timer, permission: "timing" },
-  { to: "arbitres", label: "Arbitres", icon: Gavel, permission: "arbitres" },
   { to: "indoor", label: "Indoor", icon: Activity, permission: "indoor" },
+  { to: "arbitres", label: "Arbitres", icon: Gavel, permission: "arbitres" },
   { to: "export", label: "Exports", icon: FileDown, permission: "overview" },
   { to: "update", label: "Mise à jour FFAviron", icon: RefreshCw, permission: "permissions" }, // Seulement organisateur
+  { to: "timingPoint", label: "Points", icon: Timer, permission: "timingPoint" },
+  { to: "timing", label: "Chrono", icon: Timer, permission: "timing" },
 ];
 
 export default function EventAdminLayout() {
