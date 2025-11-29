@@ -1,11 +1,14 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo } from "react";
 import { Link } from "react-router-dom";
 import { publicApi } from "@/lib/axios";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Label } from "@/components/ui/label";
 import PublicHeader from "@/components/layout/PublicHeader";
 import PublicFooter from "@/components/layout/PublicFooter";
-import { Timer, MapPin, Calendar, TrendingUp, Clock, Award, Users } from "lucide-react";
+import { Timer, MapPin, Calendar, TrendingUp, Clock, Award, Users, Search, Filter, X } from "lucide-react";
 import dayjs from "dayjs";
 
 const DEFAULT_EVENT_IMAGE = "https://www.sports.gouv.fr/sites/default/files/2022-08/photo-2-emmelieke-odul-jpeg-813.jpeg";
@@ -23,6 +26,8 @@ type Event = {
 export default function HomePage() {
   const [events, setEvents] = useState<Event[]>([]);
   const [loading, setLoading] = useState(true);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [selectedType, setSelectedType] = useState<string>("all");
 
   useEffect(() => {
     const fetchEvents = async () => {
@@ -39,13 +44,103 @@ export default function HomePage() {
     fetchEvents();
   }, []);
 
-  const upcomingEvents = events.filter(
-    (e) => !e.is_finished && dayjs(e.start_date).isAfter(dayjs())
-  );
-  const ongoingEvents = events.filter(
-    (e) => !e.is_finished && dayjs(e.start_date).isBefore(dayjs()) && dayjs(e.end_date).isAfter(dayjs())
-  );
-  const pastEvents = events.filter((e) => e.is_finished || dayjs(e.end_date).isBefore(dayjs()));
+  // Fonction pour déterminer le type d'événement
+  const getEventType = (raceType?: string): string => {
+    if (!raceType) return "aviron";
+    const typeLower = raceType.toLowerCase();
+    if (typeLower.includes("indoor")) return "indoor";
+    if (typeLower.includes("mer") || typeLower.includes("coastal")) return "mer";
+    return "aviron";
+  };
+
+  // Filtrer et trier les événements
+  const filteredEvents = useMemo(() => {
+    let filtered = events.filter((e) => {
+      // Filtre par recherche
+      if (searchQuery) {
+        const query = searchQuery.toLowerCase();
+        const matchesName = e.name.toLowerCase().includes(query);
+        const matchesLocation = e.location?.toLowerCase().includes(query);
+        if (!matchesName && !matchesLocation) return false;
+      }
+
+      // Filtre par type
+      if (selectedType !== "all") {
+        const eventType = getEventType(e.race_type);
+        if (eventType !== selectedType) return false;
+      }
+
+      return true;
+    });
+
+    // Trier par date (plus récents en premier)
+    return filtered.sort((a, b) => {
+      const dateA = dayjs(a.end_date || a.start_date);
+      const dateB = dayjs(b.end_date || b.start_date);
+      return dateB.diff(dateA);
+    });
+  }, [events, searchQuery, selectedType]);
+
+  // Événements en cours aujourd'hui (courses de la journée)
+  const todayEvents = useMemo(() => {
+    const today = dayjs().startOf("day");
+    return filteredEvents.filter((e) => {
+      if (e.is_finished) return false;
+      const startDate = dayjs(e.start_date).startOf("day");
+      const endDate = dayjs(e.end_date).startOf("day");
+      // Événement qui a lieu aujourd'hui
+      return (startDate.isBefore(today) || startDate.isSame(today)) && 
+             (endDate.isAfter(today) || endDate.isSame(today));
+    });
+  }, [filteredEvents]);
+
+  // Événements en cours (mais pas aujourd'hui)
+  const ongoingEvents = useMemo(() => {
+    const today = dayjs();
+    const todayStart = dayjs().startOf("day");
+    return filteredEvents.filter((e) => {
+      if (e.is_finished) return false;
+      const startDate = dayjs(e.start_date);
+      const endDate = dayjs(e.end_date);
+      const startDateStart = dayjs(e.start_date).startOf("day");
+      const endDateStart = dayjs(e.end_date).startOf("day");
+      // Vérifier si c'est aujourd'hui
+      const isToday = startDateStart.isSame(todayStart) ||
+                     (startDateStart.isBefore(todayStart) || startDateStart.isSame(todayStart)) &&
+                     (endDateStart.isAfter(todayStart) || endDateStart.isSame(todayStart));
+      // En cours mais pas aujourd'hui
+      return startDate.isBefore(today) && endDate.isAfter(today) && !isToday;
+    });
+  }, [filteredEvents]);
+
+  // Événements à venir
+  const upcomingEvents = useMemo(() => {
+    return filteredEvents.filter((e) => {
+      if (e.is_finished) return false;
+      const startDate = dayjs(e.start_date);
+      const today = dayjs();
+      return startDate.isAfter(today);
+    });
+  }, [filteredEvents]);
+
+  // Événements passés (archivés le lendemain de la compétition)
+  const pastEvents = useMemo(() => {
+    const today = dayjs().startOf("day");
+    return filteredEvents.filter((e) => {
+      if (e.is_finished) return true;
+      const endDate = dayjs(e.end_date).startOf("day");
+      // Archiver le lendemain de la fin de la compétition
+      const archiveDate = endDate.add(1, "day");
+      return archiveDate.isBefore(today);
+    });
+  }, [filteredEvents]);
+
+  const clearFilters = () => {
+    setSearchQuery("");
+    setSelectedType("all");
+  };
+
+  const hasActiveFilters = searchQuery || selectedType !== "all";
 
   return (
     <div className="min-h-screen flex flex-col bg-gradient-to-br from-slate-50 via-blue-50/20 to-slate-50">
@@ -113,6 +208,82 @@ export default function HomePage() {
       </section>
 
       <main className="flex-1 container mx-auto px-4 sm:px-6 py-8 sm:py-12 md:py-16">
+        {/* Barre de recherche et filtres */}
+        <Card className="mb-8">
+          <CardHeader>
+            <div className="flex items-center gap-2">
+              <Filter className="w-5 h-5 text-slate-600" />
+              <CardTitle className="text-lg">Rechercher et filtrer</CardTitle>
+            </div>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              {/* Barre de recherche */}
+              <div className="space-y-2">
+                <Label htmlFor="search">Recherche</Label>
+                <div className="relative">
+                  <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-slate-400" />
+                  <Input
+                    id="search"
+                    placeholder="Nom de l'événement, lieu..."
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    className="pl-9"
+                  />
+                </div>
+              </div>
+
+              {/* Filtre par type */}
+              <div className="space-y-2">
+                <Label htmlFor="type">Type d'événement</Label>
+                <Select value={selectedType} onValueChange={setSelectedType}>
+                  <SelectTrigger id="type">
+                    <SelectValue placeholder="Tous les types" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">Tous les types</SelectItem>
+                    <SelectItem value="indoor">Indoor</SelectItem>
+                    <SelectItem value="aviron">Aviron</SelectItem>
+                    <SelectItem value="mer">Mer</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+
+            {/* Bouton réinitialiser */}
+            {hasActiveFilters && (
+              <div className="mt-4">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={clearFilters}
+                  className="gap-2"
+                >
+                  <X className="w-4 h-4" />
+                  Réinitialiser les filtres
+                </Button>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* Événements en cours aujourd'hui (courses de la journée) */}
+        {todayEvents.length > 0 && (
+          <section className="mb-8 sm:mb-12 md:mb-16">
+            <div className="flex items-center gap-2 sm:gap-3 mb-4 sm:mb-6 md:mb-8">
+              <div className="w-1 h-6 sm:h-8 bg-orange-600 rounded-full"></div>
+              <h2 className="text-xl sm:text-2xl md:text-3xl font-bold text-slate-900">En cours aujourd'hui</h2>
+              <div className="flex-1 h-px bg-gradient-to-r from-orange-600 to-transparent"></div>
+            </div>
+            
+            <div className="grid gap-4 sm:gap-6 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
+              {todayEvents.map((event) => (
+                <EventCard key={event.id} event={event} status="today" />
+              ))}
+            </div>
+          </section>
+        )}
+
         {/* Événements en cours */}
         {ongoingEvents.length > 0 && (
           <section className="mb-8 sm:mb-12 md:mb-16">
@@ -171,15 +342,24 @@ export default function HomePage() {
               <p className="text-lg text-muted-foreground">Chargement des événements...</p>
             </div>
           </div>
-        ) : events.length === 0 && !loading ? (
+        ) : filteredEvents.length === 0 && !loading ? (
           <div className="text-center py-20">
             <div className="inline-flex items-center justify-center w-20 h-20 rounded-full bg-slate-100 mb-6">
               <Calendar className="w-10 h-10 text-slate-400" />
             </div>
-            <h3 className="text-2xl font-bold text-slate-900 mb-2">Aucun événement disponible</h3>
+            <h3 className="text-2xl font-bold text-slate-900 mb-2">
+              {hasActiveFilters ? "Aucun événement trouvé" : "Aucun événement disponible"}
+            </h3>
             <p className="text-lg text-muted-foreground">
-              Les prochaines compétitions seront affichées ici.
+              {hasActiveFilters
+                ? "Essayez de modifier vos critères de recherche."
+                : "Les prochaines compétitions seront affichées ici."}
             </p>
+            {hasActiveFilters && (
+              <Button variant="outline" onClick={clearFilters} className="mt-4">
+                Réinitialiser les filtres
+              </Button>
+            )}
           </div>
         ) : null}
       </main>
@@ -189,12 +369,19 @@ export default function HomePage() {
   );
 }
 
-function EventCard({ event, status }: { event: Event; status: "ongoing" | "upcoming" | "past" }) {
+function EventCard({ event, status }: { event: Event; status: "today" | "ongoing" | "upcoming" | "past" }) {
+  const isToday = status === "today";
   const isOngoing = status === "ongoing";
   const isUpcoming = status === "upcoming";
   const isPast = status === "past";
 
   const statusConfig = {
+    today: {
+      badge: "Aujourd'hui",
+      badgeColor: "bg-orange-100 text-orange-700 border-orange-200",
+      accent: "border-orange-500",
+      pulse: true,
+    },
     ongoing: {
       badge: "En cours",
       badgeColor: "bg-green-100 text-green-700 border-green-200",
@@ -293,8 +480,9 @@ function EventCard({ event, status }: { event: Event; status: "ongoing" | "upcom
           {/* Bouton d'action */}
           <Button
             className="w-full mt-4 group-hover:bg-blue-600 group-hover:text-white transition-colors"
-            variant={isOngoing ? "default" : "outline"}
+            variant={isToday || isOngoing ? "default" : "outline"}
           >
+            {isToday && "Suivre en direct"}
             {isOngoing && "Suivre en direct"}
             {isUpcoming && "Voir les détails"}
             {isPast && "Voir les résultats"}
