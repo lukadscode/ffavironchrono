@@ -144,7 +144,7 @@ export default function Results() {
   useEffect(() => {
     const fetchEventType = async () => {
       try {
-        const res = await api.get(`/events/${eventId}`);
+        const res = await publicApi.get(`/events/${eventId}`);
         const eventData = res.data.data;
         const raceType = eventData.race_type?.toLowerCase() || "";
         setIsIndoorEvent(raceType.includes("indoor"));
@@ -184,7 +184,7 @@ export default function Results() {
         let currentIsIndoor = isIndoorEvent;
         if (!currentIsIndoor) {
           try {
-            const eventRes = await api.get(`/events/${eventId}`);
+            const eventRes = await publicApi.get(`/events/${eventId}`);
             const eventData = eventRes.data.data;
             const raceType = eventData.race_type?.toLowerCase() || "";
             currentIsIndoor = raceType.includes("indoor");
@@ -231,6 +231,16 @@ export default function Results() {
                   const participants = indoorData.participants.sort((a: IndoorParticipantResult, b: IndoorParticipantResult) => 
                     a.place - b.place
                   );
+                  
+                  // Debug: vérifier les splits_data
+                  const participantsWithSplits = participants.filter((p: any) => p.splits_data && Array.isArray(p.splits_data) && p.splits_data.length > 0);
+                  console.log(`📊 Course ${race.id}: ${participantsWithSplits.length} participants avec splits_data sur ${participants.length} total`);
+                  if (participantsWithSplits.length > 0) {
+                    console.log(`📊 Exemple de splits_data:`, participantsWithSplits[0].splits_data);
+                  } else {
+                    console.log(`⚠️ Aucun participant n'a de splits_data dans cette course`);
+                    console.log(`📊 Structure d'un participant:`, participants[0] ? Object.keys(participants[0]) : "aucun participant");
+                  }
                   
                   // Enrichir avec les participants des équipages
                   try {
