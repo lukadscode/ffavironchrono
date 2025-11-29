@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
 import dayjs from "dayjs";
-import { ArrowLeft, Download, Upload, FileText, File, AlertTriangle, Save } from "lucide-react";
+import { ArrowLeft, Download, Upload, FileText, File, AlertTriangle, Save, Trophy, Clock, TrendingUp, Loader2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import NotificationDisplay from "@/components/notifications/NotificationDisplay";
 
@@ -103,6 +103,48 @@ type TimingPoint = {
   distance_m: number;
 };
 
+// Types pour les résultats indoor ErgRace
+type IndoorParticipantResult = {
+  id: string;
+  place: number;
+  time_display: string;
+  time_ms: number;
+  score: string;
+  distance: number;
+  avg_pace: string;
+  spm: number;
+  calories: number;
+  machine_type: string;
+  logged_time: string;
+  ergrace_participant_id: string;
+  crew_id?: string | null;
+  crew?: {
+    id: string;
+    club_name: string;
+    club_code: string;
+    category?: {
+      id: string;
+      code: string;
+      label: string;
+    };
+  } | null;
+  splits_data?: any;
+};
+
+type IndoorRaceResult = {
+  id: string;
+  race_id: string;
+  ergrace_race_id: string;
+  race_start_time: string;
+  race_end_time: string;
+  duration: number;
+};
+
+type IndoorResultsData = {
+  race_result: IndoorRaceResult;
+  participants: IndoorParticipantResult[];
+};
+
 export default function IndoorRaceDetailPage() {
   const { eventId, raceId } = useParams();
   const navigate = useNavigate();
@@ -120,6 +162,9 @@ export default function IndoorRaceDetailPage() {
   const [isDraggingPdf, setIsDraggingPdf] = useState(false);
   const fileInputTxtJsonRef = useRef<HTMLInputElement>(null);
   const fileInputPdfRef = useRef<HTMLInputElement>(null);
+  const [indoorResults, setIndoorResults] = useState<IndoorResultsData | null>(null);
+  const [loadingResults, setLoadingResults] = useState(false);
+  const [importingResults, setImportingResults] = useState(false);
 
   useEffect(() => {
     if (raceId && eventId) {
@@ -130,6 +175,9 @@ export default function IndoorRaceDetailPage() {
       });
       // fetchDistance est appelé seulement comme fallback si la course n'a pas de distance_id
       // On le garde pour les anciennes courses qui n'ont pas de distance_id
+      
+      // Charger les résultats indoor s'ils existent
+      fetchIndoorResults();
     }
   }, [raceId, eventId]);
 
@@ -391,6 +439,104 @@ export default function IndoorRaceDetailPage() {
     }
   };
 
+  // Charger les résultats indoor depuis l'API
+  const fetchIndoorResults = async () => {
+    if (!raceId) return;
+
+    try {
+      setLoadingResults(true);
+      const response = await api.get(`/indoor-results/race/${raceId}`);
+      setIndoorResults(response.data.data);
+    } catch (err: any) {
+      // 404 signifie qu'il n'y a pas encore de résultats, c'est normal
+      if (err?.response?.status !== 404) {
+        console.error("Erreur chargement résultats indoor:", err);
+      }
+      setIndoorResults(null);
+    } finally {
+      setLoadingResults(false);
+    }
+  };
+
+  // Importer les résultats ErgRace depuis un fichier JSON
+  const handleImportErgRaceResults = async (file: File) => {
+    if (!raceId) {
+      toast({
+        title: "Erreur",
+        description: "Impossible d'importer : course introuvable",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    try {
+      setImportingResults(true);
+      
+      // Lire le contenu du fichier
+      const fileContent = await file.text();
+      let ergraceData: any;
+      
+      try {
+        ergraceData = JSON.parse(fileContent);
+      } catch (parseError) {
+        toast({
+          title: "Erreur de format",
+          description: "Le fichier JSON n'est pas valide",
+          variant: "destructive",
+        });
+        return;
+      }
+
+      // Vérifier que c'est bien un fichier ErgRace
+      if (!ergraceData.results || !ergraceData.results.race_id) {
+        toast({
+          title: "Format invalide",
+          description: "Le fichier ne semble pas être un fichier ErgRace valide",
+          variant: "destructive",
+        });
+        return;
+      }
+
+      // Préparer le payload pour l'API
+      const payload = {
+        results: {
+          ...ergraceData.results,
+          c2_race_id: raceId, // ID de la course dans la plateforme
+        },
+      };
+
+      const response = await api.post("/indoor-results/import", payload);
+
+      toast({
+        title: "Résultats importés",
+        description: `${response.data.data.participants_count} participant(s) importé(s) (${response.data.data.linked_crews_count} équipage(s) lié(s))`,
+      });
+
+      // Recharger les résultats et la course
+      await fetchIndoorResults();
+      await fetchRace();
+    } catch (err: any) {
+      console.error("Erreur import résultats ErgRace:", err);
+      const errorData = err?.response?.data;
+      
+      if (errorData?.errors && Array.isArray(errorData.errors)) {
+        toast({
+          title: "Erreurs de validation",
+          description: errorData.errors.join("\n"),
+          variant: "destructive",
+        });
+      } else {
+        toast({
+          title: "Erreur lors de l'import",
+          description: errorData?.message || err?.message || "Une erreur est survenue lors de l'import",
+          variant: "destructive",
+        });
+      }
+    } finally {
+      setImportingResults(false);
+    }
+  };
+
   const handleFileUpload = async (file: File, type: "txtjson" | "pdf") => {
     if (!raceId) {
       toast({
@@ -401,6 +547,17 @@ export default function IndoorRaceDetailPage() {
       return;
     }
 
+    // Si c'est un fichier JSON/TXT, essayer de l'importer comme ErgRace
+    if (type === "txtjson") {
+      const fileExtension = file.name.toLowerCase().substring(file.name.lastIndexOf("."));
+      if (fileExtension === ".json" || file.type === "application/json") {
+        // C'est probablement un fichier ErgRace
+        await handleImportErgRaceResults(file);
+        return;
+      }
+    }
+
+    // Pour les autres fichiers (PDF, TXT non-JSON), utiliser l'ancienne méthode
     try {
       const formData = new FormData();
       formData.append("file", file);
@@ -955,14 +1112,26 @@ export default function IndoorRaceDetailPage() {
               onDrop={(e) => handleDrop(e, "txtjson")}
               onClick={() => fileInputTxtJsonRef.current?.click()}
             >
-              <Upload className="w-12 h-12 mx-auto mb-4 text-muted-foreground" />
-              <p className="text-sm font-medium mb-2">
-                Glissez-déposez un fichier TXT ou JSON ici
-              </p>
-              <p className="text-xs text-muted-foreground mb-4">ou</p>
-              <Button variant="outline" size="sm">
-                Sélectionner un fichier
-              </Button>
+              {importingResults ? (
+                <>
+                  <Loader2 className="w-12 h-12 mx-auto mb-4 animate-spin text-primary" />
+                  <p className="text-sm font-medium mb-2">Import en cours...</p>
+                </>
+              ) : (
+                <>
+                  <Upload className="w-12 h-12 mx-auto mb-4 text-muted-foreground" />
+                  <p className="text-sm font-medium mb-2">
+                    Glissez-déposez un fichier ErgRace JSON ici
+                  </p>
+                  <p className="text-xs text-muted-foreground mb-2">
+                    Format ErgRace (.json)
+                  </p>
+                  <p className="text-xs text-muted-foreground mb-4">ou</p>
+                  <Button variant="outline" size="sm" disabled={importingResults}>
+                    Sélectionner un fichier
+                  </Button>
+                </>
+              )}
               <input
                 ref={fileInputTxtJsonRef}
                 type="file"
@@ -1092,6 +1261,131 @@ export default function IndoorRaceDetailPage() {
           </div>
         </CardContent>
       </Card>
+
+      {/* Résultats Indoor ErgRace */}
+      {loadingResults ? (
+        <Card>
+          <CardContent className="py-12 text-center">
+            <Loader2 className="w-8 h-8 mx-auto mb-4 animate-spin text-muted-foreground" />
+            <p className="text-sm text-muted-foreground">Chargement des résultats...</p>
+          </CardContent>
+        </Card>
+      ) : indoorResults ? (
+        <Card>
+          <CardHeader>
+            <div className="flex items-center justify-between">
+              <CardTitle className="flex items-center gap-2">
+                <Trophy className="w-5 h-5 text-amber-500" />
+                Résultats de la course
+              </CardTitle>
+              <div className="flex items-center gap-4 text-sm text-muted-foreground">
+                <div className="flex items-center gap-1">
+                  <Clock className="w-4 h-4" />
+                  <span>
+                    {dayjs(indoorResults.race_result.race_start_time).format("HH:mm:ss")} - {dayjs(indoorResults.race_result.race_end_time).format("HH:mm:ss")}
+                  </span>
+                </div>
+                <div className="flex items-center gap-1">
+                  <span>Durée: {Math.round(indoorResults.race_result.duration / 1000)}s</span>
+                </div>
+              </div>
+            </div>
+          </CardHeader>
+          <CardContent>
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b bg-slate-50">
+                    <th className="text-left py-3 px-4 font-semibold">Place</th>
+                    <th className="text-left py-3 px-4 font-semibold">Équipage</th>
+                    <th className="text-left py-3 px-4 font-semibold">Temps</th>
+                    <th className="text-left py-3 px-4 font-semibold">Distance</th>
+                    <th className="text-left py-3 px-4 font-semibold">Allure</th>
+                    <th className="text-left py-3 px-4 font-semibold">SPM</th>
+                    <th className="text-left py-3 px-4 font-semibold">Calories</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {indoorResults.participants.map((participant, index) => {
+                    const isPodium = participant.place <= 3;
+                    return (
+                      <tr
+                        key={participant.id}
+                        className={`border-b hover:bg-slate-50 ${
+                          isPodium ? "bg-amber-50" : ""
+                        }`}
+                      >
+                        <td className="py-3 px-4">
+                          <div className="flex items-center gap-2">
+                            {isPodium && (
+                              <Trophy
+                                className={`w-4 h-4 ${
+                                  participant.place === 1
+                                    ? "text-amber-500"
+                                    : participant.place === 2
+                                    ? "text-gray-400"
+                                    : "text-amber-700"
+                                }`}
+                              />
+                            )}
+                            <span className={`font-bold ${isPodium ? "text-lg" : ""}`}>
+                              {participant.place}
+                            </span>
+                          </div>
+                        </td>
+                        <td className="py-3 px-4">
+                          {participant.crew ? (
+                            <div>
+                              <div className="font-semibold">{participant.crew.club_name}</div>
+                              <div className="text-xs text-muted-foreground">
+                                {participant.crew.club_code}
+                                {participant.crew.category && (
+                                  <span className="ml-2 px-2 py-0.5 bg-blue-100 text-blue-700 rounded text-xs">
+                                    {participant.crew.category.label}
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+                          ) : (
+                            <div className="text-muted-foreground italic">
+                              {participant.ergrace_participant_id}
+                              <span className="ml-2 text-xs">(non identifié)</span>
+                            </div>
+                          )}
+                        </td>
+                        <td className="py-3 px-4 font-mono font-semibold">
+                          {participant.time_display}
+                        </td>
+                        <td className="py-3 px-4">{participant.distance}m</td>
+                        <td className="py-3 px-4 font-mono">{participant.avg_pace}</td>
+                        <td className="py-3 px-4">
+                          <div className="flex items-center gap-1">
+                            <TrendingUp className="w-3 h-3 text-muted-foreground" />
+                            {participant.spm}
+                          </div>
+                        </td>
+                        <td className="py-3 px-4">{participant.calories}</td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </CardContent>
+        </Card>
+      ) : (
+        <Card>
+          <CardContent className="py-12 text-center">
+            <FileText className="w-12 h-12 mx-auto mb-4 text-muted-foreground opacity-50" />
+            <p className="font-medium text-muted-foreground">
+              Aucun résultat importé pour cette course
+            </p>
+            <p className="text-sm text-muted-foreground mt-1">
+              Importez un fichier ErgRace JSON pour afficher les résultats
+            </p>
+          </CardContent>
+        </Card>
+      )}
     </div>
   );
 }
