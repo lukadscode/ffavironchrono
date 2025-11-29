@@ -1504,186 +1504,168 @@ export default function Results() {
         </Card>
       )}
 
-      {/* Pour le mode "par catégorie" avec courses indoor, regrouper par série */}
+      {/* Pour le mode "par catégorie" avec courses indoor, regrouper par catégorie (toutes séries confondues) */}
       {viewMode === "category" && isIndoorEvent && filteredRaces.length > 0 && (() => {
-        // Regrouper les courses indoor par série
-        const racesBySeries = filteredRaces.reduce((acc, race) => {
-          if (!race.isIndoor || !race.indoorResults || race.indoorResults.length === 0) {
-            return acc;
+        // Collecter tous les résultats de toutes les courses indoor (toutes séries confondues)
+        const allParticipants = filteredRaces
+          .filter(race => race.isIndoor && race.indoorResults && race.indoorResults.length > 0)
+          .flatMap(race => race.indoorResults || []);
+        
+        // Grouper par catégorie
+        const groupedByCategory = allParticipants.reduce((acc, participant) => {
+          const categoryLabel = participant.crew?.category?.label || "Sans catégorie";
+          if (!acc[categoryLabel]) {
+            acc[categoryLabel] = [];
           }
-          
-          const seriesNumber = extractSeriesNumber(race.name);
-          const seriesName = extractSeriesName(race.name);
-          const seriesKey = seriesNumber !== null ? `${seriesName} - Série ${seriesNumber}` : seriesName;
-          
-          if (!acc[seriesKey]) {
-            acc[seriesKey] = [];
-          }
-          acc[seriesKey].push(race);
+          acc[categoryLabel].push(participant);
           return acc;
-        }, {} as Record<string, typeof filteredRaces>);
+        }, {} as Record<string, IndoorParticipantResult[]>);
 
-        // Pour chaque série, regrouper les résultats par catégorie
-        return Object.entries(racesBySeries).map(([seriesKey, seriesRaces]) => {
-          // Collecter tous les résultats de toutes les courses de cette série
-          const allParticipants = seriesRaces.flatMap(race => race.indoorResults || []);
+        const sortedCategories = Object.keys(groupedByCategory).sort();
+
+        return sortedCategories.map((categoryLabel) => {
+          // Trier tous les résultats de cette catégorie par temps (classement global)
+          const categoryResults = [...groupedByCategory[categoryLabel]].sort((a, b) => {
+            // Trier par temps (time_ms), le plus rapide en premier
+            const timeA = a.time_ms || Infinity;
+            const timeB = b.time_ms || Infinity;
+            return timeA - timeB;
+          });
           
-          // Grouper par catégorie
-          const groupedByCategory = allParticipants.reduce((acc, participant) => {
-            const categoryLabel = participant.crew?.category?.label || "Sans catégorie";
-            if (!acc[categoryLabel]) {
-              acc[categoryLabel] = [];
-            }
-            acc[categoryLabel].push(participant);
-            return acc;
-          }, {} as Record<string, IndoorParticipantResult[]>);
-
-          const sortedCategories = Object.keys(groupedByCategory).sort();
-
           return (
-            <Card key={seriesKey}>
+            <Card key={categoryLabel}>
               <CardHeader className="bg-slate-50">
-                <CardTitle className="text-lg">{seriesKey}</CardTitle>
+                <div className="flex items-center gap-2">
+                  <CardTitle className="text-lg">{categoryLabel}</CardTitle>
+                  <span className="text-sm text-muted-foreground">
+                    ({categoryResults.length} participant{categoryResults.length > 1 ? 's' : ''})
+                  </span>
+                </div>
               </CardHeader>
               <CardContent className="pt-6">
-                <div className="space-y-6">
-                  {sortedCategories.map((categoryLabel) => {
-                    const categoryResults = [...groupedByCategory[categoryLabel]].sort((a, b) => a.place - b.place);
-                    return (
-                      <div key={categoryLabel} className="space-y-2">
-                        <div className="flex items-center gap-2 pb-2 border-b-2 border-primary">
-                          <h3 className="text-lg font-bold text-slate-900">
-                            {categoryLabel}
-                          </h3>
-                          <span className="text-sm text-muted-foreground">
-                            ({categoryResults.length} participant{categoryResults.length > 1 ? 's' : ''})
-                          </span>
-                        </div>
-                        <div className="overflow-x-auto -mx-4 sm:mx-0">
-                          <table className="w-full text-xs sm:text-sm">
-                            <thead>
-                              <tr className="border-b bg-slate-50">
-                                <th className="text-left py-2 px-3 font-semibold">Place</th>
-                                <th className="text-left py-2 px-3 font-semibold min-w-[140px]">Équipage</th>
-                                <th className="text-left py-2 px-3 font-semibold min-w-[200px]">Participants</th>
-                                <th className="text-left py-2 px-3 font-semibold">Temps</th>
-                                <th className="text-left py-2 px-3 font-semibold">Distance</th>
-                                <th className="text-left py-2 px-3 font-semibold">Allure</th>
-                                <th className="text-left py-2 px-3 font-semibold">SPM</th>
-                                <th className="text-left py-2 px-3 font-semibold">Calories</th>
-                                <th className="text-left py-2 px-3 font-semibold">Splits</th>
-                              </tr>
-                            </thead>
-                            <tbody>
-                              {categoryResults.map((participant, index) => {
-                                const categoryPosition = index + 1;
-                                return (
-                                  <tr
-                                    key={participant.id}
-                                    className="border-b hover:bg-slate-50"
-                                  >
-                                    <td className="py-3 px-3">
-                                      <span className="font-semibold">
-                                        {categoryPosition}
-                                      </span>
-                                    </td>
-                                    <td className="py-3 px-3">
-                                      {participant.crew ? (
-                                        <div>
-                                          <div className="font-semibold">{participant.crew.club_name}</div>
-                                          <div className="text-xs text-muted-foreground">
-                                            {participant.crew.club_code}
-                                          </div>
-                                        </div>
-                                      ) : (
-                                        <div className="text-muted-foreground italic text-sm">
-                                          Non identifié
-                                        </div>
-                                      )}
-                                    </td>
-                                    <td className="py-3 px-3">
-                                      {participant.crew?.crew_participants && participant.crew.crew_participants.length > 0 ? (
-                                        <div className="space-y-1">
-                                          {participant.crew.crew_participants
-                                            .sort((a, b) => (a.seat_position || 0) - (b.seat_position || 0))
-                                            .map((cp, idx) => {
-                                              const isCoxswain = cp.is_coxswain || false;
-                                              const firstName = cp.participant?.first_name || "";
-                                              const lastName = cp.participant?.last_name || "";
-                                              const displayName = firstName && lastName
-                                                ? `${firstName} ${lastName}`
-                                                : lastName || firstName || "N/A";
-                                              
-                                              return (
-                                                <div
-                                                  key={cp.id || idx}
-                                                  className={`text-sm ${isCoxswain ? "font-semibold" : ""}`}
-                                                >
-                                                  {displayName}
-                                                  {isCoxswain && (
-                                                    <span className="text-muted-foreground ml-1 text-xs">(B)</span>
-                                                  )}
-                                                </div>
-                                              );
-                                            })}
-                                        </div>
-                                      ) : (
-                                        <span className="text-muted-foreground text-sm">-</span>
-                                      )}
-                                    </td>
-                                    <td className="py-3 px-3 font-mono font-semibold">
-                                      {participant.time_display}
-                                    </td>
-                                    <td className="py-3 px-3">{participant.distance}m</td>
-                                    <td className="py-3 px-3 font-mono">{participant.avg_pace}</td>
-                                    <td className="py-3 px-3">
-                                      <div className="flex items-center gap-1">
-                                        <TrendingUp className="w-3 h-3 text-muted-foreground" />
-                                        {participant.spm}
-                                      </div>
-                                    </td>
-                                    <td className="py-3 px-3">{participant.calories}</td>
-                                    <td className="py-3 px-3">
-                                      {participant.splits_data && participant.splits_data.length > 0 ? (
-                                        <div>
-                                          <div className="flex flex-wrap gap-x-2 gap-y-0.5 text-xs font-mono mb-1">
-                                            {participant.splits_data.map((split: any, idx: number) => {
-                                              const splitTime = split.split_time 
-                                                ? formatSplitTime(split.split_time)
-                                                : (split.split_time_display || split.time_display || 
-                                                  (split.split_time_ms ? formatTime(split.split_time_ms) : 
-                                                  (split.time_ms ? formatTime(split.time_ms) : "-")));
-                                              const splitDist = split.split_distance || split.distance || "";
-                                              return (
-                                                <span key={idx} className="whitespace-nowrap">
-                                                  {splitDist ? `${splitDist}m: ` : ""}{splitTime}
-                                                </span>
-                                              );
-                                            })}
-                                          </div>
-                                          <Button
-                                            variant="ghost"
-                                            size="sm"
-                                            className="h-6 text-xs"
-                                            onClick={() => setSelectedParticipantForChart(participant)}
+                <div className="space-y-2">
+                  <div className="overflow-x-auto -mx-4 sm:mx-0">
+                    <table className="w-full text-xs sm:text-sm">
+                      <thead>
+                        <tr className="border-b bg-slate-50">
+                          <th className="text-left py-2 px-3 font-semibold">Place</th>
+                          <th className="text-left py-2 px-3 font-semibold min-w-[140px]">Équipage</th>
+                          <th className="text-left py-2 px-3 font-semibold min-w-[200px]">Participants</th>
+                          <th className="text-left py-2 px-3 font-semibold">Temps</th>
+                          <th className="text-left py-2 px-3 font-semibold">Distance</th>
+                          <th className="text-left py-2 px-3 font-semibold">Allure</th>
+                          <th className="text-left py-2 px-3 font-semibold">SPM</th>
+                          <th className="text-left py-2 px-3 font-semibold">Calories</th>
+                          <th className="text-left py-2 px-3 font-semibold">Splits</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {categoryResults.map((participant, index) => {
+                          const categoryPosition = index + 1;
+                          return (
+                            <tr
+                              key={participant.id}
+                              className="border-b hover:bg-slate-50"
+                            >
+                              <td className="py-3 px-3">
+                                <span className="font-semibold">
+                                  {categoryPosition}
+                                </span>
+                              </td>
+                              <td className="py-3 px-3">
+                                {participant.crew ? (
+                                  <div>
+                                    <div className="font-semibold">{participant.crew.club_name}</div>
+                                    <div className="text-xs text-muted-foreground">
+                                      {participant.crew.club_code}
+                                    </div>
+                                  </div>
+                                ) : (
+                                  <div className="text-muted-foreground italic text-sm">
+                                    Non identifié
+                                  </div>
+                                )}
+                              </td>
+                              <td className="py-3 px-3">
+                                {participant.crew?.crew_participants && participant.crew.crew_participants.length > 0 ? (
+                                  <div className="space-y-1">
+                                    {participant.crew.crew_participants
+                                      .sort((a, b) => (a.seat_position || 0) - (b.seat_position || 0))
+                                      .map((cp, idx) => {
+                                        const isCoxswain = cp.is_coxswain || false;
+                                        const firstName = cp.participant?.first_name || "";
+                                        const lastName = cp.participant?.last_name || "";
+                                        const displayName = firstName && lastName
+                                          ? `${firstName} ${lastName}`
+                                          : lastName || firstName || "N/A";
+                                        
+                                        return (
+                                          <div
+                                            key={cp.id || idx}
+                                            className={`text-sm ${isCoxswain ? "font-semibold" : ""}`}
                                           >
-                                            <BarChart3 className="w-3 h-3 mr-1" />
-                                            Graphique
-                                          </Button>
-                                        </div>
-                                      ) : (
-                                        <span className="text-muted-foreground text-xs">-</span>
-                                      )}
-                                    </td>
-                                  </tr>
-                                );
-                              })}
-                            </tbody>
-                          </table>
-                        </div>
-                      </div>
-                    );
-                  })}
+                                            {displayName}
+                                            {isCoxswain && (
+                                              <span className="text-muted-foreground ml-1 text-xs">(B)</span>
+                                            )}
+                                          </div>
+                                        );
+                                      })}
+                                  </div>
+                                ) : (
+                                  <span className="text-muted-foreground text-sm">-</span>
+                                )}
+                              </td>
+                              <td className="py-3 px-3 font-mono font-semibold">
+                                {participant.time_display}
+                              </td>
+                              <td className="py-3 px-3">{participant.distance}m</td>
+                              <td className="py-3 px-3 font-mono">{participant.avg_pace}</td>
+                              <td className="py-3 px-3">
+                                <div className="flex items-center gap-1">
+                                  <TrendingUp className="w-3 h-3 text-muted-foreground" />
+                                  {participant.spm}
+                                </div>
+                              </td>
+                              <td className="py-3 px-3">{participant.calories}</td>
+                              <td className="py-3 px-3">
+                                {participant.splits_data && participant.splits_data.length > 0 ? (
+                                  <div>
+                                    <div className="flex flex-wrap gap-x-2 gap-y-0.5 text-xs font-mono mb-1">
+                                      {participant.splits_data.map((split: any, idx: number) => {
+                                        const splitTime = split.split_time 
+                                          ? formatSplitTime(split.split_time)
+                                          : (split.split_time_display || split.time_display || 
+                                            (split.split_time_ms ? formatTime(split.split_time_ms) : 
+                                            (split.time_ms ? formatTime(split.time_ms) : "-")));
+                                        const splitDist = split.split_distance || split.distance || "";
+                                        return (
+                                          <span key={idx} className="whitespace-nowrap">
+                                            {splitDist ? `${splitDist}m: ` : ""}{splitTime}
+                                          </span>
+                                        );
+                                      })}
+                                    </div>
+                                    <Button
+                                      variant="ghost"
+                                      size="sm"
+                                      className="h-6 text-xs"
+                                      onClick={() => setSelectedParticipantForChart(participant)}
+                                    >
+                                      <BarChart3 className="w-3 h-3 mr-1" />
+                                      Graphique
+                                    </Button>
+                                  </div>
+                                ) : (
+                                  <span className="text-muted-foreground text-xs">-</span>
+                                )}
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
                 </div>
               </CardContent>
             </Card>
