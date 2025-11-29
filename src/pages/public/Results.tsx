@@ -1042,7 +1042,7 @@ export default function Results() {
                                     <td className="py-3 px-3">
                                       {participant.splits_data && participant.splits_data.length > 0 ? (
                                         <div>
-                                          <div className="flex flex-wrap gap-x-2 gap-y-0.5 text-xs font-mono mb-1">
+                                          <div className="flex flex-wrap gap-x-2 gap-y-0.5 text-xs font-mono mb-2">
                                             {participant.splits_data.map((split: any, idx: number) => {
                                               const splitTime = split.split_time 
                                                 ? formatSplitTime(split.split_time)
@@ -1058,12 +1058,12 @@ export default function Results() {
                                             })}
                                           </div>
                                           <Button
-                                            variant="ghost"
+                                            variant="outline"
                                             size="sm"
-                                            className="h-6 text-xs"
+                                            className="h-8 text-xs"
                                             onClick={() => setSelectedParticipantForChart(participant)}
                                           >
-                                            <BarChart3 className="w-3 h-3 mr-1" />
+                                            <BarChart3 className="w-4 h-4 mr-1.5" />
                                             Graphique
                                           </Button>
                                         </div>
@@ -1202,7 +1202,7 @@ export default function Results() {
                                     <td className="py-3 px-3">
                                       {participant.splits_data && participant.splits_data.length > 0 ? (
                                         <div>
-                                          <div className="flex flex-wrap gap-x-2 gap-y-0.5 text-xs font-mono mb-1">
+                                          <div className="flex flex-wrap gap-x-2 gap-y-0.5 text-xs font-mono mb-2">
                                             {participant.splits_data.map((split: any, idx: number) => {
                                               const splitTime = split.split_time 
                                                 ? formatSplitTime(split.split_time)
@@ -1218,12 +1218,12 @@ export default function Results() {
                                             })}
                                           </div>
                                           <Button
-                                            variant="ghost"
+                                            variant="outline"
                                             size="sm"
-                                            className="h-6 text-xs"
+                                            className="h-8 text-xs"
                                             onClick={() => setSelectedParticipantForChart(participant)}
                                           >
-                                            <BarChart3 className="w-3 h-3 mr-1" />
+                                            <BarChart3 className="w-4 h-4 mr-1.5" />
                                             Graphique
                                           </Button>
                                         </div>
@@ -1647,9 +1647,9 @@ export default function Results() {
                                       })}
                                     </div>
                                     <Button
-                                      variant="ghost"
+                                      variant="outline"
                                       size="sm"
-                                      className="h-6 text-xs"
+                                      className="h-7 text-xs mt-1"
                                       onClick={() => setSelectedParticipantForChart(participant)}
                                     >
                                       <BarChart3 className="w-3 h-3 mr-1" />
