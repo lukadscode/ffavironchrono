@@ -1629,36 +1629,39 @@ export default function Results() {
                               </td>
                               <td className="py-3 px-3">{participant.calories}</td>
                               <td className="py-3 px-3">
-                                {participant.splits_data && participant.splits_data.length > 0 ? (
-                                  <div>
-                                    <div className="flex flex-wrap gap-x-2 gap-y-0.5 text-xs font-mono mb-1">
-                                      {participant.splits_data.map((split: any, idx: number) => {
-                                        const splitTime = split.split_time 
-                                          ? formatSplitTime(split.split_time)
-                                          : (split.split_time_display || split.time_display || 
-                                            (split.split_time_ms ? formatTime(split.split_time_ms) : 
-                                            (split.time_ms ? formatTime(split.time_ms) : "-")));
-                                        const splitDist = split.split_distance || split.distance || "";
-                                        return (
-                                          <span key={idx} className="whitespace-nowrap">
-                                            {splitDist ? `${splitDist}m: ` : ""}{splitTime}
-                                          </span>
-                                        );
-                                      })}
+                                {(() => {
+                                  const hasSplits = participant.splits_data && Array.isArray(participant.splits_data) && participant.splits_data.length > 0;
+                                  return hasSplits ? (
+                                    <div className="space-y-2">
+                                      <div className="flex flex-wrap gap-x-2 gap-y-0.5 text-xs font-mono">
+                                        {participant.splits_data!.map((split: any, idx: number) => {
+                                          const splitTime = split.split_time 
+                                            ? formatSplitTime(split.split_time)
+                                            : (split.split_time_display || split.time_display || 
+                                              (split.split_time_ms ? formatTime(split.split_time_ms) : 
+                                              (split.time_ms ? formatTime(split.time_ms) : "-")));
+                                          const splitDist = split.split_distance || split.distance || "";
+                                          return (
+                                            <span key={idx} className="whitespace-nowrap">
+                                              {splitDist ? `${splitDist}m: ` : ""}{splitTime}
+                                            </span>
+                                          );
+                                        })}
+                                      </div>
+                                      <Button
+                                        variant="outline"
+                                        size="sm"
+                                        className="h-8 text-xs w-full sm:w-auto"
+                                        onClick={() => setSelectedParticipantForChart(participant)}
+                                      >
+                                        <BarChart3 className="w-4 h-4 mr-1.5" />
+                                        Graphique
+                                      </Button>
                                     </div>
-                                    <Button
-                                      variant="outline"
-                                      size="sm"
-                                      className="h-7 text-xs mt-1"
-                                      onClick={() => setSelectedParticipantForChart(participant)}
-                                    >
-                                      <BarChart3 className="w-3 h-3 mr-1" />
-                                      Graphique
-                                    </Button>
-                                  </div>
-                                ) : (
-                                  <span className="text-muted-foreground text-xs">-</span>
-                                )}
+                                  ) : (
+                                    <span className="text-muted-foreground text-xs">-</span>
+                                  );
+                                })()}
                               </td>
                             </tr>
                           );
