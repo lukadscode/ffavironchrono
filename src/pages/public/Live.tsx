@@ -43,6 +43,17 @@ type IndoorParticipantResult = {
       code: string;
       label: string;
     };
+    crew_participants?: Array<{
+      id?: string;
+      participant: {
+        id: string;
+        first_name: string;
+        last_name: string;
+        license_number?: string;
+      };
+      is_coxswain: boolean;
+      seat_position?: number;
+    }>;
   } | null;
 };
 
@@ -71,6 +82,44 @@ export default function Live() {
   const [loading, setLoading] = useState(true);
   const [isIndoorEvent, setIsIndoorEvent] = useState<boolean>(false);
   const timingPointsRef = useRef<TimingPoint[]>([]);
+
+  // Fonction helper pour enrichir les résultats indoor avec les participants
+  const enrichIndoorResults = async (
+    raceId: string,
+    participants: IndoorParticipantResult[]
+  ): Promise<IndoorParticipantResult[]> => {
+    try {
+      const raceCrewsRes = await publicApi.get(`/race-crews/${raceId}`);
+      const raceCrews = raceCrewsRes.data.data || [];
+      
+      // Créer un map crew_id -> crew avec participants
+      const crewMap = new Map();
+      raceCrews.forEach((rc: any) => {
+        if (rc.crew_id && rc.crew) {
+          crewMap.set(rc.crew_id, rc.crew);
+        }
+      });
+      
+      // Enrichir les participants avec les infos des équipages
+      return participants.map((p: IndoorParticipantResult): IndoorParticipantResult => {
+        if (p.crew_id && crewMap.has(p.crew_id)) {
+          const crew = crewMap.get(p.crew_id);
+          return {
+            ...p,
+            crew: p.crew ? {
+              ...p.crew,
+              crew_participants: crew.crew_participants || [],
+            } : null,
+          };
+        }
+        return p;
+      });
+    } catch (crewErr: any) {
+      // Si erreur lors de la récupération des équipages, retourner quand même les résultats
+      console.warn(`⚠️ Erreur récupération équipages pour course ${raceId}:`, crewErr);
+      return participants;
+    }
+  };
 
   useEffect(() => {
     if (!eventId) return;
@@ -241,6 +290,10 @@ export default function Live() {
             const indoorRes = await publicApi.get(`/indoor-results/race/${race_id}`);
             const indoorData = indoorRes.data.data;
             if (indoorData && indoorData.participants) {
+              const sortedParticipants = indoorData.participants.sort((a: any, b: any) => a.place - b.place);
+              // Enrichir avec les participants des équipages
+              const enrichedParticipants = await enrichIndoorResults(race_id, sortedParticipants);
+              
               // Mettre à jour les résultats dans l'état
               setRaces((prev) =>
                 prev.map((race) => {
@@ -248,7 +301,7 @@ export default function Live() {
                   return {
                     ...race,
                     isIndoor: true,
-                    indoorResults: indoorData.participants.sort((a: any, b: any) => a.place - b.place),
+                    indoorResults: enrichedParticipants,
                     status: race_status,
                   };
                 })
@@ -298,43 +351,72 @@ export default function Live() {
         if (eventId !== event_id) return;
         
         // Mettre à jour les résultats de la course en temps réel
-        setRaces((prev) =>
-          prev.map((race) => {
-            if (race.id !== race_id) return race;
+        setRaces((prev) => {
+          const race = prev.find((r) => r.id === race_id);
+          if (!race) return prev;
+          
+          // Si la course a déjà des résultats indoor, les mettre à jour
+          if (race.indoorResults) {
+            const existingIndex = race.indoorResults.findIndex(
+              (p) => p.id === participant.id
+            );
             
-            // Si la course a déjà des résultats indoor, les mettre à jour
-            if (race.indoorResults) {
-              const existingIndex = race.indoorResults.findIndex(
-                (p) => p.id === participant.id
-              );
-              
-              if (existingIndex >= 0) {
-                // Mettre à jour le participant existant
-                const updatedResults = [...race.indoorResults];
-                updatedResults[existingIndex] = participant;
-                return {
-                  ...race,
-                  indoorResults: updatedResults.sort((a, b) => a.place - b.place),
-                };
-              } else {
-                // Ajouter le nouveau participant
-                return {
-                  ...race,
-                  indoorResults: [...race.indoorResults, participant].sort(
-                    (a, b) => a.place - b.place
-                  ),
-                };
-              }
+            let updatedResults: IndoorParticipantResult[];
+            if (existingIndex >= 0) {
+              // Mettre à jour le participant existant
+              updatedResults = [...race.indoorResults];
+              updatedResults[existingIndex] = participant;
             } else {
-              // Créer une nouvelle structure avec le premier participant
+              // Ajouter le nouveau participant
+              updatedResults = [...race.indoorResults, participant];
+            }
+            
+            // Enrichir avec les participants des équipages (async, mais on met à jour l'état immédiatement)
+            enrichIndoorResults(race_id, updatedResults).then((enrichedResults) => {
+              setRaces((currentPrev) =>
+                currentPrev.map((r) => {
+                  if (r.id !== race_id) return r;
+                  return {
+                    ...r,
+                    indoorResults: enrichedResults.sort((a, b) => a.place - b.place),
+                  };
+                })
+              );
+            });
+            
+            // Retourner immédiatement avec les résultats non enrichis (sera mis à jour après)
+            return prev.map((r) => {
+              if (r.id !== race_id) return r;
               return {
-                ...race,
+                ...r,
+                indoorResults: updatedResults.sort((a, b) => a.place - b.place),
+              };
+            });
+          } else {
+            // Créer une nouvelle structure avec le premier participant
+            enrichIndoorResults(race_id, [participant]).then((enrichedResults) => {
+              setRaces((currentPrev) =>
+                currentPrev.map((r) => {
+                  if (r.id !== race_id) return r;
+                  return {
+                    ...r,
+                    isIndoor: true,
+                    indoorResults: enrichedResults,
+                  };
+                })
+              );
+            });
+            
+            return prev.map((r) => {
+              if (r.id !== race_id) return r;
+              return {
+                ...r,
                 isIndoor: true,
                 indoorResults: [participant],
               };
-            }
-          })
-        );
+            });
+          }
+        });
       }
     );
 
@@ -426,7 +508,40 @@ export default function Live() {
                 const indoorRes = await publicApi.get(`/indoor-results/race/${race.id}`);
                 const indoorData = indoorRes.data.data;
                 if (indoorData && indoorData.participants) {
-                  indoorResults = indoorData.participants.sort((a: IndoorParticipantResult, b: IndoorParticipantResult) => a.place - b.place);
+                  const participants = indoorData.participants.sort((a: IndoorParticipantResult, b: IndoorParticipantResult) => a.place - b.place);
+                  
+                  // Enrichir avec les participants des équipages
+                  try {
+                    const raceCrewsRes = await publicApi.get(`/race-crews/${race.id}`);
+                    const raceCrews = raceCrewsRes.data.data || [];
+                    
+                    // Créer un map crew_id -> crew avec participants
+                    const crewMap = new Map();
+                    raceCrews.forEach((rc: any) => {
+                      if (rc.crew_id && rc.crew) {
+                        crewMap.set(rc.crew_id, rc.crew);
+                      }
+                    });
+                    
+                    // Enrichir les participants avec les infos des équipages
+                    indoorResults = participants.map((p: IndoorParticipantResult) => {
+                      if (p.crew_id && crewMap.has(p.crew_id)) {
+                        const crew = crewMap.get(p.crew_id);
+                        return {
+                          ...p,
+                          crew: {
+                            ...p.crew,
+                            crew_participants: crew.crew_participants || [],
+                          },
+                        };
+                      }
+                      return p;
+                    });
+                  } catch (crewErr: any) {
+                    // Si erreur lors de la récupération des équipages, retourner quand même les résultats
+                    console.warn(`⚠️ Erreur récupération équipages pour course ${race.id}:`, crewErr);
+                    indoorResults = participants;
+                  }
                 }
               } catch (err: any) {
                 // 404 signifie qu'il n'y a pas encore de résultats, c'est normal
@@ -703,6 +818,7 @@ export default function Live() {
                       <tr className="border-b bg-slate-50">
                         <th className="text-left py-2 px-3 font-semibold">Place</th>
                         <th className="text-left py-2 px-3 font-semibold min-w-[140px]">Équipage</th>
+                        <th className="text-left py-2 px-3 font-semibold min-w-[200px]">Participants</th>
                         <th className="text-left py-2 px-3 font-semibold">Temps</th>
                         <th className="text-left py-2 px-3 font-semibold">Distance</th>
                         <th className="text-left py-2 px-3 font-semibold">Allure</th>
@@ -712,25 +828,15 @@ export default function Live() {
                     </thead>
                     <tbody>
                       {race.indoorResults.map((participant) => {
-                        const isPodium = participant.place <= 3;
                         return (
                           <tr
                             key={participant.id}
-                            className={`border-b hover:bg-slate-50 ${isPodium ? "bg-amber-50" : ""}`}
+                            className="border-b hover:bg-slate-50"
                           >
                             <td className="py-3 px-3">
-                              <div className="flex items-center gap-2">
-                                {isPodium && (
-                                  <span className="text-lg">
-                                    {participant.place === 1 && "🥇"}
-                                    {participant.place === 2 && "🥈"}
-                                    {participant.place === 3 && "🥉"}
-                                  </span>
-                                )}
-                                <span className={`font-bold ${isPodium ? "text-lg" : ""}`}>
-                                  {participant.place}
-                                </span>
-                              </div>
+                              <span className="font-semibold">
+                                {participant.place}
+                              </span>
                             </td>
                             <td className="py-3 px-3">
                               {participant.crew ? (
@@ -749,6 +855,36 @@ export default function Live() {
                                 <div className="text-muted-foreground italic text-sm">
                                   Non identifié
                                 </div>
+                              )}
+                            </td>
+                            <td className="py-3 px-3">
+                              {participant.crew?.crew_participants && participant.crew.crew_participants.length > 0 ? (
+                                <div className="space-y-1">
+                                  {participant.crew.crew_participants
+                                    .sort((a, b) => (a.seat_position || 0) - (b.seat_position || 0))
+                                    .map((cp, idx) => {
+                                      const isCoxswain = cp.is_coxswain || false;
+                                      const firstName = cp.participant?.first_name || "";
+                                      const lastName = cp.participant?.last_name || "";
+                                      const displayName = firstName && lastName
+                                        ? `${firstName} ${lastName}`
+                                        : lastName || firstName || "N/A";
+                                      
+                                      return (
+                                        <div
+                                          key={cp.id || idx}
+                                          className={`text-sm ${isCoxswain ? "font-semibold" : ""}`}
+                                        >
+                                          {displayName}
+                                          {isCoxswain && (
+                                            <span className="text-muted-foreground ml-1 text-xs">(B)</span>
+                                          )}
+                                        </div>
+                                      );
+                                    })}
+                                </div>
+                              ) : (
+                                <span className="text-muted-foreground text-sm">-</span>
                               )}
                             </td>
                             <td className="py-3 px-3 font-mono font-semibold">

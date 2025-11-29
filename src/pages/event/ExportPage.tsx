@@ -110,7 +110,28 @@ export default function ExportPage() {
     try {
       // Récupérer tous les équipages avec leurs participants
       const crewsRes = await api.get(`/crews/event/${eventId}`);
-      const crews: Crew[] = crewsRes.data.data || [];
+      let crews: Crew[] = crewsRes.data.data || [];
+      
+      // Enrichir chaque équipage avec ses participants si nécessaire
+      crews = await Promise.all(
+        crews.map(async (crew) => {
+          // Si l'équipage n'a pas de participants, les récupérer
+          if (!crew.crew_participants || crew.crew_participants.length === 0) {
+            try {
+              const crewDetailRes = await api.get(`/crews/${crew.id}`);
+              const crewDetail = crewDetailRes.data.data || crewDetailRes.data;
+              return {
+                ...crew,
+                crew_participants: crewDetail.crew_participants || crewDetail.CrewParticipants || [],
+              };
+            } catch (err) {
+              console.error(`Erreur récupération participants pour équipage ${crew.id}:`, err);
+              return crew;
+            }
+          }
+          return crew;
+        })
+      );
 
       // Récupérer les phases
       const phasesRes = await api.get(`/race-phases/${eventId}`);
@@ -137,6 +158,32 @@ export default function ExportPage() {
               console.error(`Erreur récupération race-crews pour ${race.id}:`, err);
               race.race_crews = [];
             }
+          }
+          
+          // Enrichir chaque équipage avec ses participants si nécessaire
+          if (race.race_crews && race.race_crews.length > 0) {
+            race.race_crews = await Promise.all(
+              race.race_crews.map(async (rc) => {
+                // Si l'équipage n'a pas de participants, les récupérer
+                if (!rc.crew.crew_participants || rc.crew.crew_participants.length === 0) {
+                  try {
+                    const crewDetailRes = await api.get(`/crews/${rc.crew_id}`);
+                    const crewDetail = crewDetailRes.data.data || crewDetailRes.data;
+                    return {
+                      ...rc,
+                      crew: {
+                        ...rc.crew,
+                        crew_participants: crewDetail.crew_participants || crewDetail.CrewParticipants || [],
+                      },
+                    };
+                  } catch (err) {
+                    console.error(`Erreur récupération participants pour équipage ${rc.crew_id}:`, err);
+                    return rc;
+                  }
+                }
+                return rc;
+              })
+            );
           }
 
           // Si la course n'a pas de distance mais a un distance_id, la récupérer
@@ -463,8 +510,52 @@ export default function ExportPage() {
     try {
       // Récupérer toutes les courses avec leurs équipages
       const racesRes = await api.get(`/races/event/${eventId}`);
-      const races: Race[] = (racesRes.data.data || []).sort((a: Race, b: Race) => 
+      let races: Race[] = (racesRes.data.data || []).sort((a: Race, b: Race) => 
         a.race_number - b.race_number
+      );
+      
+      // Enrichir chaque course avec ses équipages et leurs participants
+      races = await Promise.all(
+        races.map(async (race) => {
+          // Si la course n'a pas de race_crews, les récupérer
+          if (!race.race_crews || race.race_crews.length === 0) {
+            try {
+              const raceCrewsRes = await api.get(`/race-crews/${race.id}`);
+              race.race_crews = raceCrewsRes.data.data || [];
+            } catch (err) {
+              console.error(`Erreur récupération race-crews pour ${race.id}:`, err);
+              race.race_crews = [];
+            }
+          }
+          
+          // Enrichir chaque équipage avec ses participants si nécessaire
+          if (race.race_crews && race.race_crews.length > 0) {
+            race.race_crews = await Promise.all(
+              race.race_crews.map(async (rc) => {
+                // Si l'équipage n'a pas de participants, les récupérer
+                if (!rc.crew.crew_participants || rc.crew.crew_participants.length === 0) {
+                  try {
+                    const crewDetailRes = await api.get(`/crews/${rc.crew_id}`);
+                    const crewDetail = crewDetailRes.data.data || crewDetailRes.data;
+                    return {
+                      ...rc,
+                      crew: {
+                        ...rc.crew,
+                        crew_participants: crewDetail.crew_participants || crewDetail.CrewParticipants || [],
+                      },
+                    };
+                  } catch (err) {
+                    console.error(`Erreur récupération participants pour équipage ${rc.crew_id}:`, err);
+                    return rc;
+                  }
+                }
+                return rc;
+              })
+            );
+          }
+          
+          return race;
+        })
       );
 
       if (format === "pdf") {
