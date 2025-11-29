@@ -406,168 +406,232 @@ export default function ArbitresPage() {
                 Aucun résultat disponible pour cette course
               </p>
             ) : selectedRace.isIndoor && selectedRace.indoorResults && selectedRace.indoorResults.length > 0 ? (
-              // Affichage des résultats indoor
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr className="border-b bg-slate-50">
-                      <th className="text-left py-2 px-4 font-semibold">Place</th>
-                      <th className="text-left py-2 px-4 font-semibold">Équipage</th>
-                      <th className="text-left py-2 px-4 font-semibold">Temps</th>
-                      <th className="text-left py-2 px-4 font-semibold">Distance</th>
-                      <th className="text-left py-2 px-4 font-semibold">Allure</th>
-                      <th className="text-left py-2 px-4 font-semibold">SPM</th>
-                      <th className="text-left py-2 px-4 font-semibold">Calories</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {selectedRace.indoorResults.map((participant) => {
-                      const isPodium = participant.place <= 3;
-                      return (
-                        <tr
-                          key={participant.id}
-                          className={`border-b hover:bg-slate-50 ${
-                            isPodium ? "bg-amber-50" : ""
-                          }`}
-                        >
-                          <td className="py-3 px-4">
-                            <div className="flex items-center gap-2">
-                              {isPodium && (
-                                <Trophy
-                                  className={`w-4 h-4 ${
-                                    participant.place === 1
-                                      ? "text-amber-500"
-                                      : participant.place === 2
-                                      ? "text-gray-400"
-                                      : "text-amber-700"
-                                  }`}
-                                />
-                              )}
-                              <span className={`font-bold ${isPodium ? "text-lg" : ""}`}>
-                                {participant.place === 1 && "🥇"}
-                                {participant.place === 2 && "🥈"}
-                                {participant.place === 3 && "🥉"}
-                                <span className={participant.place <= 3 ? "ml-1" : ""}>
-                                  {participant.place}
-                                </span>
-                              </span>
-                            </div>
-                          </td>
-                          <td className="py-3 px-4">
-                            {participant.crew ? (
-                              <div>
-                                <div className="font-semibold">{participant.crew.club_name}</div>
-                                <div className="text-xs text-muted-foreground">
-                                  {participant.crew.club_code}
-                                  {participant.crew.category && (
-                                    <span className="ml-2 px-2 py-0.5 bg-blue-100 text-blue-700 rounded text-xs">
-                                      {participant.crew.category.label}
-                                    </span>
-                                  )}
-                                </div>
-                              </div>
-                            ) : (
-                              <div className="text-muted-foreground italic text-sm">
-                                Non identifié
-                              </div>
-                            )}
-                          </td>
-                          <td className="py-3 px-4 font-mono font-semibold">
-                            {participant.time_display}
-                          </td>
-                          <td className="py-3 px-4">{participant.distance}m</td>
-                          <td className="py-3 px-4 font-mono">{participant.avg_pace}</td>
-                          <td className="py-3 px-4">
-                            <div className="flex items-center gap-1">
-                              <TrendingUp className="w-3 h-3 text-muted-foreground" />
-                              {participant.spm}
-                            </div>
-                          </td>
-                          <td className="py-3 px-4">{participant.calories}</td>
-                        </tr>
+              // Affichage des résultats indoor groupés par catégorie
+              (() => {
+                // Grouper les résultats par catégorie
+                const groupedByCategory = selectedRace.indoorResults.reduce((acc, participant) => {
+                  const categoryLabel = participant.crew?.category?.label || "Sans catégorie";
+                  if (!acc[categoryLabel]) {
+                    acc[categoryLabel] = [];
+                  }
+                  acc[categoryLabel].push(participant);
+                  return acc;
+                }, {} as Record<string, IndoorParticipantResult[]>);
+
+                // Trier les catégories par ordre alphabétique
+                const sortedCategories = Object.keys(groupedByCategory).sort();
+
+                return (
+                  <div className="space-y-6">
+                    {sortedCategories.map((categoryLabel) => {
+                      // Trier les résultats de la catégorie par temps (place)
+                      const categoryResults = [...groupedByCategory[categoryLabel]].sort((a, b) => 
+                        a.place - b.place
                       );
-                    })}
-                  </tbody>
-                </table>
-              </div>
-            ) : (
-              // Affichage des résultats normaux (timing)
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr className="border-b">
-                      <th className="text-left py-2 px-4 font-semibold">Classement</th>
-                      <th className="text-left py-2 px-4 font-semibold">Couloir</th>
-                      <th className="text-left py-2 px-4 font-semibold">Club</th>
-                      <th className="text-left py-2 px-4 font-semibold">Catégorie</th>
-                      <th className="text-right py-2 px-4 font-semibold">Temps</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {(() => {
-                      const sortedResults = [...selectedRace.results];
-                      const firstPlaceTime = sortedResults.length > 0 && sortedResults[0].relative_time_ms !== null
-                        ? sortedResults[0].relative_time_ms
+                      const firstPlaceTime = categoryResults.length > 0 && categoryResults[0].time_ms !== null
+                        ? categoryResults[0].time_ms
                         : null;
 
-                      return sortedResults.map((result, index) => {
-                        const position = index + 1;
-                        const timeDifference = firstPlaceTime !== null && result.relative_time_ms !== null
-                          ? result.relative_time_ms - firstPlaceTime
-                          : null;
+                      return (
+                        <div key={categoryLabel} className="space-y-2">
+                          <div className="flex items-center gap-2 pb-2 border-b-2 border-primary">
+                            <h3 className="text-lg font-bold text-slate-900">
+                              {categoryLabel}
+                            </h3>
+                            <span className="text-sm text-muted-foreground">
+                              ({categoryResults.length} participant{categoryResults.length > 1 ? 's' : ''})
+                            </span>
+                          </div>
+                          <div className="overflow-x-auto">
+                            <table className="w-full text-sm">
+                              <thead>
+                                <tr className="border-b bg-slate-50">
+                                  <th className="text-left py-2 px-4 font-semibold">Place</th>
+                                  <th className="text-left py-2 px-4 font-semibold">Équipage</th>
+                                  <th className="text-left py-2 px-4 font-semibold">Temps</th>
+                                  <th className="text-left py-2 px-4 font-semibold">Distance</th>
+                                  <th className="text-left py-2 px-4 font-semibold">Allure</th>
+                                  <th className="text-left py-2 px-4 font-semibold">SPM</th>
+                                  <th className="text-left py-2 px-4 font-semibold">Calories</th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {categoryResults.map((participant, index) => {
+                                  const isPodium = participant.place <= 3;
+                                  const categoryPosition = index + 1;
+                                  return (
+                                    <tr
+                                      key={participant.id}
+                                      className={`border-b hover:bg-slate-50 ${
+                                        isPodium ? "bg-amber-50" : ""
+                                      }`}
+                                    >
+                                      <td className="py-3 px-4">
+                                        <div className="flex items-center gap-2">
+                                          {isPodium && (
+                                            <Trophy
+                                              className={`w-4 h-4 ${
+                                                participant.place === 1
+                                                  ? "text-amber-500"
+                                                  : participant.place === 2
+                                                  ? "text-gray-400"
+                                                  : "text-amber-700"
+                                              }`}
+                                            />
+                                          )}
+                                          <span className={`font-bold ${isPodium ? "text-lg" : ""}`}>
+                                            {categoryPosition === 1 && "🥇"}
+                                            {categoryPosition === 2 && "🥈"}
+                                            {categoryPosition === 3 && "🥉"}
+                                            <span className={categoryPosition <= 3 ? "ml-1" : ""}>
+                                              {categoryPosition}
+                                            </span>
+                                          </span>
+                                        </div>
+                                      </td>
+                                      <td className="py-3 px-4">
+                                        {participant.crew ? (
+                                          <div>
+                                            <div className="font-semibold">{participant.crew.club_name}</div>
+                                            <div className="text-xs text-muted-foreground">
+                                              {participant.crew.club_code}
+                                            </div>
+                                          </div>
+                                        ) : (
+                                          <div className="text-muted-foreground italic text-sm">
+                                            Non identifié
+                                          </div>
+                                        )}
+                                      </td>
+                                      <td className="py-3 px-4 font-mono font-semibold">
+                                        {participant.time_display}
+                                      </td>
+                                      <td className="py-3 px-4">{participant.distance}m</td>
+                                      <td className="py-3 px-4 font-mono">{participant.avg_pace}</td>
+                                      <td className="py-3 px-4">
+                                        <div className="flex items-center gap-1">
+                                          <TrendingUp className="w-3 h-3 text-muted-foreground" />
+                                          {participant.spm}
+                                        </div>
+                                      </td>
+                                      <td className="py-3 px-4">{participant.calories}</td>
+                                    </tr>
+                                  );
+                                })}
+                              </tbody>
+                            </table>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                );
+              })()
+            ) : (
+              // Affichage des résultats normaux (timing) groupés par catégorie
+              (() => {
+                // Grouper les résultats par catégorie
+                const groupedByCategory = selectedRace.results.reduce((acc, result) => {
+                  const categoryLabel = result.category?.label || "Sans catégorie";
+                  if (!acc[categoryLabel]) {
+                    acc[categoryLabel] = [];
+                  }
+                  acc[categoryLabel].push(result);
+                  return acc;
+                }, {} as Record<string, TimingResult[]>);
 
-                        return (
-                          <tr
-                            key={result.crew_id}
-                            className={`border-b hover:bg-slate-50 ${
-                              position === 1
-                                ? "bg-yellow-50"
-                                : position === 2
-                                  ? "bg-gray-50"
-                                  : position === 3
-                                    ? "bg-orange-50"
-                                    : ""
-                            }`}
-                          >
-                            <td className="py-3 px-4 font-bold text-lg">
-                              {position === 1 && "🥇"}
-                              {position === 2 && "🥈"}
-                              {position === 3 && "🥉"}
-                              <span className={position <= 3 ? "ml-1" : ""}>
-                                {position}
-                              </span>
-                            </td>
-                            <td className="py-3 px-4">{result.lane}</td>
-                            <td className="py-3 px-4">
-                              <div className="font-semibold">{result.club_name}</div>
-                              <div className="text-xs text-muted-foreground mt-0.5">{result.club_code}</div>
-                            </td>
-                            <td className="py-3 px-4">
-                              {result.category?.label ? (
-                                <span className="px-2 py-1 bg-blue-100 text-blue-700 rounded text-xs font-medium">
-                                  {result.category.label}
-                                </span>
-                              ) : (
-                                <span className="text-muted-foreground text-sm">-</span>
-                              )}
-                            </td>
-                            <td className="py-3 px-4 text-right">
-                              <div className="font-mono font-semibold">
-                                {formatTime(result.relative_time_ms)}
-                              </div>
-                              {timeDifference !== null && timeDifference !== 0 && (
-                                <div className="text-xs text-muted-foreground mt-1 font-mono">
-                                  {formatTimeDifference(timeDifference)}
-                                </div>
-                              )}
-                            </td>
-                          </tr>
-                        );
+                // Trier les catégories par ordre alphabétique
+                const sortedCategories = Object.keys(groupedByCategory).sort();
+
+                return (
+                  <div className="space-y-6">
+                    {sortedCategories.map((categoryLabel) => {
+                      const categoryResults = groupedByCategory[categoryLabel];
+                      // Trier les résultats de la catégorie par temps
+                      const sortedCategoryResults = [...categoryResults].sort((a, b) => {
+                        if (a.relative_time_ms === null) return 1;
+                        if (b.relative_time_ms === null) return -1;
+                        return a.relative_time_ms - b.relative_time_ms;
                       });
-                    })()}
-                  </tbody>
-                </table>
-              </div>
+                      const firstPlaceTime = sortedCategoryResults.length > 0 && sortedCategoryResults[0].relative_time_ms !== null
+                        ? sortedCategoryResults[0].relative_time_ms
+                        : null;
+
+                      return (
+                        <div key={categoryLabel} className="space-y-2">
+                          <div className="flex items-center gap-2 pb-2 border-b-2 border-primary">
+                            <h3 className="text-lg font-bold text-slate-900">
+                              {categoryLabel}
+                            </h3>
+                            <span className="text-sm text-muted-foreground">
+                              ({sortedCategoryResults.length} participant{sortedCategoryResults.length > 1 ? 's' : ''})
+                            </span>
+                          </div>
+                          <div className="overflow-x-auto">
+                            <table className="w-full text-sm">
+                              <thead>
+                                <tr className="border-b">
+                                  <th className="text-left py-2 px-4 font-semibold">Classement</th>
+                                  <th className="text-left py-2 px-4 font-semibold">Couloir</th>
+                                  <th className="text-left py-2 px-4 font-semibold">Club</th>
+                                  <th className="text-right py-2 px-4 font-semibold">Temps</th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {sortedCategoryResults.map((result, index) => {
+                                  const categoryPosition = index + 1;
+                                  const timeDifference = firstPlaceTime !== null && result.relative_time_ms !== null
+                                    ? result.relative_time_ms - firstPlaceTime
+                                    : null;
+
+                                  return (
+                                    <tr
+                                      key={result.crew_id}
+                                      className={`border-b hover:bg-slate-50 ${
+                                        categoryPosition === 1
+                                          ? "bg-yellow-50"
+                                          : categoryPosition === 2
+                                            ? "bg-gray-50"
+                                            : categoryPosition === 3
+                                              ? "bg-orange-50"
+                                              : ""
+                                      }`}
+                                    >
+                                      <td className="py-3 px-4 font-bold text-lg">
+                                        {categoryPosition === 1 && "🥇"}
+                                        {categoryPosition === 2 && "🥈"}
+                                        {categoryPosition === 3 && "🥉"}
+                                        <span className={categoryPosition <= 3 ? "ml-1" : ""}>
+                                          {categoryPosition}
+                                        </span>
+                                      </td>
+                                      <td className="py-3 px-4">{result.lane}</td>
+                                      <td className="py-3 px-4">
+                                        <div className="font-semibold">{result.club_name}</div>
+                                        <div className="text-xs text-muted-foreground mt-0.5">{result.club_code}</div>
+                                      </td>
+                                      <td className="py-3 px-4 text-right">
+                                        <div className="font-mono font-semibold">
+                                          {formatTime(result.relative_time_ms)}
+                                        </div>
+                                        {timeDifference !== null && timeDifference !== 0 && (
+                                          <div className="text-xs text-muted-foreground mt-1 font-mono">
+                                            {formatTimeDifference(timeDifference)}
+                                          </div>
+                                        )}
+                                      </td>
+                                    </tr>
+                                  );
+                                })}
+                              </tbody>
+                            </table>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                );
+              })()
             )}
           </CardContent>
         </Card>
