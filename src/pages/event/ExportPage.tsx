@@ -108,28 +108,35 @@ export default function ExportPage() {
 
     setExportingGlobal(true);
     try {
+      // Vérifier le type d'événement (indoor ou normal)
+      let isIndoorEvent = false;
+      try {
+        const eventRes = await api.get(`/events/${eventId}`);
+        const eventData = eventRes.data.data || eventRes.data;
+        const raceType = eventData.race_type?.toLowerCase() || "";
+        isIndoorEvent = raceType.includes("indoor");
+      } catch (err) {
+        console.error("Erreur vérification type événement", err);
+      }
+
       // Récupérer tous les équipages avec leurs participants
       const crewsRes = await api.get(`/crews/event/${eventId}`);
       let crews: Crew[] = crewsRes.data.data || [];
       
-      // Enrichir chaque équipage avec ses participants si nécessaire
+      // TOUJOURS enrichir chaque équipage avec ses participants complets
       crews = await Promise.all(
         crews.map(async (crew) => {
-          // Si l'équipage n'a pas de participants, les récupérer
-          if (!crew.crew_participants || crew.crew_participants.length === 0) {
-            try {
-              const crewDetailRes = await api.get(`/crews/${crew.id}`);
-              const crewDetail = crewDetailRes.data.data || crewDetailRes.data;
-              return {
-                ...crew,
-                crew_participants: crewDetail.crew_participants || crewDetail.CrewParticipants || [],
-              };
-            } catch (err) {
-              console.error(`Erreur récupération participants pour équipage ${crew.id}:`, err);
-              return crew;
-            }
+          try {
+            const crewDetailRes = await api.get(`/crews/${crew.id}`);
+            const crewDetail = crewDetailRes.data.data || crewDetailRes.data;
+            return {
+              ...crew,
+              crew_participants: crewDetail.crew_participants || crewDetail.CrewParticipants || crew.crew_participants || [],
+            };
+          } catch (err) {
+            console.error(`Erreur récupération participants pour équipage ${crew.id}:`, err);
+            return crew;
           }
-          return crew;
         })
       );
 
@@ -203,94 +210,148 @@ export default function ExportPage() {
         })
       );
 
-      // Créer un map des résultats par équipage avec timings
+      // Créer un map des résultats par équipage (timings pour courses normales, indoor pour courses indoor)
       const crewResults = new Map<string, any[]>();
       
-      // Pour chaque course, récupérer les timings et résultats
+      // Pour chaque course, récupérer les résultats (timings ou indoor)
       for (const race of races) {
         try {
-          // Récupérer les timings de la course
-          const timingsRes = await api.get(`/timings/race/${race.id}`).catch(() => ({ data: { data: [] } }));
-          const allTimings = timingsRes.data.data || [];
-
-          // Récupérer les timing points
-          const timingPointsRes = await api.get(`/timing-points/race/${race.id}`).catch(() => ({ data: { data: [] } }));
-          const timingPoints = timingPointsRes.data.data || [];
-          const lastTimingPoint = timingPoints.length > 0 
-            ? timingPoints.reduce((last: any, current: any) => 
-                (current.order_index > last.order_index ? current : last), timingPoints[0])
-            : null;
-
-          // Récupérer les assignments
-          const assignmentsRes = await api.get(`/timing-assignments/race/${race.id}`).catch(() => ({ data: { data: [] } }));
-          const assignments = assignmentsRes.data.data || [];
-          const timingToCrew = new Map<string, string>();
-          assignments.forEach((a: any) => {
-            if (a.timing_id && a.crew_id) {
-              timingToCrew.set(a.timing_id, a.crew_id);
-            }
-          });
-
-          // Grouper les timings par crew_id
-          const timingsByCrew = new Map<string, any[]>();
-          allTimings.forEach((timing: any) => {
-            const crewId = timing.crew_id || timingToCrew.get(timing.id);
-            if (crewId && timing.relative_time_ms !== null) {
-              if (!timingsByCrew.has(crewId)) {
-                timingsByCrew.set(crewId, []);
+          // Pour les événements indoor, récupérer les résultats indoor
+          if (isIndoorEvent) {
+            try {
+              const indoorRes = await api.get(`/indoor-results/race/${race.id}`).catch(() => ({ data: { data: null } }));
+              const indoorData = indoorRes.data.data;
+              
+              if (indoorData && indoorData.participants && indoorData.participants.length > 0) {
+                // Pour chaque participant indoor, créer un résultat
+                indoorData.participants.forEach((participant: any) => {
+                  if (participant.crew_id) {
+                    if (!crewResults.has(participant.crew_id)) {
+                      crewResults.set(participant.crew_id, []);
+                    }
+                    
+                    crewResults.get(participant.crew_id)?.push({
+                      race_id: race.id,
+                      race_name: race.name,
+                      race_number: race.race_number,
+                      lane: race.race_crews?.find((rc: any) => rc.crew_id === participant.crew_id)?.lane || "",
+                      start_time: race.start_time,
+                      status: race.status,
+                      phase: race.race_phase?.name || "",
+                      phase_id: race.race_phase?.id || "",
+                      distance: race.distance?.meters || race.distance?.label || "",
+                      distance_label: race.distance?.label || "",
+                      is_relay: race.distance?.is_relay || false,
+                      is_indoor: true,
+                      // Résultats indoor
+                      place: participant.place || "",
+                      time_display: participant.time_display || "",
+                      time_ms: participant.time_ms || null,
+                      distance_indoor: participant.distance || "",
+                      avg_pace: participant.avg_pace || "",
+                      spm: participant.spm || "",
+                      calories: participant.calories || "",
+                      // Pas de temps final au format timing pour indoor
+                      final_time_ms: participant.time_ms || null,
+                      final_time: participant.time_display || "",
+                      position: participant.place || null,
+                      total_crews: indoorData.participants.length,
+                    });
+                  }
+                });
               }
-              timingsByCrew.get(crewId)!.push(timing);
+            } catch (indoorErr: any) {
+              // 404 signifie qu'il n'y a pas encore de résultats indoor, c'est normal
+              if (indoorErr?.response?.status !== 404) {
+                console.error(`Erreur récupération résultats indoor pour course ${race.id}:`, indoorErr);
+              }
             }
-          });
+          } else {
+            // Pour les courses normales, récupérer les timings
+            const timingsRes = await api.get(`/timings/race/${race.id}`).catch(() => ({ data: { data: [] } }));
+            const allTimings = timingsRes.data.data || [];
 
-          // Pour chaque équipage dans la course
-          race.race_crews?.forEach((rc) => {
-            if (!crewResults.has(rc.crew_id)) {
-              crewResults.set(rc.crew_id, []);
-            }
-
-            // Trouver le timing final
-            const crewTimings = timingsByCrew.get(rc.crew_id) || [];
-            const finishTiming = lastTimingPoint 
-              ? crewTimings.find((t: any) => t.timing_point_id === lastTimingPoint.id)
+            // Récupérer les timing points
+            const timingPointsRes = await api.get(`/timing-points/race/${race.id}`).catch(() => ({ data: { data: [] } }));
+            const timingPoints = timingPointsRes.data.data || [];
+            const lastTimingPoint = timingPoints.length > 0 
+              ? timingPoints.reduce((last: any, current: any) => 
+                  (current.order_index > last.order_index ? current : last), timingPoints[0])
               : null;
 
-            // Calculer le classement (trier tous les équipages de la course par temps)
-            const allCrewTimings = Array.from(timingsByCrew.entries())
-              .map(([cid, timings]) => {
-                const finish = lastTimingPoint 
-                  ? timings.find((t: any) => t.timing_point_id === lastTimingPoint.id)
-                  : null;
-                return { crew_id: cid, time: finish?.relative_time_ms || null };
-              })
-              .filter((r) => r.time !== null)
-              .sort((a, b) => (a.time || 0) - (b.time || 0));
-
-            const position = finishTiming?.relative_time_ms !== null && finishTiming?.relative_time_ms !== undefined
-              ? allCrewTimings.findIndex((r) => r.crew_id === rc.crew_id) + 1
-              : null;
-
-            crewResults.get(rc.crew_id)?.push({
-              race_id: race.id,
-              race_name: race.name,
-              race_number: race.race_number,
-              lane: rc.lane,
-              start_time: race.start_time,
-              status: race.status,
-              phase: race.race_phase?.name || "",
-              phase_id: race.race_phase?.id || "",
-              distance: race.distance?.meters || race.distance?.label || "",
-              distance_label: race.distance?.label || "",
-              is_relay: race.distance?.is_relay || false,
-              final_time_ms: finishTiming?.relative_time_ms || null,
-              final_time: finishTiming?.relative_time_ms ? formatTime(finishTiming.relative_time_ms) : "",
-              position: position,
-              total_crews: race.race_crews?.length || 0,
+            // Récupérer les assignments
+            const assignmentsRes = await api.get(`/timing-assignments/race/${race.id}`).catch(() => ({ data: { data: [] } }));
+            const assignments = assignmentsRes.data.data || [];
+            const timingToCrew = new Map<string, string>();
+            assignments.forEach((a: any) => {
+              if (a.timing_id && a.crew_id) {
+                timingToCrew.set(a.timing_id, a.crew_id);
+              }
             });
-          });
+
+            // Grouper les timings par crew_id
+            const timingsByCrew = new Map<string, any[]>();
+            allTimings.forEach((timing: any) => {
+              const crewId = timing.crew_id || timingToCrew.get(timing.id);
+              if (crewId && timing.relative_time_ms !== null) {
+                if (!timingsByCrew.has(crewId)) {
+                  timingsByCrew.set(crewId, []);
+                }
+                timingsByCrew.get(crewId)!.push(timing);
+              }
+            });
+
+            // Pour chaque équipage dans la course
+            race.race_crews?.forEach((rc) => {
+              if (!crewResults.has(rc.crew_id)) {
+                crewResults.set(rc.crew_id, []);
+              }
+
+              // Trouver le timing final
+              const crewTimings = timingsByCrew.get(rc.crew_id) || [];
+              const finishTiming = lastTimingPoint 
+                ? crewTimings.find((t: any) => t.timing_point_id === lastTimingPoint.id)
+                : null;
+
+              // Calculer le classement (trier tous les équipages de la course par temps)
+              const allCrewTimings = Array.from(timingsByCrew.entries())
+                .map(([cid, timings]) => {
+                  const finish = lastTimingPoint 
+                    ? timings.find((t: any) => t.timing_point_id === lastTimingPoint.id)
+                    : null;
+                  return { crew_id: cid, time: finish?.relative_time_ms || null };
+                })
+                .filter((r) => r.time !== null)
+                .sort((a, b) => (a.time || 0) - (b.time || 0));
+
+              const position = finishTiming?.relative_time_ms !== null && finishTiming?.relative_time_ms !== undefined
+                ? allCrewTimings.findIndex((r) => r.crew_id === rc.crew_id) + 1
+                : null;
+
+              crewResults.get(rc.crew_id)?.push({
+                race_id: race.id,
+                race_name: race.name,
+                race_number: race.race_number,
+                lane: rc.lane,
+                start_time: race.start_time,
+                status: race.status,
+                phase: race.race_phase?.name || "",
+                phase_id: race.race_phase?.id || "",
+                distance: race.distance?.meters || race.distance?.label || "",
+                distance_label: race.distance?.label || "",
+                is_relay: race.distance?.is_relay || false,
+                is_indoor: false,
+                // Résultats timing
+                final_time_ms: finishTiming?.relative_time_ms || null,
+                final_time: finishTiming?.relative_time_ms ? formatTime(finishTiming.relative_time_ms) : "",
+                position: position,
+                total_crews: race.race_crews?.length || 0,
+              });
+            });
+          }
         } catch (err) {
           console.error(`Erreur récupération résultats pour course ${race.id}:`, err);
-          // Ajouter quand même les infos de base sans timings
+          // Ajouter quand même les infos de base sans résultats
           race.race_crews?.forEach((rc) => {
             if (!crewResults.has(rc.crew_id)) {
               crewResults.set(rc.crew_id, []);
@@ -307,6 +368,7 @@ export default function ExportPage() {
               distance: race.distance?.meters || race.distance?.label || "",
               distance_label: race.distance?.label || "",
               is_relay: race.distance?.is_relay || false,
+              is_indoor: isIndoorEvent,
               final_time_ms: null,
               final_time: "",
               position: null,
@@ -358,10 +420,17 @@ export default function ExportPage() {
                 "Couloir": result.lane,
                 "Heure Départ": dayjs(result.start_time).format("DD/MM/YYYY HH:mm:ss"),
                 "Statut Course": result.status,
+                "Type Course": result.is_indoor ? "Indoor" : "Normal",
                 "Temps Final (ms)": result.final_time_ms || "",
                 "Temps Final": result.final_time,
                 "Classement": result.position || "",
                 "Total Équipages": result.total_crews,
+                // Colonnes spécifiques indoor
+                "Place (Indoor)": result.is_indoor ? (result.place || "") : "",
+                "Distance (Indoor)": result.is_indoor ? (result.distance_indoor || "") : "",
+                "Allure (Indoor)": result.is_indoor ? (result.avg_pace || "") : "",
+                "SPM (Indoor)": result.is_indoor ? (result.spm || "") : "",
+                "Calories (Indoor)": result.is_indoor ? (result.calories || "") : "",
               });
             });
           } else {
@@ -391,10 +460,17 @@ export default function ExportPage() {
               "Couloir": "",
               "Heure Départ": "",
               "Statut Course": "",
+              "Type Course": "",
               "Temps Final (ms)": "",
               "Temps Final": "",
               "Classement": "",
               "Total Équipages": "",
+              // Colonnes spécifiques indoor
+              "Place (Indoor)": "",
+              "Distance (Indoor)": "",
+              "Allure (Indoor)": "",
+              "SPM (Indoor)": "",
+              "Calories (Indoor)": "",
             });
           }
         } else {
@@ -433,10 +509,17 @@ export default function ExportPage() {
                   "Couloir": isFirstResult ? result.lane : "",
                   "Heure Départ": isFirstResult ? dayjs(result.start_time).format("DD/MM/YYYY HH:mm:ss") : "",
                   "Statut Course": isFirstResult ? result.status : "",
+                  "Type Course": isFirstResult ? (result.is_indoor ? "Indoor" : "Normal") : "",
                   "Temps Final (ms)": isFirstResult ? (result.final_time_ms || "") : "",
                   "Temps Final": isFirstResult ? result.final_time : "",
                   "Classement": isFirstResult ? (result.position || "") : "",
                   "Total Équipages": isFirstResult ? result.total_crews : "",
+                  // Colonnes spécifiques indoor
+                  "Place (Indoor)": isFirstResult && result.is_indoor ? (result.place || "") : "",
+                  "Distance (Indoor)": isFirstResult && result.is_indoor ? (result.distance_indoor || "") : "",
+                  "Allure (Indoor)": isFirstResult && result.is_indoor ? (result.avg_pace || "") : "",
+                  "SPM (Indoor)": isFirstResult && result.is_indoor ? (result.spm || "") : "",
+                  "Calories (Indoor)": isFirstResult && result.is_indoor ? (result.calories || "") : "",
                 });
               });
             } else {
