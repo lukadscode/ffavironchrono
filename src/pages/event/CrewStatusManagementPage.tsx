@@ -121,8 +121,37 @@ export default function CrewStatusManagementPage() {
     try {
       const res = await api.get(`/crews/event/${eventId}`);
       const crewsData = res.data.data || [];
+      
+      // Enrichir chaque crew avec ses participants
+      const crewsWithParticipants = await Promise.all(
+        crewsData.map(async (crew: any) => {
+          try {
+            // Récupérer les détails complets du crew (incluant les participants)
+            const crewDetailRes = await api.get(`/crews/${crew.id}`);
+            const crewDetail = crewDetailRes.data.data || crewDetailRes.data;
+            
+            // Retourner le crew avec ses participants
+            return {
+              ...crew,
+              crew_participants: crewDetail.crew_participants || 
+                               crewDetail.CrewParticipants || 
+                               crewDetail.crewParticipants || 
+                               crew.crew_participants || 
+                               [],
+            };
+          } catch (err) {
+            console.error(`Erreur chargement participants pour crew ${crew.id}:`, err);
+            // Si erreur, retourner le crew sans participants
+            return {
+              ...crew,
+              crew_participants: crew.crew_participants || [],
+            };
+          }
+        })
+      );
+      
       // Trier par statut (registered en premier) puis par club
-      const sorted = crewsData.sort((a: Crew, b: Crew) => {
+      const sorted = crewsWithParticipants.sort((a: Crew, b: Crew) => {
         if (a.status === CrewStatus.REGISTERED && b.status !== CrewStatus.REGISTERED) return -1;
         if (a.status !== CrewStatus.REGISTERED && b.status === CrewStatus.REGISTERED) return 1;
         return (a.club_name || "").localeCompare(b.club_name || "");
@@ -144,14 +173,25 @@ export default function CrewStatusManagementPage() {
     if (!eventId) return;
     try {
       const res = await api.get(`/participants/event/${eventId}`);
-      const participantsData = res.data.data || res.data || [];
+      // Vérifier différentes structures de réponse
+      let participantsData = [];
+      if (Array.isArray(res.data)) {
+        participantsData = res.data;
+      } else if (res.data?.data) {
+        participantsData = Array.isArray(res.data.data) ? res.data.data : [];
+      } else if (res.data?.participants) {
+        participantsData = Array.isArray(res.data.participants) ? res.data.participants : [];
+      }
       setAvailableParticipants(participantsData);
-      console.log("Participants chargés:", participantsData.length);
-    } catch (err) {
+      console.log("Participants chargés:", participantsData.length, participantsData);
+      if (participantsData.length === 0) {
+        console.warn("Aucun participant trouvé dans la réponse:", res.data);
+      }
+    } catch (err: any) {
       console.error("Erreur chargement participants:", err);
       toast({
         title: "Erreur",
-        description: "Impossible de charger les participants",
+        description: err.response?.data?.message || "Impossible de charger les participants",
         variant: "destructive",
       });
     }
@@ -199,12 +239,26 @@ export default function CrewStatusManagementPage() {
     setStep(1);
   };
 
-  const handleChangeTypeSelect = (type: StatusChangeType) => {
+  const handleChangeTypeSelect = async (type: StatusChangeType) => {
     setChangeType(type);
     if (type === "changed" && selectedCrew) {
-      // Initialiser avec les participants actuels
-      const participants = selectedCrew.crew_participants || [];
-      setCurrentParticipants(participants);
+      // Recharger les détails complets du crew pour avoir les participants à jour
+      try {
+        const crewDetailRes = await api.get(`/crews/${selectedCrew.id}`);
+        const crewDetail = crewDetailRes.data.data || crewDetailRes.data;
+        const participants = crewDetail.crew_participants || 
+                           crewDetail.CrewParticipants || 
+                           crewDetail.crewParticipants || 
+                           selectedCrew.crew_participants || 
+                           [];
+        setCurrentParticipants(participants);
+        console.log("Participants actuels chargés:", participants.length, participants);
+      } catch (err) {
+        console.error("Erreur chargement détails crew:", err);
+        // Utiliser les participants déjà chargés en fallback
+        const participants = selectedCrew.crew_participants || [];
+        setCurrentParticipants(participants);
+      }
       setNewParticipants([]);
       setSearchQuery("");
       setShowNewParticipantForm(false);
@@ -462,14 +516,25 @@ export default function CrewStatusManagementPage() {
             // Si c'est un ID temporaire, créer le participant d'abord
             if (np.participantId.startsWith("temp-") && np.newParticipantData) {
               try {
+                // Normaliser le genre comme dans CrewWizardPage
+                const normalizeGender = (gender: string | undefined): string | undefined => {
+                  if (!gender) return undefined;
+                  const normalized = gender.trim();
+                  if (normalized === "M" || normalized === "m" || normalized === "Homme") return "Homme";
+                  if (normalized === "F" || normalized === "f" || normalized === "Femme") return "Femme";
+                  if (normalized === "Mixte") return "Mixte";
+                  return normalized;
+                };
+
+                const normalizedGender = normalizeGender(np.newParticipantData.gender);
                 const newParticipantRes = await api.post("/participants", {
                   event_id: eventId,
                   first_name: np.newParticipantData.first_name,
                   last_name: np.newParticipantData.last_name,
-                  license_number: np.newParticipantData.license_number || null,
-                  club_name: np.newParticipantData.club_name || null,
-                  gender: np.newParticipantData.gender || null,
-                  email: np.newParticipantData.email || null,
+                  license_number: np.newParticipantData.license_number || undefined,
+                  club_name: np.newParticipantData.club_name || undefined,
+                  gender: normalizedGender || undefined,
+                  email: np.newParticipantData.email || undefined,
                 });
                 participantId = newParticipantRes.data.data?.id || newParticipantRes.data.id;
                 // Recharger la liste des participants disponibles
@@ -1056,6 +1121,9 @@ export default function CrewStatusManagementPage() {
                     <div className="space-y-2">
                       {newParticipants.map((np, index) => {
                         const participant = availableParticipants.find(p => p.id === np.participantId);
+                        const isTemp = np.participantId.startsWith("temp-");
+                        const tempData = isTemp ? np.newParticipantData : null;
+                        
                         return (
                           <Card key={index}>
                             <CardContent className="p-4">
@@ -1068,13 +1136,26 @@ export default function CrewStatusManagementPage() {
                                       </div>
                                       <div className="text-sm text-muted-foreground">
                                         {participant.license_number && `Licence: ${participant.license_number}`}
+                                        {participant.club_name && ` • ${participant.club_name}`}
+                                        {np.is_coxswain && " • Barreur"}
+                                      </div>
+                                    </>
+                                  ) : tempData ? (
+                                    <>
+                                      <div className="font-semibold">
+                                        {tempData.first_name} {tempData.last_name}
+                                        <span className="text-xs text-muted-foreground ml-2">(à créer)</span>
+                                      </div>
+                                      <div className="text-sm text-muted-foreground">
+                                        {tempData.license_number && `Licence: ${tempData.license_number}`}
+                                        {tempData.club_name && ` • ${tempData.club_name}`}
                                         {np.is_coxswain && " • Barreur"}
                                       </div>
                                     </>
                                   ) : (
                                     <>
                                       <div className="font-semibold">
-                                        Participant à créer
+                                        Participant à sélectionner
                                       </div>
                                       <div className="text-sm text-muted-foreground">
                                         {np.is_coxswain && "Barreur"}
