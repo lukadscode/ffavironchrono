@@ -720,21 +720,14 @@ export default function RacePhaseDetailPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [eventId, phaseId]);
 
-  // Quand les courses changent, ouvrir toutes les courses si showAllCrews est actif
+  // Quand showAllCrews est désactivé, fermer toutes les courses
   useEffect(() => {
-    if (showAllCrews && races.length > 0) {
-      const raceIds = races.map(r => r.id);
-      const currentExpanded = Array.from(expandedRaces);
-      // Ne mettre à jour que si les IDs ont changé
-      if (raceIds.length !== currentExpanded.length || 
-          !raceIds.every(id => currentExpanded.includes(id))) {
-        setExpandedRaces(new Set(raceIds));
-      }
-    } else if (!showAllCrews) {
-      // Si showAllCrews est désactivé, fermer toutes les courses
+    if (!showAllCrews) {
       setExpandedRaces(new Set());
     }
-  }, [showAllCrews, races.length]); // Quand showAllCrews ou le nombre de courses change
+    // On ne réouvre pas automatiquement toutes les courses quand showAllCrews devient true
+    // pour permettre d'ouvrir individuellement via les flèches
+  }, [showAllCrews]);
 
   const previousPhase = useMemo(() => {
     if (!currentPhase || phases.length === 0) return null;
@@ -1173,13 +1166,20 @@ export default function RacePhaseDetailPage() {
                         showCrews={shouldShowCrews}
                         isExpanded={isExpanded}
                         onToggleExpand={() => {
+                          const newExpanded = new Set(expandedRaces);
+                          const willExpand = !newExpanded.has(race.id);
+                          
                           // Si on ouvre une course et que showAllCrews est false, l'activer automatiquement
-                          const willExpand = !expandedRaces.has(race.id);
+                          // mais sans ouvrir toutes les autres courses
                           if (willExpand && !showAllCrews) {
                             setShowAllCrews(true);
+                            // On met à jour expandedRaces en même temps pour éviter que le useEffect ouvre toutes les courses
+                            newExpanded.add(race.id);
+                            setExpandedRaces(newExpanded);
+                            return; // On sort ici pour éviter le code en dessous
                           }
                           
-                          const newExpanded = new Set(expandedRaces);
+                          // Toggle normal de l'état de la course
                           if (newExpanded.has(race.id)) {
                             newExpanded.delete(race.id);
                           } else {
