@@ -1173,6 +1173,12 @@ export default function RacePhaseDetailPage() {
                         showCrews={shouldShowCrews}
                         isExpanded={isExpanded}
                         onToggleExpand={() => {
+                          // Si on ouvre une course et que showAllCrews est false, l'activer automatiquement
+                          const willExpand = !expandedRaces.has(race.id);
+                          if (willExpand && !showAllCrews) {
+                            setShowAllCrews(true);
+                          }
+                          
                           const newExpanded = new Set(expandedRaces);
                           if (newExpanded.has(race.id)) {
                             newExpanded.delete(race.id);
