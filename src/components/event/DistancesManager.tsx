@@ -457,6 +457,7 @@ export default function DistancesPage() {
 
   // Fonction pour suggérer des réaffectations basées sur les noms
   const generateSuggestions = () => {
+    type MatchType = { distanceId: string; label: string; score: number };
     const newSuggestions: Array<{
       id: string;
       name: string;
@@ -485,7 +486,7 @@ export default function DistancesPage() {
     // Traiter les catégories non affectées
     categoriesByDistance.unassigned.forEach((category) => {
       const categoryName = normalizeText(category.label || category.code || "");
-      let bestMatch: { distanceId: string; label: string; score: number } | null = null;
+      let bestMatch: MatchType | null = null;
 
       distances.forEach((distance) => {
         const distanceLabel = normalizeText(distance.label || "");
@@ -547,31 +548,37 @@ export default function DistancesPage() {
           });
         }
 
-        if (score > 0 && (!bestMatch || score > bestMatch.score)) {
-          bestMatch = {
-            distanceId: distance.id,
-            label: distance.label || `${distance.meters || distance.duration_seconds || ""}`,
-            score,
-          };
+        if (score > 0) {
+          if (!bestMatch || score > bestMatch.score) {
+            bestMatch = {
+              distanceId: distance.id,
+              label: distance.label || `${distance.meters || distance.duration_seconds || ""}`,
+              score,
+            };
+          }
         }
       });
 
-      if (bestMatch && bestMatch.score >= 30) {
-        newSuggestions.push({
-          id: category.id,
-          name: category.label || category.code || "",
-          type: "category",
-          suggestedDistanceId: bestMatch.distanceId,
-          suggestedDistanceLabel: bestMatch.label,
-          confidence: Math.min(100, bestMatch.score),
-        });
+      // Vérifier et ajouter la suggestion
+      if (bestMatch !== null) {
+        const match = bestMatch as MatchType;
+        if (match.score >= 30) {
+          newSuggestions.push({
+            id: category.id,
+            name: category.label || category.code || "",
+            type: "category",
+            suggestedDistanceId: match.distanceId,
+            suggestedDistanceLabel: match.label,
+            confidence: Math.min(100, match.score),
+          });
+        }
       }
     });
 
     // Traiter les courses non affectées
     racesByDistance.unassigned.forEach((race) => {
       const raceName = normalizeText(race.name || "");
-      let bestMatch: { distanceId: string; label: string; score: number } | null = null;
+      let bestMatch: MatchType | null = null;
 
       distances.forEach((distance) => {
         const distanceLabel = normalizeText(distance.label || "");
@@ -616,24 +623,30 @@ export default function DistancesPage() {
           score += 30;
         }
 
-        if (score > 0 && (!bestMatch || score > bestMatch.score)) {
-          bestMatch = {
-            distanceId: distance.id,
-            label: distance.label || `${distance.meters || distance.duration_seconds || ""}`,
-            score,
-          };
+        if (score > 0) {
+          if (!bestMatch || score > bestMatch.score) {
+            bestMatch = {
+              distanceId: distance.id,
+              label: distance.label || `${distance.meters || distance.duration_seconds || ""}`,
+              score,
+            };
+          }
         }
       });
 
-      if (bestMatch && bestMatch.score >= 30) {
-        newSuggestions.push({
-          id: race.id,
-          name: race.name || "",
-          type: "race",
-          suggestedDistanceId: bestMatch.distanceId,
-          suggestedDistanceLabel: bestMatch.label,
-          confidence: Math.min(100, bestMatch.score),
-        });
+      // Vérifier et ajouter la suggestion
+      if (bestMatch !== null) {
+        const match = bestMatch as MatchType;
+        if (match.score >= 30) {
+          newSuggestions.push({
+            id: race.id,
+            name: race.name || "",
+            type: "race",
+            suggestedDistanceId: match.distanceId,
+            suggestedDistanceLabel: match.label,
+            confidence: Math.min(100, match.score),
+          });
+        }
       }
     });
 
