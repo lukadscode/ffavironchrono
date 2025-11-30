@@ -28,6 +28,7 @@ import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Switch } from "@/components/ui/switch";
 import { useToast } from "@/hooks/use-toast";
 import { useEventRole } from "@/hooks/useEventRole";
 import { ROLE_PERMISSIONS } from "@/router/EventProtectedRoute";
@@ -64,6 +65,7 @@ export default function EventOverviewPage() {
     end_date: "",
     website_url: "",
     is_visible: true,
+    is_finished: false,
   });
 
   useEffect(() => {
@@ -84,6 +86,7 @@ export default function EventOverviewPage() {
         end_date: data.end_date ? data.end_date.slice(0, 10) : "",
         website_url: data.website_url || "",
         is_visible: data.is_visible !== undefined ? data.is_visible : true,
+        is_finished: data.is_finished !== undefined ? data.is_finished : false,
       });
     } catch (err: any) {
       console.error("Erreur chargement événement:", err);
@@ -201,6 +204,7 @@ export default function EventOverviewPage() {
         start_date: form.start_date,
         end_date: form.end_date,
         is_visible: form.is_visible,
+        is_finished: form.is_finished,
       };
       
       // N'inclure website_url que s'il n'est pas vide
@@ -240,6 +244,7 @@ export default function EventOverviewPage() {
         end_date: event.end_date ? event.end_date.slice(0, 10) : "",
         website_url: event.website_url || "",
         is_visible: event.is_visible !== undefined ? event.is_visible : true,
+        is_finished: event.is_finished !== undefined ? event.is_finished : false,
       });
     }
     setEditing(false);
@@ -585,6 +590,25 @@ export default function EventOverviewPage() {
                 >
                   Rendre l'événement visible publiquement
                 </Label>
+              </div>
+              <div className="flex items-center justify-between pt-2 border-t">
+                <div className="space-y-0.5">
+                  <Label
+                    htmlFor="is_finished"
+                    className="text-sm font-semibold text-muted-foreground cursor-pointer"
+                  >
+                    Marquer l'événement comme terminé
+                  </Label>
+                  <p className="text-xs text-muted-foreground">
+                    Les événements terminés seront archivés et affichés dans les archives
+                  </p>
+                </div>
+                <Switch
+                  id="is_finished"
+                  checked={form.is_finished}
+                  onCheckedChange={(checked) => setForm({ ...form, is_finished: checked })}
+                  disabled={!editing}
+                />
               </div>
             </div>
           </CardContent>

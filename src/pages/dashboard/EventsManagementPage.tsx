@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo } from "react";
 import { useAuth } from "@/context/AuthContext";
 import { useNavigate, Link } from "react-router-dom";
 import api from "@/lib/axios";
@@ -15,8 +15,16 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
 import { useToast } from "@/hooks/use-toast";
-import { Calendar, MapPin, Plus, Loader2, Trash2, AlertTriangle } from "lucide-react";
+import { Calendar, MapPin, Plus, Loader2, Trash2, AlertTriangle, Search, LayoutGrid, List } from "lucide-react";
 import dayjs from "dayjs";
 
 type Event = {
@@ -42,9 +50,25 @@ export default function EventsManagementPage() {
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [eventToDelete, setEventToDelete] = useState<Event | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [viewMode, setViewMode] = useState<"card" | "table">("card");
+  const [searchQuery, setSearchQuery] = useState("");
 
   // Vérifier si l'utilisateur est admin ou superadmin
   const isAdmin = user?.role === "admin" || user?.role === "superadmin";
+
+  // Filtrer les événements selon la recherche
+  const filteredEvents = useMemo(() => {
+    if (!searchQuery.trim()) {
+      return events;
+    }
+    const query = searchQuery.toLowerCase();
+    return events.filter(
+      (event) =>
+        event.name.toLowerCase().includes(query) ||
+        event.location?.toLowerCase().includes(query) ||
+        event.race_type?.toLowerCase().includes(query)
+    );
+  }, [events, searchQuery]);
 
   useEffect(() => {
     if (!isAdmin) {
@@ -231,21 +255,63 @@ export default function EventsManagementPage() {
         </Dialog>
       </div>
 
+      {/* Barre de recherche et sélecteur de vue */}
+      <Card>
+        <CardContent className="p-4">
+          <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-center justify-between">
+            {/* Barre de recherche */}
+            <div className="relative flex-1 w-full sm:max-w-md">
+              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+              <Input
+                placeholder="Rechercher par nom, lieu ou type..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="pl-9"
+              />
+            </div>
+
+            {/* Sélecteur de vue */}
+            <div className="flex items-center gap-2">
+              <Button
+                variant={viewMode === "card" ? "default" : "outline"}
+                size="sm"
+                onClick={() => setViewMode("card")}
+                className="gap-2"
+              >
+                <LayoutGrid className="w-4 h-4" />
+                <span className="hidden sm:inline">Cartes</span>
+              </Button>
+              <Button
+                variant={viewMode === "table" ? "default" : "outline"}
+                size="sm"
+                onClick={() => setViewMode("table")}
+                className="gap-2"
+              >
+                <List className="w-4 h-4" />
+                <span className="hidden sm:inline">Tableau</span>
+              </Button>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
       {loading ? (
         <div className="flex items-center justify-center py-20">
           <Loader2 className="w-8 h-8 animate-spin text-muted-foreground" />
         </div>
-      ) : events.length === 0 ? (
+      ) : filteredEvents.length === 0 ? (
         <Card>
           <CardContent className="py-12 text-center">
             <p className="text-muted-foreground">
-              Aucun événement pour le moment. Importez votre premier événement pour commencer.
+              {searchQuery
+                ? "Aucun événement ne correspond à votre recherche."
+                : "Aucun événement pour le moment. Importez votre premier événement pour commencer."}
             </p>
           </CardContent>
         </Card>
-      ) : (
+      ) : viewMode === "card" ? (
         <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
-          {events.map((event) => (
+          {filteredEvents.map((event) => (
             <Card key={event.id} className="flex flex-col">
               <CardHeader>
                 <CardTitle className="text-base sm:text-lg line-clamp-2">{event.name}</CardTitle>
@@ -318,6 +384,86 @@ export default function EventsManagementPage() {
             </Card>
           ))}
         </div>
+      ) : (
+        <Card>
+          <CardContent className="p-0">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Nom</TableHead>
+                  <TableHead>Dates</TableHead>
+                  <TableHead>Lieu</TableHead>
+                  <TableHead>Type</TableHead>
+                  <TableHead>Statut</TableHead>
+                  <TableHead className="text-right">Actions</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {filteredEvents.map((event) => (
+                  <TableRow key={event.id}>
+                    <TableCell className="font-medium">{event.name}</TableCell>
+                    <TableCell>
+                      <div className="flex items-center gap-2">
+                        <Calendar className="w-4 h-4 text-muted-foreground" />
+                        <span className="text-sm">
+                          {dayjs(event.start_date).format("DD MMM YYYY")} -{" "}
+                          {dayjs(event.end_date).format("DD MMM YYYY")}
+                        </span>
+                      </div>
+                    </TableCell>
+                    <TableCell>
+                      <div className="flex items-center gap-2">
+                        <MapPin className="w-4 h-4 text-muted-foreground" />
+                        <span className="text-sm">{event.location}</span>
+                      </div>
+                    </TableCell>
+                    <TableCell>
+                      {event.race_type && (
+                        <span className="px-2 py-1 rounded-full text-xs font-medium bg-purple-100 text-purple-700 border border-purple-200 capitalize">
+                          {event.race_type}
+                        </span>
+                      )}
+                    </TableCell>
+                    <TableCell>
+                      <div className="flex items-center gap-2 flex-wrap">
+                        {event.is_finished && (
+                          <span className="px-2 py-1 rounded-full text-xs font-medium bg-slate-100 text-slate-700 border border-slate-200">
+                            Terminé
+                          </span>
+                        )}
+                        {event.is_visible === false && (
+                          <span className="px-2 py-1 rounded-full text-xs font-medium bg-orange-100 text-orange-700 border border-orange-200">
+                            Masqué
+                          </span>
+                        )}
+                      </div>
+                    </TableCell>
+                    <TableCell className="text-right">
+                      <div className="flex items-center justify-end gap-2">
+                        <Button
+                          asChild
+                          variant="outline"
+                          size="sm"
+                        >
+                          <Link to={`/event/${event.id}`}>
+                            Voir
+                          </Link>
+                        </Button>
+                        <Button
+                          variant="destructive"
+                          size="sm"
+                          onClick={() => handleDeleteClick(event)}
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </Button>
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </CardContent>
+        </Card>
       )}
 
       {/* Modal de confirmation de suppression */}
