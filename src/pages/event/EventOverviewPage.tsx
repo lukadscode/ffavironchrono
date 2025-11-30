@@ -21,6 +21,9 @@ import {
   Award,
   Link as LinkIcon,
   AlertTriangle,
+  Upload,
+  Image as ImageIcon,
+  Trash2,
 } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Input } from "@/components/ui/input";
@@ -67,6 +70,8 @@ export default function EventOverviewPage() {
     is_visible: true,
     is_finished: false,
   });
+  const [uploadingImage, setUploadingImage] = useState(false);
+  const [imagePreview, setImagePreview] = useState<string | null>(null);
 
   const fetchAlerts = useCallback(async () => {
     if (!eventId) return;
@@ -216,6 +221,9 @@ export default function EventOverviewPage() {
         is_visible: data.is_visible !== undefined ? data.is_visible : true,
         is_finished: data.is_finished !== undefined ? data.is_finished : false,
       });
+      
+      // Charger l'image depuis l'URL stockée dans l'API
+      setImagePreview(data.cover_url || data.image_url || null);
     } catch (err: any) {
       console.error("Erreur chargement événement:", err);
       toast({
@@ -255,6 +263,102 @@ export default function EventOverviewPage() {
       ...form, 
       [name]: type === "checkbox" ? checked : value 
     });
+  };
+
+  const handleImageUpload = async (file: File) => {
+    if (!eventId) return;
+
+    setUploadingImage(true);
+    try {
+      const formData = new FormData();
+      formData.append("cover", file);
+
+      // L'API sauvegarde l'image dans le dossier public et retourne l'URL
+      const response = await api.post(`/events/${eventId}/upload-cover`, formData, {
+        headers: {
+          "Content-Type": "multipart/form-data",
+        },
+      });
+
+      const coverUrl = response.data.data?.cover_url || response.data.cover_url || response.data.data?.image_url || response.data.image_url;
+      
+      if (coverUrl) {
+        setImagePreview(coverUrl);
+        setEvent((prev: any) => ({ ...prev, cover_url: coverUrl, image_url: coverUrl }));
+        
+        toast({
+          title: "Succès",
+          description: "L'image a été téléversée avec succès.",
+        });
+      } else {
+        throw new Error("URL de l'image non retournée par l'API");
+      }
+    } catch (err: any) {
+      console.error("Erreur upload image", err);
+      toast({
+        title: "Erreur",
+        description: err.response?.data?.message || "Erreur lors du téléversement de l'image",
+        variant: "destructive",
+      });
+    } finally {
+      setUploadingImage(false);
+    }
+  };
+
+  const handleImageDelete = async () => {
+    if (!eventId) return;
+
+    setUploadingImage(true);
+    try {
+      // L'API supprime l'image du dossier public et met à jour l'événement
+      await api.delete(`/events/${eventId}/cover`);
+      
+      setImagePreview(null);
+      setEvent((prev: any) => ({ ...prev, cover_url: null, image_url: null }));
+      
+      toast({
+        title: "Succès",
+        description: "L'image a été supprimée avec succès.",
+      });
+    } catch (err: any) {
+      console.error("Erreur suppression image", err);
+      toast({
+        title: "Erreur",
+        description: err.response?.data?.message || "Erreur lors de la suppression de l'image",
+        variant: "destructive",
+      });
+    } finally {
+      setUploadingImage(false);
+    }
+  };
+
+  const handleImageSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      // Vérifier le type de fichier
+      if (!file.type.startsWith("image/")) {
+        toast({
+          title: "Erreur",
+          description: "Veuillez sélectionner un fichier image",
+          variant: "destructive",
+        });
+        return;
+      }
+
+      // Vérifier la taille (max 5MB)
+      if (file.size > 5 * 1024 * 1024) {
+        toast({
+          title: "Erreur",
+          description: "L'image ne doit pas dépasser 5MB",
+          variant: "destructive",
+        });
+        return;
+      }
+
+      handleImageUpload(file);
+    }
+    // Réinitialiser l'input
+    e.target.value = "";
   };
 
 
@@ -314,6 +418,8 @@ export default function EventOverviewPage() {
         is_visible: event.is_visible !== undefined ? event.is_visible : true,
         is_finished: event.is_finished !== undefined ? event.is_finished : false,
       });
+      // Charger l'image depuis l'URL stockée dans l'API
+      setImagePreview(event.cover_url || event.image_url || null);
     }
     setEditing(false);
   };
@@ -349,7 +455,7 @@ export default function EventOverviewPage() {
     new Date(event.end_date) >= new Date();
   const isUpcoming = new Date(event.start_date) > new Date();
 
-  const eventImage = event.image_url || event.cover_url || DEFAULT_EVENT_IMAGE;
+  const eventImage = imagePreview || event.image_url || event.cover_url || DEFAULT_EVENT_IMAGE;
 
   return (
     <div className="space-y-4 sm:space-y-6">
@@ -645,6 +751,71 @@ export default function EventOverviewPage() {
                   )}
                 </div>
               </div>
+              
+              {/* Upload d'image */}
+              <div>
+                <Label className="text-sm font-semibold text-muted-foreground">
+                  Image d'affiche
+                </Label>
+                <div className="mt-2 space-y-3">
+                  {imagePreview && (
+                    <div className="relative rounded-lg overflow-hidden border-2 border-gray-200">
+                      <img
+                        src={imagePreview}
+                        alt="Aperçu de l'affiche"
+                        className="w-full h-48 object-cover"
+                      />
+                      {editing && (
+                        <div className="absolute top-2 right-2">
+                          <Button
+                            type="button"
+                            variant="destructive"
+                            size="sm"
+                            onClick={handleImageDelete}
+                            disabled={uploadingImage}
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </Button>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                  {editing && (
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="file"
+                        id="image-upload"
+                        accept="image/*"
+                        onChange={handleImageSelect}
+                        disabled={uploadingImage}
+                        className="hidden"
+                      />
+                      <Label
+                        htmlFor="image-upload"
+                        className="flex items-center gap-2 px-4 py-2 border-2 border-dashed border-gray-300 rounded-lg cursor-pointer hover:border-blue-400 hover:bg-blue-50 transition-colors"
+                      >
+                        {uploadingImage ? (
+                          <>
+                            <Loader2 className="w-4 h-4 animate-spin" />
+                            <span className="text-sm">Upload en cours...</span>
+                          </>
+                        ) : (
+                          <>
+                            <Upload className="w-4 h-4" />
+                            <span className="text-sm">
+                              {imagePreview ? "Changer l'image" : "Ajouter une image"}
+                            </span>
+                          </>
+                        )}
+                      </Label>
+                      <p className="text-xs text-muted-foreground">
+                        JPG, PNG ou GIF (max 5MB)
+                      </p>
+                    </div>
+                  )}
+                </div>
+              </div>
+
               <div className="flex items-center space-x-2">
                 <Checkbox
                   id="is_visible"

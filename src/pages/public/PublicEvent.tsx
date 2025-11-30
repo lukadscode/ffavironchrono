@@ -20,6 +20,7 @@ type Event = {
   location: string;
   race_type?: string;
   cover_url?: string;
+  image_url?: string;
 };
 
 type Race = {
@@ -40,7 +41,8 @@ export default function PublicEvent() {
     const fetchEvent = async () => {
       try {
         const res = await api.get(`/events/${eventId}`);
-        setEvent(res.data.data);
+        const eventData = res.data.data;
+        setEvent(eventData);
       } catch (err) {
         console.error("Erreur chargement événement", err);
       }
@@ -98,7 +100,7 @@ export default function PublicEvent() {
     );
   }
 
-  const eventImage = event?.cover_url || DEFAULT_EVENT_IMAGE;
+  const eventImage = event?.cover_url || event?.image_url || DEFAULT_EVENT_IMAGE;
 
   const startDate = event ? dayjs(event.start_date) : null;
   const endDate = event ? dayjs(event.end_date) : null;

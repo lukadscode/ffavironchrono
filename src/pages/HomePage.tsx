@@ -21,6 +21,8 @@ type Event = {
   location: string;
   race_type?: string;
   is_finished?: boolean;
+  cover_url?: string;
+  image_url?: string;
 };
 
 export default function HomePage() {
@@ -430,14 +432,31 @@ function EventCard({ event, status }: { event: Event; status: "today" | "ongoing
 
         {/* Image/Header avec gradient */}
         <div className="relative h-24 sm:h-28 bg-gradient-to-br from-blue-600 via-blue-700 to-blue-800 overflow-hidden">
-          <div className="absolute inset-0 bg-[url('data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNjAiIGhlaWdodD0iNjAiIHZpZXdCb3g9IjAgMCA2MCA2MCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48ZyBmaWxsPSJub25lIiBmaWxsLXJ1bGU9ImV2ZW5vZGQiPjxnIGZpbGw9IiNmZmYiIGZpbGwtb3BhY2l0eT0iMC4xIj48cGF0aCBkPSJNMzYgMzRWMjJIMjR2MTJIMTJ2MTJIMjR2MTJIMzZWMzR6Ii8+PC9nPjwvZz48L3N2Zz4=')] opacity-20"></div>
-          
-          {/* Icône Timer au centre */}
-          <div className="absolute inset-0 flex items-center justify-center">
-            <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-full bg-white/10 backdrop-blur-md border border-white/20 flex items-center justify-center group-hover:scale-110 transition-transform">
-              <Timer className="w-5 h-5 sm:w-6 sm:h-6 text-white" />
-            </div>
-          </div>
+          {event.cover_url || event.image_url ? (
+            <>
+              <img
+                src={event.cover_url || event.image_url}
+                alt={event.name}
+                className="w-full h-full object-cover"
+                onError={(e) => {
+                  (e.target as HTMLImageElement).src = "";
+                  (e.target as HTMLImageElement).style.display = "none";
+                }}
+              />
+              <div className="absolute inset-0 bg-blue-900/40"></div>
+            </>
+          ) : (
+            <>
+              <div className="absolute inset-0 bg-[url('data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNjAiIGhlaWdodD0iNjAiIHZpZXdCb3g9IjAgMCA2MCA2MCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48ZyBmaWxsPSJub25lIiBmaWxsLXJ1bGU9ImV2ZW5vZGQiPjxnIGZpbGw9IiNmZmYiIGZpbGwtb3BhY2l0eT0iMC4xIj48cGF0aCBkPSJNMzYgMzRWMjJIMjR2MTJIMTJ2MTJIMjR2MTJIMzZWMzR6Ii8+PC9nPjwvZz48L3N2Zz4=')] opacity-20"></div>
+              
+              {/* Icône Timer au centre */}
+              <div className="absolute inset-0 flex items-center justify-center">
+                <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-full bg-white/10 backdrop-blur-md border border-white/20 flex items-center justify-center group-hover:scale-110 transition-transform">
+                  <Timer className="w-5 h-5 sm:w-6 sm:h-6 text-white" />
+                </div>
+              </div>
+            </>
+          )}
 
           {/* Overlay au hover */}
           <div className="absolute inset-0 bg-blue-900/0 group-hover:bg-blue-900/20 transition-colors"></div>
