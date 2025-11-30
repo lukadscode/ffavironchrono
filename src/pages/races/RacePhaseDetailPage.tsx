@@ -19,7 +19,7 @@ import {
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import clsx from "clsx";
-import { X, Search, Pencil, Check, XCircle } from "lucide-react";
+import { X, Search, Pencil, Check, XCircle, ChevronDown, ChevronRight, Eye, EyeOff } from "lucide-react";
 import RaceFormDialog from "@/components/races/RaceFormDialog";
 import PhaseResultsPanel from "@/components/races/PhaseResultsPanel";
 
@@ -254,6 +254,8 @@ export default function RacePhaseDetailPage() {
   const [currentPhase, setCurrentPhase] = useState<RacePhase | null>(null);
   const [unassignedSearchQuery, setUnassignedSearchQuery] = useState<string>("");
   const [loading, setLoading] = useState<boolean>(true);
+  const [showAllCrews, setShowAllCrews] = useState<boolean>(true);
+  const [expandedRaces, setExpandedRaces] = useState<Set<string>>(new Set());
 
   // === Nouveaux états pour la timeline + gaps dynamiques ===
   const [slotMinutes, setSlotMinutes] = useState<number>(DEFAULT_SLOT_MINUTES);
@@ -705,6 +707,8 @@ export default function RacePhaseDetailPage() {
   useEffect(() => {
     if (eventId && phaseId) {
       setLoading(true);
+      setShowAllCrews(true);
+      setExpandedRaces(new Set());
       Promise.all([
         fetchPhases(),
         fetchCrews(),
@@ -715,6 +719,22 @@ export default function RacePhaseDetailPage() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [eventId, phaseId]);
+
+  // Quand les courses changent, ouvrir toutes les courses si showAllCrews est actif
+  useEffect(() => {
+    if (showAllCrews && races.length > 0) {
+      const raceIds = races.map(r => r.id);
+      const currentExpanded = Array.from(expandedRaces);
+      // Ne mettre à jour que si les IDs ont changé
+      if (raceIds.length !== currentExpanded.length || 
+          !raceIds.every(id => currentExpanded.includes(id))) {
+        setExpandedRaces(new Set(raceIds));
+      }
+    } else if (!showAllCrews) {
+      // Si showAllCrews est désactivé, fermer toutes les courses
+      setExpandedRaces(new Set());
+    }
+  }, [showAllCrews, races.length]); // Quand showAllCrews ou le nombre de courses change
 
   const previousPhase = useMemo(() => {
     if (!currentPhase || phases.length === 0) return null;
@@ -887,6 +907,32 @@ export default function RacePhaseDetailPage() {
             <div className="flex justify-between items-center gap-3">
               <CardTitle>Courses de la phase</CardTitle>
               <div className="flex gap-2">
+                <button
+                  onClick={() => {
+                    setShowAllCrews(!showAllCrews);
+                    if (!showAllCrews) {
+                      // Si on active, ouvrir toutes les courses
+                      setExpandedRaces(new Set(races.map(r => r.id)));
+                    } else {
+                      // Si on désactive, fermer toutes les courses
+                      setExpandedRaces(new Set());
+                    }
+                  }}
+                  className="text-xs px-3 py-1 border rounded bg-white hover:bg-gray-50 flex items-center gap-1.5"
+                  title={showAllCrews ? "Masquer tous les équipages" : "Afficher tous les équipages"}
+                >
+                  {showAllCrews ? (
+                    <>
+                      <EyeOff className="w-3.5 h-3.5" />
+                      Masquer équipages
+                    </>
+                  ) : (
+                    <>
+                      <Eye className="w-3.5 h-3.5" />
+                      Afficher équipages
+                    </>
+                  )}
+                </button>
                 <button
                   className="text-xs px-2 py-1 border rounded bg-white disabled:opacity-60"
                   disabled={!phaseId || exporting.start}
@@ -1103,6 +1149,8 @@ export default function RacePhaseDetailPage() {
                     ? new Date(race.start_time).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
                     : "";
                   const gap = gapsByRaceId[race.id] ?? slotMinutes;
+                  const isExpanded = expandedRaces.has(race.id);
+                  const shouldShowCrews = showAllCrews && isExpanded;
 
                   return (
                     <div key={race.id} className="mb-4">
@@ -1122,8 +1170,19 @@ export default function RacePhaseDetailPage() {
                             toast({ title: "Erreur lors de la mise à jour du nom", variant: "destructive" });
                           }
                         }}
+                        showCrews={shouldShowCrews}
+                        isExpanded={isExpanded}
+                        onToggleExpand={() => {
+                          const newExpanded = new Set(expandedRaces);
+                          if (newExpanded.has(race.id)) {
+                            newExpanded.delete(race.id);
+                          } else {
+                            newExpanded.add(race.id);
+                          }
+                          setExpandedRaces(newExpanded);
+                        }}
                       >
-                        {lanes.map((lane) => {
+                        {shouldShowCrews && lanes.map((lane) => {
                           const entry = race.crews?.find((c) => c.lane === lane);
                           return (
                             <DroppableLane key={`${race.id}-${lane}`} lane={lane} raceId={race.id} entry={entry} />
@@ -1293,6 +1352,9 @@ function TimelineRace({
   gapMinutes,
   onDelete,
   onNameUpdate,
+  showCrews,
+  isExpanded,
+  onToggleExpand,
 }: {
   race: Race;
   timeLabel: string;
@@ -1302,6 +1364,9 @@ function TimelineRace({
   gapMinutes?: number;
   onDelete: (raceId: string) => void;
   onNameUpdate?: (newName: string) => Promise<void>;
+  showCrews?: boolean;
+  isExpanded?: boolean;
+  onToggleExpand?: () => void;
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: race.id });
   const style = { transform: CSS.Transform.toString(transform), transition } as React.CSSProperties;
@@ -1381,6 +1446,22 @@ function TimelineRace({
 
       <div className="flex items-center justify-between gap-2 min-w-0">
         <div className="font-semibold text-sm flex items-center gap-2 flex-1 min-w-0">
+          {onToggleExpand && (
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                onToggleExpand();
+              }}
+              className="flex-shrink-0 p-1 hover:bg-gray-100 rounded transition-colors"
+              title={isExpanded ? "Masquer les équipages" : "Afficher les équipages"}
+            >
+              {isExpanded ? (
+                <ChevronDown className="w-4 h-4 text-gray-600" />
+              ) : (
+                <ChevronRight className="w-4 h-4 text-gray-600" />
+              )}
+            </button>
+          )}
           <span className="inline-flex items-center text-xs px-2 py-1 rounded-md bg-blue-100 text-blue-700 font-mono font-bold flex-shrink-0">{timeLabel}</span>
           <div className="flex-1 min-w-0">
             {isEditingName ? (
