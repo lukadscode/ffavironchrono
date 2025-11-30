@@ -5,11 +5,11 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
-import { PlusIcon, Tag, Trophy, ArrowLeft, ArrowRight, Save, Gauge, Sparkles, Loader2 } from "lucide-react";
+import { PlusIcon, Tag, Trophy, ArrowLeft, ArrowRight, Save, Gauge, Sparkles, Loader2, Wand2, Check, X } from "lucide-react";
 import {
   DndContext,
   DragOverlay,
@@ -260,6 +260,17 @@ export default function DistancesPage() {
   const [viewMode, setViewMode] = useState<"categories" | "races">("categories");
   const [activeId, setActiveId] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
+  const [autoAssignDialogOpen, setAutoAssignDialogOpen] = useState(false);
+  const [suggestions, setSuggestions] = useState<Array<{
+    id: string;
+    name: string;
+    type: "category" | "race";
+    suggestedDistanceId: string | null;
+    suggestedDistanceLabel: string;
+    confidence: number;
+  }>>([]);
+  const [selectedSuggestions, setSelectedSuggestions] = useState<Set<string>>(new Set());
+  const [isApplying, setIsApplying] = useState(false);
 
   const sensors = useSensors(
     useSensor(PointerSensor, {
@@ -441,6 +452,259 @@ export default function DistancesPage() {
         description: "Impossible de supprimer la distance.",
         variant: "destructive",
       });
+    }
+  };
+
+  // Fonction pour suggérer des réaffectations basées sur les noms
+  const generateSuggestions = () => {
+    const newSuggestions: Array<{
+      id: string;
+      name: string;
+      type: "category" | "race";
+      suggestedDistanceId: string | null;
+      suggestedDistanceLabel: string;
+      confidence: number;
+    }> = [];
+
+    // Normaliser le texte pour la comparaison
+    const normalizeText = (text: string): string => {
+      return text
+        .toLowerCase()
+        .normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, "")
+        .replace(/[^a-z0-9\s]/g, "")
+        .trim();
+    };
+
+    // Extraire les nombres d'un texte
+    const extractNumbers = (text: string): number[] => {
+      const matches = text.match(/\d+/g);
+      return matches ? matches.map(Number) : [];
+    };
+
+    // Traiter les catégories non affectées
+    categoriesByDistance.unassigned.forEach((category) => {
+      const categoryName = normalizeText(category.label || category.code || "");
+      let bestMatch: { distanceId: string; label: string; score: number } | null = null;
+
+      distances.forEach((distance) => {
+        const distanceLabel = normalizeText(distance.label || "");
+        let score = 0;
+
+        // Extraction des nombres
+        const categoryNumbers = extractNumbers(category.label || category.code || "");
+        const distanceNumbers: number[] = [];
+
+        if (distance.meters) {
+          distanceNumbers.push(distance.meters);
+        }
+        if (distance.duration_seconds) {
+          distanceNumbers.push(distance.duration_seconds);
+        }
+        if (distance.relay_count) {
+          distanceNumbers.push(distance.relay_count);
+        }
+
+        // Correspondance exacte des nombres
+        if (categoryNumbers.length > 0 && distanceNumbers.length > 0) {
+          const hasMatchingNumber = categoryNumbers.some((num) =>
+            distanceNumbers.some((dNum) => Math.abs(num - dNum) <= 1)
+          );
+          if (hasMatchingNumber) {
+            score += 50;
+          }
+        }
+
+        // Correspondance de mots-clés
+        const categoryWords = categoryName.split(/\s+/);
+        const distanceWords = distanceLabel.split(/\s+/);
+
+        categoryWords.forEach((word) => {
+          if (word.length > 2 && distanceWords.includes(word)) {
+            score += 20;
+          }
+        });
+
+        // Correspondance partielle
+        if (categoryName.includes(distanceLabel) || distanceLabel.includes(categoryName)) {
+          score += 30;
+        }
+
+        // Correspondance pour "2000m", "2000 m", "2km", etc.
+        if (distance.meters) {
+          const meters = distance.meters;
+          const patterns = [
+            `${meters}`,
+            `${meters}m`,
+            `${meters} m`,
+            `${meters / 1000}km`,
+            `${meters / 1000} km`,
+          ];
+          patterns.forEach((pattern) => {
+            if (categoryName.includes(pattern.toLowerCase())) {
+              score += 40;
+            }
+          });
+        }
+
+        if (score > 0 && (!bestMatch || score > bestMatch.score)) {
+          bestMatch = {
+            distanceId: distance.id,
+            label: distance.label || `${distance.meters || distance.duration_seconds || ""}`,
+            score,
+          };
+        }
+      });
+
+      if (bestMatch && bestMatch.score >= 30) {
+        newSuggestions.push({
+          id: category.id,
+          name: category.label || category.code || "",
+          type: "category",
+          suggestedDistanceId: bestMatch.distanceId,
+          suggestedDistanceLabel: bestMatch.label,
+          confidence: Math.min(100, bestMatch.score),
+        });
+      }
+    });
+
+    // Traiter les courses non affectées
+    racesByDistance.unassigned.forEach((race) => {
+      const raceName = normalizeText(race.name || "");
+      let bestMatch: { distanceId: string; label: string; score: number } | null = null;
+
+      distances.forEach((distance) => {
+        const distanceLabel = normalizeText(distance.label || "");
+        let score = 0;
+
+        // Extraction des nombres
+        const raceNumbers = extractNumbers(race.name || "");
+        const distanceNumbers: number[] = [];
+
+        if (distance.meters) {
+          distanceNumbers.push(distance.meters);
+        }
+        if (distance.duration_seconds) {
+          distanceNumbers.push(distance.duration_seconds);
+        }
+        if (distance.relay_count) {
+          distanceNumbers.push(distance.relay_count);
+        }
+
+        // Correspondance exacte des nombres
+        if (raceNumbers.length > 0 && distanceNumbers.length > 0) {
+          const hasMatchingNumber = raceNumbers.some((num) =>
+            distanceNumbers.some((dNum) => Math.abs(num - dNum) <= 1)
+          );
+          if (hasMatchingNumber) {
+            score += 50;
+          }
+        }
+
+        // Correspondance de mots-clés
+        const raceWords = raceName.split(/\s+/);
+        const distanceWords = distanceLabel.split(/\s+/);
+
+        raceWords.forEach((word) => {
+          if (word.length > 2 && distanceWords.includes(word)) {
+            score += 20;
+          }
+        });
+
+        // Correspondance partielle
+        if (raceName.includes(distanceLabel) || distanceLabel.includes(raceName)) {
+          score += 30;
+        }
+
+        if (score > 0 && (!bestMatch || score > bestMatch.score)) {
+          bestMatch = {
+            distanceId: distance.id,
+            label: distance.label || `${distance.meters || distance.duration_seconds || ""}`,
+            score,
+          };
+        }
+      });
+
+      if (bestMatch && bestMatch.score >= 30) {
+        newSuggestions.push({
+          id: race.id,
+          name: race.name || "",
+          type: "race",
+          suggestedDistanceId: bestMatch.distanceId,
+          suggestedDistanceLabel: bestMatch.label,
+          confidence: Math.min(100, bestMatch.score),
+        });
+      }
+    });
+
+    setSuggestions(newSuggestions);
+    setSelectedSuggestions(new Set(newSuggestions.map((s) => s.id)));
+    return newSuggestions;
+  };
+
+  const handleOpenAutoAssign = () => {
+    const newSuggestions = generateSuggestions();
+    if (newSuggestions.length === 0) {
+      toast({
+        title: "Aucune suggestion",
+        description: "Aucune réaffectation automatique suggérée.",
+      });
+      return;
+    }
+    setAutoAssignDialogOpen(true);
+  };
+
+  const handleApplySuggestions = async () => {
+    if (selectedSuggestions.size === 0) {
+      toast({
+        title: "Aucune sélection",
+        description: "Veuillez sélectionner au moins une réaffectation.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setIsApplying(true);
+    try {
+      const toApply = suggestions.filter((s) => selectedSuggestions.has(s.id));
+
+      // Appliquer les réaffectations
+      for (const suggestion of toApply) {
+        try {
+          if (suggestion.type === "category") {
+            await api.put(`/categories/${suggestion.id}`, {
+              distance_id: suggestion.suggestedDistanceId,
+            });
+          } else {
+            await api.put(`/races/${suggestion.id}`, {
+              distance_id: suggestion.suggestedDistanceId,
+            });
+          }
+        } catch (err) {
+          console.error(`Erreur réaffectation ${suggestion.type} ${suggestion.id}:`, err);
+        }
+      }
+
+      // Recharger les données
+      await Promise.all([fetchCategories(), fetchRaces()]);
+
+      toast({
+        title: "Succès",
+        description: `${toApply.length} réaffectation${toApply.length > 1 ? "s" : ""} appliquée${toApply.length > 1 ? "s" : ""} avec succès.`,
+      });
+
+      setAutoAssignDialogOpen(false);
+      setSuggestions([]);
+      setSelectedSuggestions(new Set());
+    } catch (err) {
+      console.error("Erreur application suggestions:", err);
+      toast({
+        title: "Erreur",
+        description: "Erreur lors de l'application des réaffectations.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsApplying(false);
     }
   };
 
@@ -678,6 +942,16 @@ export default function DistancesPage() {
               </span>
             )}
           </Button>
+          {(unassignedCategoriesCount > 0 || unassignedRacesCount > 0) && (
+            <Button
+              variant="outline"
+              onClick={handleOpenAutoAssign}
+              className="gap-2"
+            >
+              <Wand2 className="w-4 h-4" />
+              Réaffectation automatique
+            </Button>
+          )}
           {isSaving && (
             <span className="text-sm text-muted-foreground flex items-center gap-2 px-3 py-2 bg-blue-50 rounded-lg border border-blue-200">
               <Loader2 className="w-4 h-4 animate-spin text-blue-600" />
@@ -968,6 +1242,130 @@ export default function DistancesPage() {
           </DragOverlay>
         </DndContext>
       )}
+
+      {/* Modal de réaffectation automatique */}
+      <Dialog open={autoAssignDialogOpen} onOpenChange={setAutoAssignDialogOpen}>
+        <DialogContent className="max-w-4xl max-h-[80vh] overflow-hidden flex flex-col">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Wand2 className="w-5 h-5 text-blue-600" />
+              Réaffectation automatique
+            </DialogTitle>
+            <DialogDescription>
+              Suggestions de réaffectation basées sur les noms des catégories/courses et des distances.
+              Sélectionnez les réaffectations à appliquer.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="flex-1 overflow-y-auto py-4">
+            {suggestions.length === 0 ? (
+              <div className="text-center py-8 text-muted-foreground">
+                Aucune suggestion disponible.
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {suggestions.map((suggestion) => {
+                  const isSelected = selectedSuggestions.has(suggestion.id);
+                  const confidenceColor =
+                    suggestion.confidence >= 70
+                      ? "text-green-600"
+                      : suggestion.confidence >= 50
+                      ? "text-yellow-600"
+                      : "text-orange-600";
+
+                  return (
+                    <div
+                      key={suggestion.id}
+                      className={`p-4 border-2 rounded-lg cursor-pointer transition-all ${
+                        isSelected
+                          ? "border-blue-500 bg-blue-50"
+                          : "border-gray-200 hover:border-blue-300 hover:bg-gray-50"
+                      }`}
+                      onClick={() => {
+                        const newSelected = new Set(selectedSuggestions);
+                        if (isSelected) {
+                          newSelected.delete(suggestion.id);
+                        } else {
+                          newSelected.add(suggestion.id);
+                        }
+                        setSelectedSuggestions(newSelected);
+                      }}
+                    >
+                      <div className="flex items-start gap-3">
+                        <Checkbox
+                          checked={isSelected}
+                          onCheckedChange={(checked) => {
+                            const newSelected = new Set(selectedSuggestions);
+                            if (checked) {
+                              newSelected.add(suggestion.id);
+                            } else {
+                              newSelected.delete(suggestion.id);
+                            }
+                            setSelectedSuggestions(newSelected);
+                          }}
+                          onClick={(e) => e.stopPropagation()}
+                        />
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 mb-1">
+                            <span className="px-2 py-0.5 text-xs font-medium bg-purple-100 text-purple-700 rounded-full">
+                              {suggestion.type === "category" ? "Catégorie" : "Course"}
+                            </span>
+                            <span className="font-semibold text-slate-900">{suggestion.name}</span>
+                          </div>
+                          <div className="flex items-center gap-2 mt-2">
+                            <ArrowRight className="w-4 h-4 text-gray-400" />
+                            <span className="text-sm text-slate-700">
+                              Affecter à : <strong>{suggestion.suggestedDistanceLabel}</strong>
+                            </span>
+                            <span className={`text-xs font-medium ${confidenceColor}`}>
+                              ({suggestion.confidence}% de confiance)
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+
+          <DialogFooter className="flex items-center justify-between border-t pt-4">
+            <div className="text-sm text-muted-foreground">
+              {selectedSuggestions.size} sur {suggestions.length} suggestion{suggestions.length > 1 ? "s" : ""} sélectionnée{selectedSuggestions.size > 1 ? "s" : ""}
+            </div>
+            <div className="flex gap-2">
+              <Button
+                variant="outline"
+                onClick={() => {
+                  setAutoAssignDialogOpen(false);
+                  setSelectedSuggestions(new Set());
+                }}
+                disabled={isApplying}
+              >
+                <X className="w-4 h-4 mr-2" />
+                Annuler
+              </Button>
+              <Button
+                onClick={handleApplySuggestions}
+                disabled={isApplying || selectedSuggestions.size === 0}
+              >
+                {isApplying ? (
+                  <>
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    Application...
+                  </>
+                ) : (
+                  <>
+                    <Check className="w-4 h-4 mr-2" />
+                    Appliquer ({selectedSuggestions.size})
+                  </>
+                )}
+              </Button>
+            </div>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
