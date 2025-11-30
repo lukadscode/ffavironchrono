@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import api from "@/lib/axios";
 import {
@@ -74,6 +74,34 @@ export default function EventOverviewPage() {
     fetchAlerts();
   }, [eventId]);
 
+  // Rafraîchir les alertes automatiquement toutes les 30 secondes
+  useEffect(() => {
+    if (!eventId) return;
+
+    const interval = setInterval(() => {
+      fetchAlerts();
+    }, 30000); // 30 secondes
+
+    return () => clearInterval(interval);
+  }, [eventId, fetchAlerts]);
+
+  // Rafraîchir les alertes quand la page redevient visible
+  useEffect(() => {
+    if (!eventId) return;
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "visible") {
+        fetchAlerts();
+      }
+    };
+
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+
+    return () => {
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+    };
+  }, [eventId, fetchAlerts]);
+
   const fetchEvent = async () => {
     try {
       const res = await api.get(`/events/${eventId}`);
@@ -121,7 +149,7 @@ export default function EventOverviewPage() {
     }
   };
 
-  const fetchAlerts = async () => {
+  const fetchAlerts = useCallback(async () => {
     if (!eventId) return;
     
     try {
@@ -183,7 +211,7 @@ export default function EventOverviewPage() {
     } catch (err) {
       console.error("Erreur chargement alertes:", err);
     }
-  };
+  }, [eventId]);
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value, type, checked } = e.target;
@@ -215,6 +243,10 @@ export default function EventOverviewPage() {
       const res = await api.put(`/events/${eventId}`, payload);
       setEvent(res.data.data);
       setEditing(false);
+      
+      // Rafraîchir les alertes après la mise à jour
+      await fetchAlerts();
+      
       toast({
         title: "Succès",
         description: "L'événement a été mis à jour avec succès.",
