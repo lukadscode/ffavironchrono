@@ -217,10 +217,27 @@ export default function CrewStatusManagementPage() {
       const club = (crew.club_name || "").toLowerCase();
       const clubCode = (crew.club_code || "").toLowerCase();
       const categoryCode = (crew.category?.code || "").toLowerCase();
+      const categoryLabel = (crew.category?.label || "").toLowerCase();
+      
+      // Recherche dans les participants
+      const hasMatchingParticipant = crew.crew_participants?.some((cp) => {
+        const firstName = (cp.participant?.first_name || "").toLowerCase();
+        const lastName = (cp.participant?.last_name || "").toLowerCase();
+        const licenseNumber = (cp.participant?.license_number || "").toLowerCase();
+        return (
+          firstName.includes(query) ||
+          lastName.includes(query) ||
+          `${firstName} ${lastName}`.includes(query) ||
+          licenseNumber.includes(query)
+        );
+      }) || false;
+      
       return (
         club.includes(query) ||
         clubCode.includes(query) ||
-        categoryCode.includes(query)
+        categoryCode.includes(query) ||
+        categoryLabel.includes(query) ||
+        hasMatchingParticipant
       );
     });
   }, [crews, crewSearchQuery]);
@@ -626,7 +643,7 @@ export default function CrewStatusManagementPage() {
           </CardHeader>
           <CardContent className="space-y-4">
             <Input
-              placeholder="Rechercher par club, code club ou catégorie..."
+              placeholder="Rechercher par club, code club, catégorie ou participant..."
               value={crewSearchQuery}
               onChange={(e) => setCrewSearchQuery(e.target.value)}
             />
@@ -665,12 +682,29 @@ export default function CrewStatusManagementPage() {
                               </span>
                             </div>
                           )}
-                          <div className="flex items-center gap-2">
+                          <div className="flex items-center gap-2 flex-wrap">
                             <Users className="w-4 h-4 text-muted-foreground" />
                             <span className="text-sm text-muted-foreground">
                               {crew.crew_participants?.length || 0} participant
                               {(crew.crew_participants?.length || 0) > 1 ? "s" : ""}
                             </span>
+                            {crew.crew_participants && crew.crew_participants.length > 0 && (
+                              <div className="flex flex-wrap gap-1 mt-1">
+                                {crew.crew_participants.slice(0, 3).map((cp, idx) => (
+                                  <span
+                                    key={cp.id || idx}
+                                    className="text-xs px-2 py-0.5 bg-blue-50 text-blue-700 rounded-full border border-blue-200"
+                                  >
+                                    {cp.participant?.first_name} {cp.participant?.last_name}
+                                  </span>
+                                ))}
+                                {crew.crew_participants.length > 3 && (
+                                  <span className="text-xs px-2 py-0.5 bg-gray-100 text-gray-600 rounded-full">
+                                    +{crew.crew_participants.length - 3}
+                                  </span>
+                                )}
+                              </div>
+                            )}
                           </div>
                         </div>
                         <div className="flex items-center gap-3">
