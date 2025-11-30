@@ -247,10 +247,10 @@ export default function Results() {
                     const raceCrewsRes = await publicApi.get(`/race-crews/${race.id}`);
                     const raceCrews = raceCrewsRes.data.data || [];
                     
-                    // Créer un map crew_id -> crew avec participants
+                    // Créer un map crew_id -> crew avec participants (uniquement équipages participants)
                     const crewMap = new Map();
                     raceCrews.forEach((rc: any) => {
-                      if (rc.crew_id && rc.crew) {
+                      if (rc.crew_id && rc.crew && rc.crew.status === "registered") {
                         crewMap.set(rc.crew_id, rc.crew);
                       }
                     });

@@ -20,6 +20,7 @@ import ParticipantDetail from "@/pages/event/ParticipantDetail";
 import CrewList from "@/pages/crews/CrewList";
 import CrewDetail from "@/pages/crews/CrewDetail";
 import CrewWizardPage from "@/pages/crews/CrewWizardPage";
+import CrewStatusManagementPage from "@/pages/event/CrewStatusManagementPage";
 import DistancesPage from "@/pages/event/DistancesPage";
 import EventPermissionsPage from "@/pages/event/EventPermissionsPage";
 import TimingPointsPage from "@/pages/event/TimingPointsPage";
@@ -155,6 +156,14 @@ const router = createBrowserRouter([
         element: (
           <EventProtectedRoute allowedRoles={["organiser", "editor"]}>
             <CrewDetail />
+          </EventProtectedRoute>
+        )
+      },
+      { 
+        path: "crew-status", 
+        element: (
+          <EventProtectedRoute allowedRoles={["organiser", "editor"]}>
+            <CrewStatusManagementPage />
           </EventProtectedRoute>
         )
       },

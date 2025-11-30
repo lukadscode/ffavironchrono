@@ -26,6 +26,8 @@ import {
   Table as TableIcon,
   Plus,
 } from "lucide-react";
+import { CrewStatusBadge } from "@/components/crew/CrewStatusBadge";
+import { isParticipatingCrew } from "@/constants/crewStatus";
 
 export default function CrewList() {
   const { eventId } = useParams();
@@ -289,6 +291,11 @@ export default function CrewList() {
                   </div>
 
                   <div className="space-y-2">
+                    {crew.status && (
+                      <div className="flex items-center gap-2">
+                        <CrewStatusBadge status={crew.status} />
+                      </div>
+                    )}
                     {crew.category && (
                       <div className="flex items-center gap-2 text-sm">
                         <Award className="w-4 h-4 text-muted-foreground" />
@@ -354,6 +361,7 @@ export default function CrewList() {
                     <TableHead>Code catégorie</TableHead>
                     <TableHead>Club</TableHead>
                     <TableHead>Code club</TableHead>
+                    <TableHead>Statut</TableHead>
                     {hasParticipantsData && <TableHead>Participants</TableHead>}
                     <TableHead>Places</TableHead>
                     <TableHead className="text-right">Actions</TableHead>
@@ -404,6 +412,9 @@ export default function CrewList() {
                           ) : (
                             <span className="text-muted-foreground">—</span>
                           )}
+                        </TableCell>
+                        <TableCell>
+                          {crew.status && <CrewStatusBadge status={crew.status} />}
                         </TableCell>
                         {hasParticipantsData && (
                           <TableCell>

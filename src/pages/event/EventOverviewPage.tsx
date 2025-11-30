@@ -149,8 +149,10 @@ export default function EventOverviewPage() {
             }
           });
           
-          // Compter les équipages non affectés
-          const unassignedCrews = allCrews.filter((crew: any) => !assignedCrewIds.has(crew.id));
+          // Compter les équipages non affectés (uniquement ceux avec status "registered")
+          const unassignedCrews = allCrews.filter(
+            (crew: any) => crew.status === "registered" && !assignedCrewIds.has(crew.id)
+          );
           
           if (unassignedCrews.length > 0) {
             phasesWithUnassignedCrews.push({

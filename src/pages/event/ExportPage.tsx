@@ -15,7 +15,7 @@ type Crew = {
   club_name: string;
   club_code: string;
   coach_name?: string | null;
-  status?: number;
+  status?: string;
   category?: {
     id: string;
     code: string;

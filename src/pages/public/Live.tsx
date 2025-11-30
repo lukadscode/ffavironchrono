@@ -109,10 +109,10 @@ export default function Live() {
       const raceCrewsRes = await publicApi.get(`/race-crews/${raceId}`);
       const raceCrews = raceCrewsRes.data.data || [];
       
-      // Créer un map crew_id -> crew avec participants
+      // Créer un map crew_id -> crew avec participants (uniquement équipages participants)
       const crewMap = new Map();
       raceCrews.forEach((rc: any) => {
-        if (rc.crew_id && rc.crew) {
+        if (rc.crew_id && rc.crew && rc.crew.status === "registered") {
           crewMap.set(rc.crew_id, rc.crew);
         }
       });
@@ -609,6 +609,7 @@ export default function Live() {
         const enriched = await Promise.all(
           upcoming.map(async (race: any) => {
             const crews = (race.race_crews || [])
+              .filter((rc: any) => rc.crew && rc.crew.status === "registered")
               .sort((a: any, b: any) => a.lane - b.lane)
               .map((rc: any) => ({
                 crew_id: rc.crew?.id || rc.crew_id,

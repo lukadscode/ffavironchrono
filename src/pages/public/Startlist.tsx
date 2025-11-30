@@ -53,7 +53,7 @@ type RaceCrew = {
     id: string;
     event_id: string;
     category_id: string;
-    status: number;
+    status: string;
     club_name: string;
     club_code: string;
     coach_name: string | null;
@@ -207,6 +207,11 @@ export default function Startlist() {
       .map((race) => {
         // Filtrer les équipages dans chaque course
         const filteredCrews = (race.race_crews || []).filter((rc) => {
+          // Filtrer les équipages non-participants (uniquement status "registered")
+          if (!rc.crew || rc.crew.status !== "registered") {
+            return false;
+          }
+          
           // Filtre par club (par code)
           if (selectedClub !== "all" && rc.crew?.club_code !== selectedClub) {
             return false;

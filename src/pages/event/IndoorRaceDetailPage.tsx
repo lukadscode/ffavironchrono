@@ -71,7 +71,7 @@ type RaceCrew = {
     id: string;
     event_id: string;
     category_id: string;
-    status: number;
+    status: string;
     club_name: string;
     club_code: string;
     coach_name: string | null;

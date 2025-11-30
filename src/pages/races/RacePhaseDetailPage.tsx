@@ -60,6 +60,7 @@ interface Crew {
   category_id: string;
   category_label?: string;
   category?: Category;
+  status?: string;
   crew_participants?: CrewParticipant[];
 }
 
@@ -407,7 +408,13 @@ export default function RacePhaseDetailPage() {
     return ids;
   };
 
-  const unassignedCrews = useMemo(() => crews.filter((c) => !getAllCrewIdsInRaces().includes(c.id)), [crews, races]);
+  const unassignedCrews = useMemo(() => 
+    crews.filter((c) => 
+      !getAllCrewIdsInRaces().includes(c.id) && 
+      c.status === "registered" // Uniquement les équipages participants
+    ), 
+    [crews, races]
+  );
 
   // Filtrer les équipages non affectés selon la recherche
   const filteredUnassignedCrews = useMemo(() => {

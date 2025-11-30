@@ -70,7 +70,7 @@ type RaceCrew = {
     id: string;
     event_id: string;
     category_id: string;
-    status: number;
+    status: string;
     club_name: string;
     club_code: string;
     coach_name: string | null;
@@ -154,23 +154,34 @@ export default function RacesPage() {
 
             // Enrichir chaque race-crew avec les participants du crew
             const enrichedRaceCrews = await Promise.all(
-              raceCrews.map(async (rc: any) => {
-                try {
-                  const crewRes = await api.get(`/crews/${rc.crew_id}`);
-                  const crewData = crewRes.data.data || crewRes.data;
-                  return {
-                    ...rc,
-                    crew: {
-                      ...crewData,
-                      crew_participants: crewData.crew_participants || [],
-                    },
-                  };
-                } catch (err) {
-                  console.error(`Erreur chargement crew ${rc.crew_id}:`, err);
-                  return rc;
-                }
-              })
+              raceCrews
+                .filter((rc: any) => {
+                  // Filtrer les équipages non-participants (uniquement status "registered")
+                  // Note: Le filtrage complet se fera après l'enrichissement car on a besoin des données du crew
+                  return true;
+                })
+                .map(async (rc: any) => {
+                  try {
+                    const crewRes = await api.get(`/crews/${rc.crew_id}`);
+                    const crewData = crewRes.data.data || crewRes.data;
+                    return {
+                      ...rc,
+                      crew: {
+                        ...crewData,
+                        crew_participants: crewData.crew_participants || [],
+                      },
+                    };
+                  } catch (err) {
+                    console.error(`Erreur chargement crew ${rc.crew_id}:`, err);
+                    return rc;
+                  }
+                })
             );
+            
+            // Filtrer les équipages non-participants après l'enrichissement
+            const filteredRaceCrews = enrichedRaceCrews.filter((rc: any) => {
+              return rc.crew && rc.crew.status === "registered";
+            });
 
             // Récupérer la distance si elle existe
             let distanceData: Distance | null = null;
