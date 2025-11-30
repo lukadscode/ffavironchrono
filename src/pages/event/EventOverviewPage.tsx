@@ -68,11 +68,75 @@ export default function EventOverviewPage() {
     is_finished: false,
   });
 
+  const fetchAlerts = useCallback(async () => {
+    if (!eventId) return;
+    
+    try {
+      // Vérifier les catégories sans distance
+      const categoriesRes = await api.get(`/categories/event/${eventId}/with-crews`).catch(() => ({ data: { data: [] } }));
+      const categories = categoriesRes.data.data || [];
+      const categoriesWithoutDistance = categories.filter((cat: any) => 
+        cat.crew_count > 0 && (!cat.distance_id || cat.distance_id === null)
+      );
+
+      // Vérifier les phases avec équipages non affectés
+      const phasesRes = await api.get(`/race-phases/${eventId}`).catch(() => ({ data: { data: [] } }));
+      const phases = phasesRes.data.data || [];
+      
+      const phasesWithUnassignedCrews: Array<{ phaseId: string; phaseName: string; count: number }> = [];
+      
+      for (const phase of phases) {
+        try {
+          // Récupérer les courses de la phase
+          const racesRes = await api.get(`/races/event/${eventId}`).catch(() => ({ data: { data: [] } }));
+          const allRaces = racesRes.data.data || [];
+          const phaseRaces = allRaces.filter((race: any) => race.race_phase?.id === phase.id);
+          
+          // Récupérer tous les équipages de l'événement
+          const crewsRes = await api.get(`/crews/event/${eventId}`).catch(() => ({ data: { data: [] } }));
+          const allCrews = crewsRes.data.data || [];
+          
+          // Récupérer les équipages affectés aux courses de cette phase
+          const assignedCrewIds = new Set<string>();
+          phaseRaces.forEach((race: any) => {
+            if (race.race_crews) {
+              race.race_crews.forEach((rc: any) => {
+                if (rc.crew_id) {
+                  assignedCrewIds.add(rc.crew_id);
+                }
+              });
+            }
+          });
+          
+          // Compter les équipages non affectés
+          const unassignedCrews = allCrews.filter((crew: any) => !assignedCrewIds.has(crew.id));
+          
+          if (unassignedCrews.length > 0) {
+            phasesWithUnassignedCrews.push({
+              phaseId: phase.id,
+              phaseName: phase.name,
+              count: unassignedCrews.length,
+            });
+          }
+        } catch (err) {
+          console.error(`Erreur vérification phase ${phase.id}:`, err);
+        }
+      }
+
+      setAlerts({
+        categoriesWithoutDistance,
+        phasesWithUnassignedCrews,
+      });
+    } catch (err) {
+      console.error("Erreur chargement alertes:", err);
+    }
+  }, [eventId]);
+
   useEffect(() => {
     fetchEvent();
     fetchStats();
     fetchAlerts();
-  }, [eventId]);
+  }, [eventId, fetchAlerts]);
 
   // Rafraîchir les alertes automatiquement toutes les 30 secondes
   useEffect(() => {
@@ -148,70 +212,6 @@ export default function EventOverviewPage() {
       console.error("Erreur chargement statistiques:", err);
     }
   };
-
-  const fetchAlerts = useCallback(async () => {
-    if (!eventId) return;
-    
-    try {
-      // Vérifier les catégories sans distance
-      const categoriesRes = await api.get(`/categories/event/${eventId}/with-crews`).catch(() => ({ data: { data: [] } }));
-      const categories = categoriesRes.data.data || [];
-      const categoriesWithoutDistance = categories.filter((cat: any) => 
-        cat.crew_count > 0 && (!cat.distance_id || cat.distance_id === null)
-      );
-
-      // Vérifier les phases avec équipages non affectés
-      const phasesRes = await api.get(`/race-phases/${eventId}`).catch(() => ({ data: { data: [] } }));
-      const phases = phasesRes.data.data || [];
-      
-      const phasesWithUnassignedCrews: Array<{ phaseId: string; phaseName: string; count: number }> = [];
-      
-      for (const phase of phases) {
-        try {
-          // Récupérer les courses de la phase
-          const racesRes = await api.get(`/races/event/${eventId}`).catch(() => ({ data: { data: [] } }));
-          const allRaces = racesRes.data.data || [];
-          const phaseRaces = allRaces.filter((race: any) => race.race_phase?.id === phase.id);
-          
-          // Récupérer tous les équipages de l'événement
-          const crewsRes = await api.get(`/crews/event/${eventId}`).catch(() => ({ data: { data: [] } }));
-          const allCrews = crewsRes.data.data || [];
-          
-          // Récupérer les équipages affectés aux courses de cette phase
-          const assignedCrewIds = new Set<string>();
-          phaseRaces.forEach((race: any) => {
-            if (race.race_crews) {
-              race.race_crews.forEach((rc: any) => {
-                if (rc.crew_id) {
-                  assignedCrewIds.add(rc.crew_id);
-                }
-              });
-            }
-          });
-          
-          // Compter les équipages non affectés
-          const unassignedCrews = allCrews.filter((crew: any) => !assignedCrewIds.has(crew.id));
-          
-          if (unassignedCrews.length > 0) {
-            phasesWithUnassignedCrews.push({
-              phaseId: phase.id,
-              phaseName: phase.name,
-              count: unassignedCrews.length,
-            });
-          }
-        } catch (err) {
-          console.error(`Erreur vérification phase ${phase.id}:`, err);
-        }
-      }
-
-      setAlerts({
-        categoriesWithoutDistance,
-        phasesWithUnassignedCrews,
-      });
-    } catch (err) {
-      console.error("Erreur chargement alertes:", err);
-    }
-  }, [eventId]);
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value, type, checked } = e.target;
