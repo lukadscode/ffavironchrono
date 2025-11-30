@@ -4,6 +4,7 @@ import api from "@/lib/axios";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { useToast } from "@/hooks/use-toast";
+import { Skeleton } from "@/components/ui/skeleton";
 import {
   DndContext,
   useDroppable,
@@ -252,6 +253,7 @@ export default function RacePhaseDetailPage() {
   const [phases, setPhases] = useState<RacePhase[]>([]);
   const [currentPhase, setCurrentPhase] = useState<RacePhase | null>(null);
   const [unassignedSearchQuery, setUnassignedSearchQuery] = useState<string>("");
+  const [loading, setLoading] = useState<boolean>(true);
 
   // === Nouveaux états pour la timeline + gaps dynamiques ===
   const [slotMinutes, setSlotMinutes] = useState<number>(DEFAULT_SLOT_MINUTES);
@@ -702,9 +704,14 @@ export default function RacePhaseDetailPage() {
 
   useEffect(() => {
     if (eventId && phaseId) {
-      fetchPhases();
-      fetchCrews();
-      fetchRaces();
+      setLoading(true);
+      Promise.all([
+        fetchPhases(),
+        fetchCrews(),
+        fetchRaces()
+      ]).finally(() => {
+        setLoading(false);
+      });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [eventId, phaseId]);
@@ -797,11 +804,46 @@ export default function RacePhaseDetailPage() {
     }
   };
 
+  if (loading) {
+    return (
+      <div className="p-4 space-y-4">
+        <div className="flex flex-col md:flex-row gap-4 md:gap-6">
+          {/* Colonne gauche - Skeleton */}
+          <div className="w-full md:w-1/3 space-y-4">
+            <Card>
+              <CardHeader className="bg-red-50">
+                <Skeleton className="h-6 w-48" />
+                <Skeleton className="h-10 w-full mt-2" />
+              </CardHeader>
+              <CardContent className="space-y-2 p-4">
+                {[1, 2, 3, 4].map((i) => (
+                  <Skeleton key={i} className="h-16 w-full" />
+                ))}
+              </CardContent>
+            </Card>
+          </div>
+          
+          {/* Colonne droite - Skeleton */}
+          <Card className="flex-1">
+            <CardHeader>
+              <Skeleton className="h-6 w-48" />
+            </CardHeader>
+            <CardContent className="space-y-4 p-4">
+              {[1, 2, 3].map((i) => (
+                <Skeleton key={i} className="h-32 w-full" />
+              ))}
+            </CardContent>
+          </Card>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <DndContext onDragStart={onDragStart} onDragEnd={onDragEnd}>
-      <div className="p-4 flex gap-6">
+      <div className="p-4 flex flex-col md:flex-row gap-4 md:gap-6">
         {/* Colonne gauche */}
-        <div className="w-1/3 space-y-4">
+        <div className="w-full md:w-1/3 space-y-4 min-w-0">
           {previousPhase && (
             <PhaseResultsPanel
               phaseId={previousPhase.id}
@@ -840,7 +882,7 @@ export default function RacePhaseDetailPage() {
         </div>
 
         {/* Colonne droite */}
-        <Card className="flex-1">
+        <Card className="flex-1 min-w-0">
           <CardHeader className="flex flex-col gap-4">
             <div className="flex justify-between items-center gap-3">
               <CardTitle>Courses de la phase</CardTitle>
@@ -1048,7 +1090,7 @@ export default function RacePhaseDetailPage() {
           </CardHeader>
 
           {/* Timeline verticale + drag and drop par séries */}
-          <CardContent className="space-y-4 md:max-h-[80vh] overflow-y-auto">
+          <CardContent className="space-y-4 md:max-h-[80vh] overflow-y-auto min-w-0">
             <SortableContext items={races.map((r) => r.id)} strategy={verticalListSortingStrategy}>
               <div className="relative pl-6">
                 {/* Axe vertical */}
@@ -1334,10 +1376,10 @@ function TimelineRace({
   };
 
   return (
-    <div ref={setNodeRef} style={style} className={clsx("relative border-2 rounded-lg p-3 space-y-3 bg-white shadow-sm", isDragging ? "opacity-70 ring-2 ring-blue-400 shadow-lg" : "hover:border-gray-300", !validation.isValid && "border-red-300 bg-red-50")}>
+    <div ref={setNodeRef} style={style} className={clsx("relative border-2 rounded-lg p-3 space-y-3 bg-white shadow-sm w-full min-w-0", isDragging ? "opacity-70 ring-2 ring-blue-400 shadow-lg" : "hover:border-gray-300", !validation.isValid && "border-red-300 bg-red-50")}>
       <div className="absolute -left-[11px] top-4 w-4 h-4 rounded-full bg-blue-500 border-3 border-white shadow-md" />
 
-      <div className="flex items-center justify-between gap-2">
+      <div className="flex items-center justify-between gap-2 min-w-0">
         <div className="font-semibold text-sm flex items-center gap-2 flex-1 min-w-0">
           <span className="inline-flex items-center text-xs px-2 py-1 rounded-md bg-blue-100 text-blue-700 font-mono font-bold flex-shrink-0">{timeLabel}</span>
           <div className="flex-1 min-w-0">
