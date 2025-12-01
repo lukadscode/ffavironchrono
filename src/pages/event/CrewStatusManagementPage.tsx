@@ -130,25 +130,11 @@ export default function CrewStatusManagementPage() {
       const res = await api.get(`/crews/event/${eventId}`);
       const crewsData = res.data.data || [];
       
-      // Filtrer d'abord les équipages selon la recherche (sans participants pour l'instant)
       const query = searchQuery.toLowerCase().trim();
-      const filteredCrews = crewsData.filter((crew: any) => {
-        const club = (crew.club_name || "").toLowerCase();
-        const clubCode = (crew.club_code || "").toLowerCase();
-        const categoryCode = (crew.category?.code || "").toLowerCase();
-        const categoryLabel = (crew.category?.label || "").toLowerCase();
-        
-        return (
-          club.includes(query) ||
-          clubCode.includes(query) ||
-          categoryCode.includes(query) ||
-          categoryLabel.includes(query)
-        );
-      });
       
-      // Enrichir seulement les équipages filtrés avec leurs participants
+      // Charger TOUS les équipages avec leurs participants (pour pouvoir rechercher par participant)
       const crewsWithParticipants = await Promise.all(
-        filteredCrews.map(async (crew: any) => {
+        crewsData.map(async (crew: any) => {
           try {
             // Récupérer les détails complets du crew (incluant les participants)
             const crewDetailRes = await api.get(`/crews/${crew.id}`);
@@ -160,20 +146,6 @@ export default function CrewStatusManagementPage() {
                                crew.crew_participants || 
                                [];
             
-            // Vérifier aussi si un participant correspond à la recherche
-            const hasMatchingParticipant = participants.some((cp: any) => {
-              const firstName = (cp.participant?.first_name || "").toLowerCase();
-              const lastName = (cp.participant?.last_name || "").toLowerCase();
-              const licenseNumber = (cp.participant?.license_number || "").toLowerCase();
-              return (
-                firstName.includes(query) ||
-                lastName.includes(query) ||
-                `${firstName} ${lastName}`.includes(query) ||
-                licenseNumber.includes(query)
-              );
-            });
-            
-            // Si l'équipage correspond ou a un participant qui correspond
             return {
               ...crew,
               crew_participants: participants,
@@ -188,7 +160,7 @@ export default function CrewStatusManagementPage() {
         })
       );
       
-      // Filtrer à nouveau après avoir chargé les participants (pour la recherche par participant)
+      // Filtrer après avoir chargé tous les participants (recherche sur tous les critères)
       const finalFiltered = crewsWithParticipants.filter((crew: Crew) => {
         const club = (crew.club_name || "").toLowerCase();
         const clubCode = (crew.club_code || "").toLowerCase();
