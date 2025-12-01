@@ -37,6 +37,7 @@ import {
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { Trash2, GripVertical } from "lucide-react";
+import { CrewStatus } from "@/constants/crewStatus";
 
 type Category = {
   id: string;
@@ -526,6 +527,7 @@ export default function CrewWizardPage() {
         category_id: crewData.category_id,
         club_name: crewData.club_name,
         club_code: crewData.club_code,
+        status: CrewStatus.REGISTERED, // Statut par défaut pour un nouvel équipage
       };
       
       // Ajouter coach_name seulement s'il n'est pas vide
