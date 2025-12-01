@@ -346,9 +346,45 @@ export default function DistancesPage() {
     try {
       const res = await api.get(`/races/event/${eventId}`);
       const racesData = res.data.data || [];
-      setRaces(racesData);
+      
+      // Enrichir chaque course avec son distance_id pour s'assurer qu'il est à jour
+      const enrichedRaces = await Promise.all(
+        racesData.map(async (race: any) => {
+          // Récupérer les détails complets de la course pour avoir le distance_id à jour
+          try {
+            const raceRes = await api.get(`/races/${race.id}`);
+            const raceDetail = raceRes.data.data || raceRes.data;
+            
+            return {
+              ...race,
+              distance_id: raceDetail.distance_id || null,
+              distance: raceDetail.distance || null,
+            };
+          } catch (err) {
+            console.error(`Erreur récupération distance pour course ${race.id}:`, err);
+            // Si erreur, utiliser les données de base avec distance_id si présent
+            return {
+              ...race,
+              distance_id: race.distance_id || null,
+            };
+          }
+        })
+      );
+      
+      console.log("Courses chargées avec distance_id:", enrichedRaces.map(r => ({ 
+        id: r.id, 
+        name: r.name, 
+        distance_id: r.distance_id 
+      })));
+      
+      setRaces(enrichedRaces);
     } catch (err) {
       console.error("Erreur chargement courses", err);
+      toast({
+        title: "Erreur",
+        description: "Impossible de charger les courses.",
+        variant: "destructive",
+      });
     }
   };
 
@@ -809,15 +845,26 @@ export default function DistancesPage() {
       
       console.log("Réponse API:", response.data);
 
+      // Vérifier que la sauvegarde a bien fonctionné dans la réponse
+      const savedDistanceId = response.data?.data?.distance_id ?? response.data?.distance_id ?? targetDistanceId;
+      
+      if (savedDistanceId !== targetDistanceId && targetDistanceId !== null) {
+        console.warn("La distance sauvegardée ne correspond pas à celle demandée", {
+          requested: targetDistanceId,
+          saved: savedDistanceId
+        });
+      }
+
       // Recharger les données pour s'assurer qu'elles sont à jour
-      // Utiliser setTimeout pour s'assurer que l'API a bien sauvegardé avant de recharger
-      setTimeout(async () => {
-        if (itemType === "category") {
-          await fetchCategories();
-        } else {
-          await fetchRaces();
-        }
-      }, 100);
+      // Attendre un peu pour que l'API ait le temps de persister les données en base
+      await new Promise(resolve => setTimeout(resolve, 300));
+      
+      // Recharger les données fraîches depuis l'API
+      if (itemType === "category") {
+        await fetchCategories();
+      } else {
+        await fetchRaces();
+      }
 
       toast({
         title: "Modification enregistrée",
