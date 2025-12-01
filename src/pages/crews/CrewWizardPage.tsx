@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import api from "@/lib/axios";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -100,6 +100,8 @@ export default function CrewWizardPage() {
   const [selectedClubId, setSelectedClubId] = useState<string>("");
   const [clubSearchQuery, setClubSearchQuery] = useState<string>("");
   const [isClubSelectOpen, setIsClubSelectOpen] = useState(false);
+  const [categorySearchQuery, setCategorySearchQuery] = useState<string>("");
+  const [isCategorySelectOpen, setIsCategorySelectOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [showIntranetSearch, setShowIntranetSearch] = useState(false);
   const [intranetLicenseNumber, setIntranetLicenseNumber] = useState("");
@@ -219,6 +221,17 @@ export default function CrewWizardPage() {
   const maxSeats = selectedCategory?.boat_seats || 0;
   const hasCoxswain = selectedCategory?.has_coxswain || false;
   const requiredParticipants = maxSeats + (hasCoxswain ? 1 : 0);
+
+  // Filtrage des catégories pour la recherche
+  const filteredCategories = useMemo(() => {
+    if (!categorySearchQuery.trim()) return categories;
+    const query = categorySearchQuery.toLowerCase();
+    return categories.filter((cat) => {
+      const label = (cat.label || "").toLowerCase();
+      const code = (cat.code || "").toLowerCase();
+      return label.includes(query) || code.includes(query);
+    });
+  }, [categories, categorySearchQuery]);
 
   const filteredParticipants = existingParticipants.filter((p) => {
     if (!searchQuery) return true;
@@ -963,26 +976,64 @@ export default function CrewWizardPage() {
                     <>
                       <Select
                         value={crewData.category_id}
-                        onValueChange={(value) =>
-                          setCrewData({ ...crewData, category_id: value })
-                        }
+                        open={isCategorySelectOpen}
+                        onOpenChange={setIsCategorySelectOpen}
+                        onValueChange={(value) => {
+                          setCrewData({ ...crewData, category_id: value });
+                          setIsCategorySelectOpen(false);
+                          setCategorySearchQuery("");
+                        }}
                       >
                         <SelectTrigger>
                           <SelectValue placeholder="Sélectionner une catégorie" />
                         </SelectTrigger>
-                        <SelectContent>
-                          {categories.map((cat) => (
-                            <SelectItem key={cat.id} value={cat.id}>
-                              <div className="flex items-center justify-between w-full">
-                                <span>{cat.label || cat.code || "Sans nom"}</span>
-                                {cat.code && (
-                                  <span className="text-xs text-muted-foreground ml-2">
-                                    {cat.code}
-                                  </span>
-                                )}
-                              </div>
-                            </SelectItem>
-                          ))}
+                        <SelectContent className="max-h-[500px] p-0">
+                          {/* Zone de recherche */}
+                          <div className="sticky top-0 z-10 bg-background border-b p-2">
+                            <div className="relative">
+                              <Search className="absolute left-2 top-1/2 transform -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                              <Input
+                                placeholder="Rechercher une catégorie..."
+                                value={categorySearchQuery}
+                                onChange={(e) => {
+                                  setCategorySearchQuery(e.target.value);
+                                  if (!isCategorySelectOpen) {
+                                    setIsCategorySelectOpen(true);
+                                  }
+                                }}
+                                className="pl-8"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setIsCategorySelectOpen(true);
+                                }}
+                                onFocus={() => setIsCategorySelectOpen(true)}
+                              />
+                            </div>
+                          </div>
+                          
+                          {/* Liste filtrée */}
+                          <ScrollArea className="max-h-[400px]">
+                            <div className="p-1">
+                              {filteredCategories.length === 0 ? (
+                                <div className="p-4 text-center text-sm text-muted-foreground">
+                                  Aucune catégorie trouvée
+                                </div>
+                              ) : (
+                                filteredCategories.map((cat) => (
+                                  <SelectItem key={cat.id} value={cat.id} className="cursor-pointer">
+                                    <div className="flex items-center justify-between w-full">
+                                      <span>{cat.label || cat.code || "Sans nom"}</span>
+                                      {cat.code && (
+                                        <span className="text-xs text-muted-foreground ml-2">
+                                          {cat.code}
+                                        </span>
+                                      )}
+                                    </div>
+                                  </SelectItem>
+                                ))
+                              )}
+                            </div>
+                          </ScrollArea>
                         </SelectContent>
                       </Select>
                       {selectedCategory && (
