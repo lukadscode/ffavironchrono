@@ -1,4 +1,4 @@
-import { useEffect, useState, useMemo, useCallback } from "react";
+import { useEffect, useState, useMemo, useCallback, useRef } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import api from "@/lib/axios";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -71,7 +71,7 @@ export default function CrewStatusManagementPage() {
   const [loading, setLoading] = useState(false);
   const [crews, setCrews] = useState<Crew[]>([]);
   const [crewSearchQuery, setCrewSearchQuery] = useState("");
-  const [searchDebounceTimer, setSearchDebounceTimer] = useState<ReturnType<typeof setTimeout> | null>(null);
+  const searchDebounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Formulaire multi-étapes
   const [step, setStep] = useState<1 | 2 | 3>(1);
@@ -238,27 +238,28 @@ export default function CrewStatusManagementPage() {
   // Debounce pour la recherche
   useEffect(() => {
     // Nettoyer le timer précédent
-    if (searchDebounceTimer) {
-      clearTimeout(searchDebounceTimer);
+    if (searchDebounceTimerRef.current) {
+      clearTimeout(searchDebounceTimerRef.current);
+      searchDebounceTimerRef.current = null;
     }
     
-    // Si la recherche est vide, vider la liste
-    if (!crewSearchQuery.trim() || crewSearchQuery.trim().length < 2) {
-      setCrews([]);
+    const trimmedQuery = crewSearchQuery.trim();
+    
+    // Si la recherche est vide ou trop courte, ne rien faire (garder les résultats précédents)
+    if (!trimmedQuery || trimmedQuery.length < 2) {
       return;
     }
     
     // Créer un nouveau timer pour déclencher la recherche après 500ms
-    const timer = setTimeout(() => {
-      fetchCrews(crewSearchQuery);
+    searchDebounceTimerRef.current = setTimeout(() => {
+      fetchCrews(trimmedQuery);
     }, 500);
-    
-    setSearchDebounceTimer(timer);
     
     // Cleanup
     return () => {
-      if (timer) {
-        clearTimeout(timer);
+      if (searchDebounceTimerRef.current) {
+        clearTimeout(searchDebounceTimerRef.current);
+        searchDebounceTimerRef.current = null;
       }
     };
   }, [crewSearchQuery, fetchCrews]);
