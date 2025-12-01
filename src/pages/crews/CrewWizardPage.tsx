@@ -37,7 +37,6 @@ import {
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { Trash2, GripVertical } from "lucide-react";
-import { CrewStatus } from "@/constants/crewStatus";
 
 type Category = {
   id: string;
@@ -535,12 +534,12 @@ export default function CrewWizardPage() {
     setIsSaving(true);
     try {
       // Étape 1: Créer l'équipage
+      // Note: Le statut n'est pas envoyé, l'API gère la valeur par défaut automatiquement
       const crewPayload: any = {
         event_id: eventId,
         category_id: crewData.category_id,
         club_name: crewData.club_name,
         club_code: crewData.club_code,
-        status: CrewStatus.REGISTERED, // Statut par défaut pour un nouvel équipage
       };
       
       // Ajouter coach_name seulement s'il n'est pas vide
