@@ -1,4 +1,4 @@
-import { useEffect, useState, useMemo } from "react";
+import { useEffect, useState, useMemo, useCallback } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import api from "@/lib/axios";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -68,9 +68,10 @@ export default function CrewStatusManagementPage() {
   const { eventId } = useParams();
   const navigate = useNavigate();
   const { toast } = useToast();
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
   const [crews, setCrews] = useState<Crew[]>([]);
   const [crewSearchQuery, setCrewSearchQuery] = useState("");
+  const [searchDebounceTimer, setSearchDebounceTimer] = useState<ReturnType<typeof setTimeout> | null>(null);
 
   // Formulaire multi-étapes
   const [step, setStep] = useState<1 | 2 | 3>(1);
@@ -111,37 +112,74 @@ export default function CrewStatusManagementPage() {
 
   useEffect(() => {
     if (!eventId) return;
-    fetchCrews();
     fetchAvailableParticipants();
+    // Ne pas charger les équipages au démarrage, seulement après recherche
   }, [eventId]);
 
-  const fetchCrews = async () => {
+  const fetchCrews = useCallback(async (searchQuery: string = "") => {
     if (!eventId) return;
+    
+    // Si la recherche est vide ou trop courte, ne pas charger
+    if (!searchQuery.trim() || searchQuery.trim().length < 2) {
+      setCrews([]);
+      return;
+    }
+    
     setLoading(true);
     try {
       const res = await api.get(`/crews/event/${eventId}`);
       const crewsData = res.data.data || [];
       
-      // Enrichir chaque crew avec ses participants
+      // Filtrer d'abord les équipages selon la recherche (sans participants pour l'instant)
+      const query = searchQuery.toLowerCase().trim();
+      const filteredCrews = crewsData.filter((crew: any) => {
+        const club = (crew.club_name || "").toLowerCase();
+        const clubCode = (crew.club_code || "").toLowerCase();
+        const categoryCode = (crew.category?.code || "").toLowerCase();
+        const categoryLabel = (crew.category?.label || "").toLowerCase();
+        
+        return (
+          club.includes(query) ||
+          clubCode.includes(query) ||
+          categoryCode.includes(query) ||
+          categoryLabel.includes(query)
+        );
+      });
+      
+      // Enrichir seulement les équipages filtrés avec leurs participants
       const crewsWithParticipants = await Promise.all(
-        crewsData.map(async (crew: any) => {
+        filteredCrews.map(async (crew: any) => {
           try {
             // Récupérer les détails complets du crew (incluant les participants)
             const crewDetailRes = await api.get(`/crews/${crew.id}`);
             const crewDetail = crewDetailRes.data.data || crewDetailRes.data;
             
-            // Retourner le crew avec ses participants
-            return {
-              ...crew,
-              crew_participants: crewDetail.crew_participants || 
+            const participants = crewDetail.crew_participants || 
                                crewDetail.CrewParticipants || 
                                crewDetail.crewParticipants || 
                                crew.crew_participants || 
-                               [],
+                               [];
+            
+            // Vérifier aussi si un participant correspond à la recherche
+            const hasMatchingParticipant = participants.some((cp: any) => {
+              const firstName = (cp.participant?.first_name || "").toLowerCase();
+              const lastName = (cp.participant?.last_name || "").toLowerCase();
+              const licenseNumber = (cp.participant?.license_number || "").toLowerCase();
+              return (
+                firstName.includes(query) ||
+                lastName.includes(query) ||
+                `${firstName} ${lastName}`.includes(query) ||
+                licenseNumber.includes(query)
+              );
+            });
+            
+            // Si l'équipage correspond ou a un participant qui correspond
+            return {
+              ...crew,
+              crew_participants: participants,
             };
           } catch (err) {
             console.error(`Erreur chargement participants pour crew ${crew.id}:`, err);
-            // Si erreur, retourner le crew sans participants
             return {
               ...crew,
               crew_participants: crew.crew_participants || [],
@@ -150,8 +188,36 @@ export default function CrewStatusManagementPage() {
         })
       );
       
+      // Filtrer à nouveau après avoir chargé les participants (pour la recherche par participant)
+      const finalFiltered = crewsWithParticipants.filter((crew: Crew) => {
+        const club = (crew.club_name || "").toLowerCase();
+        const clubCode = (crew.club_code || "").toLowerCase();
+        const categoryCode = (crew.category?.code || "").toLowerCase();
+        const categoryLabel = (crew.category?.label || "").toLowerCase();
+        
+        const hasMatchingParticipant = crew.crew_participants?.some((cp) => {
+          const firstName = (cp.participant?.first_name || "").toLowerCase();
+          const lastName = (cp.participant?.last_name || "").toLowerCase();
+          const licenseNumber = (cp.participant?.license_number || "").toLowerCase();
+          return (
+            firstName.includes(query) ||
+            lastName.includes(query) ||
+            `${firstName} ${lastName}`.includes(query) ||
+            licenseNumber.includes(query)
+          );
+        }) || false;
+        
+        return (
+          club.includes(query) ||
+          clubCode.includes(query) ||
+          categoryCode.includes(query) ||
+          categoryLabel.includes(query) ||
+          hasMatchingParticipant
+        );
+      });
+      
       // Trier par statut (registered en premier) puis par club
-      const sorted = crewsWithParticipants.sort((a: Crew, b: Crew) => {
+      const sorted = finalFiltered.sort((a: Crew, b: Crew) => {
         if (a.status === CrewStatus.REGISTERED && b.status !== CrewStatus.REGISTERED) return -1;
         if (a.status !== CrewStatus.REGISTERED && b.status === CrewStatus.REGISTERED) return 1;
         return (a.club_name || "").localeCompare(b.club_name || "");
@@ -167,7 +233,35 @@ export default function CrewStatusManagementPage() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [eventId, toast]);
+  
+  // Debounce pour la recherche
+  useEffect(() => {
+    // Nettoyer le timer précédent
+    if (searchDebounceTimer) {
+      clearTimeout(searchDebounceTimer);
+    }
+    
+    // Si la recherche est vide, vider la liste
+    if (!crewSearchQuery.trim() || crewSearchQuery.trim().length < 2) {
+      setCrews([]);
+      return;
+    }
+    
+    // Créer un nouveau timer pour déclencher la recherche après 500ms
+    const timer = setTimeout(() => {
+      fetchCrews(crewSearchQuery);
+    }, 500);
+    
+    setSearchDebounceTimer(timer);
+    
+    // Cleanup
+    return () => {
+      if (timer) {
+        clearTimeout(timer);
+      }
+    };
+  }, [crewSearchQuery, fetchCrews]);
 
   const fetchAvailableParticipants = async () => {
     if (!eventId) return;
@@ -210,37 +304,8 @@ export default function CrewStatusManagementPage() {
     });
   }, [availableParticipants, searchQuery]);
 
-  const filteredCrews = useMemo(() => {
-    if (!crewSearchQuery.trim()) return crews;
-    const query = crewSearchQuery.toLowerCase();
-    return crews.filter((crew) => {
-      const club = (crew.club_name || "").toLowerCase();
-      const clubCode = (crew.club_code || "").toLowerCase();
-      const categoryCode = (crew.category?.code || "").toLowerCase();
-      const categoryLabel = (crew.category?.label || "").toLowerCase();
-      
-      // Recherche dans les participants
-      const hasMatchingParticipant = crew.crew_participants?.some((cp) => {
-        const firstName = (cp.participant?.first_name || "").toLowerCase();
-        const lastName = (cp.participant?.last_name || "").toLowerCase();
-        const licenseNumber = (cp.participant?.license_number || "").toLowerCase();
-        return (
-          firstName.includes(query) ||
-          lastName.includes(query) ||
-          `${firstName} ${lastName}`.includes(query) ||
-          licenseNumber.includes(query)
-        );
-      }) || false;
-      
-      return (
-        club.includes(query) ||
-        clubCode.includes(query) ||
-        categoryCode.includes(query) ||
-        categoryLabel.includes(query) ||
-        hasMatchingParticipant
-      );
-    });
-  }, [crews, crewSearchQuery]);
+  // Les équipages sont déjà filtrés dans fetchCrews, on les retourne directement
+  const filteredCrews = crews;
 
   const handleSelectCrew = (crew: Crew) => {
     setSelectedCrew(crew);
@@ -590,7 +655,11 @@ export default function CrewStatusManagementPage() {
       });
 
       // Recharger les données et revenir à l'étape 1
-      await fetchCrews();
+      if (crewSearchQuery.trim().length >= 2) {
+        await fetchCrews(crewSearchQuery);
+      } else {
+        setCrews([]);
+      }
       handleBackToStep1();
     } catch (err: any) {
       console.error("Erreur mise à jour statut:", err);
@@ -642,18 +711,37 @@ export default function CrewStatusManagementPage() {
             <CardTitle>Étape 1 : Sélectionner un équipage</CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
-            <Input
-              placeholder="Rechercher par club, code club, catégorie ou participant..."
-              value={crewSearchQuery}
-              onChange={(e) => setCrewSearchQuery(e.target.value)}
-            />
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+              <Input
+                placeholder="Rechercher par club, code club, catégorie ou participant (min. 2 caractères)..."
+                value={crewSearchQuery}
+                onChange={(e) => setCrewSearchQuery(e.target.value)}
+                className="pl-10"
+              />
+            </div>
 
+            {loading && (
+              <div className="flex items-center justify-center py-8">
+                <Loader2 className="w-6 h-6 animate-spin text-muted-foreground mr-2" />
+                <span className="text-sm text-muted-foreground">Recherche en cours...</span>
+              </div>
+            )}
+            
             <div className="space-y-2 max-h-[600px] overflow-y-auto">
-              {filteredCrews.length === 0 ? (
+              {!loading && filteredCrews.length === 0 && crewSearchQuery.trim().length < 2 ? (
                 <div className="text-center py-8 text-muted-foreground">
-                  Aucun équipage trouvé
+                  <Search className="w-12 h-12 mx-auto mb-4 opacity-50" />
+                  <p className="text-sm font-medium mb-2">Rechercher un équipage</p>
+                  <p className="text-xs">Tapez au moins 2 caractères pour commencer la recherche</p>
                 </div>
-              ) : (
+              ) : !loading && filteredCrews.length === 0 && crewSearchQuery.trim().length >= 2 ? (
+                <div className="text-center py-8 text-muted-foreground">
+                  <AlertCircle className="w-12 h-12 mx-auto mb-4 opacity-50" />
+                  <p className="text-sm font-medium">Aucun équipage trouvé</p>
+                  <p className="text-xs mt-1">Essayez avec d'autres mots-clés</p>
+                </div>
+              ) : !loading ? (
                 filteredCrews.map((crew) => (
                   <Card
                     key={crew.id}
@@ -715,7 +803,7 @@ export default function CrewStatusManagementPage() {
                     </CardContent>
                   </Card>
                 ))
-              )}
+              ) : null}
             </div>
           </CardContent>
         </Card>
