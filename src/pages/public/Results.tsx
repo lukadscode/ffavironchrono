@@ -1053,30 +1053,18 @@ export default function Results() {
                                       {(() => {
                                         const hasSplits = participant.splits_data && Array.isArray(participant.splits_data) && participant.splits_data.length > 0;
                                         return hasSplits ? (
-                                          <div className="space-y-2">
-                                            <div className="flex flex-wrap gap-x-2 gap-y-0.5 text-xs font-mono">
-                                              {participant.splits_data!.map((split: any, idx: number) => {
-                                                const splitTime = split.split_time 
-                                                  ? formatSplitTime(split.split_time)
-                                                  : (split.split_time_display || split.time_display || 
-                                                    (split.split_time_ms ? formatTime(split.split_time_ms) : 
-                                                    (split.time_ms ? formatTime(split.time_ms) : "-")));
-                                                const splitDist = split.split_distance || split.distance || "";
-                                                return (
-                                                  <span key={idx} className="whitespace-nowrap">
-                                                    {splitDist ? `${splitDist}m: ` : ""}{splitTime}
-                                                  </span>
-                                                );
-                                              })}
-                                            </div>
+                                          <div className="flex flex-col items-start gap-1">
+                                            <span className="text-xs text-muted-foreground">
+                                              {participant.splits_data!.length} split{participant.splits_data!.length > 1 ? "s" : ""}
+                                            </span>
                                             <Button
                                               variant="outline"
                                               size="sm"
-                                              className="h-8 text-xs w-full sm:w-auto"
+                                              className="h-7 text-xs"
                                               onClick={() => setSelectedParticipantForChart(participant)}
                                             >
-                                              <BarChart3 className="w-4 h-4 mr-1.5" />
-                                              Graphique
+                                              <BarChart3 className="w-3 h-3 mr-1" />
+                                              Voir détails
                                             </Button>
                                           </div>
                                         ) : (
@@ -1214,30 +1202,18 @@ export default function Results() {
                                     <td className="py-3 px-3">{participant.calories}</td>
                                     <td className="py-3 px-3">
                                       {participant.splits_data && participant.splits_data.length > 0 ? (
-                                        <div>
-                                          <div className="flex flex-wrap gap-x-2 gap-y-0.5 text-xs font-mono mb-2">
-                                            {participant.splits_data.map((split: any, idx: number) => {
-                                              const splitTime = split.split_time 
-                                                ? formatSplitTime(split.split_time)
-                                                : (split.split_time_display || split.time_display || 
-                                                  (split.split_time_ms ? formatTime(split.split_time_ms) : 
-                                                  (split.time_ms ? formatTime(split.time_ms) : "-")));
-                                              const splitDist = split.split_distance || split.distance || "";
-                                              return (
-                                                <span key={idx} className="whitespace-nowrap">
-                                                  {splitDist ? `${splitDist}m: ` : ""}{splitTime}
-                                                </span>
-                                              );
-                                            })}
-                                          </div>
+                                        <div className="flex flex-col items-start gap-1">
+                                          <span className="text-xs text-muted-foreground">
+                                            {participant.splits_data.length} split{participant.splits_data.length > 1 ? "s" : ""}
+                                          </span>
                                           <Button
                                             variant="outline"
                                             size="sm"
-                                            className="h-8 text-xs"
+                                            className="h-7 text-xs"
                                             onClick={() => setSelectedParticipantForChart(participant)}
                                           >
-                                            <BarChart3 className="w-4 h-4 mr-1.5" />
-                                            Graphique
+                                            <BarChart3 className="w-3 h-3 mr-1" />
+                                            Voir détails
                                           </Button>
                                         </div>
                                       ) : (
@@ -1774,9 +1750,49 @@ export default function Results() {
                   </LineChart>
                 </ResponsiveContainer>
               </div>
-              <div className="text-sm text-muted-foreground">
+              <div className="text-sm text-muted-foreground mb-4">
                 <p>Distance totale: {selectedParticipantForChart.distance}m</p>
                 <p>Temps total: {selectedParticipantForChart.time_display}</p>
+              </div>
+              
+              {/* Tableau détaillé des splits */}
+              <div className="border rounded-lg overflow-hidden">
+                <h3 className="text-lg font-semibold p-3 bg-slate-50 border-b">Détails des splits</h3>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead className="bg-slate-100">
+                      <tr>
+                        <th className="text-left py-2 px-4 font-semibold">Split</th>
+                        <th className="text-left py-2 px-4 font-semibold">Distance</th>
+                        <th className="text-left py-2 px-4 font-semibold">Temps</th>
+                        <th className="text-left py-2 px-4 font-semibold">Allure</th>
+                        <th className="text-left py-2 px-4 font-semibold">Cadence</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {selectedParticipantForChart.splits_data.map((split: any, idx: number) => {
+                        const splitTime = split.split_time 
+                          ? formatSplitTime(split.split_time)
+                          : (split.split_time_display || split.time_display || 
+                            (split.split_time_ms ? formatTime(split.split_time_ms) : 
+                            (split.time_ms ? formatTime(split.time_ms) : "-")));
+                        const splitDist = split.split_distance || split.distance || "-";
+                        const splitAvgPace = split.split_avg_pace || split.avg_pace || "-";
+                        const splitStrokeRate = split.split_stroke_rate || split.stroke_rate || split.spm || "-";
+                        
+                        return (
+                          <tr key={idx} className="border-b hover:bg-slate-50">
+                            <td className="py-2 px-4 font-medium">{idx + 1}</td>
+                            <td className="py-2 px-4">{splitDist}{splitDist !== "-" ? "m" : ""}</td>
+                            <td className="py-2 px-4 font-mono">{splitTime}</td>
+                            <td className="py-2 px-4 font-mono">{splitAvgPace}{splitAvgPace !== "-" ? " s/500m" : ""}</td>
+                            <td className="py-2 px-4">{splitStrokeRate}{splitStrokeRate !== "-" ? " SPM" : ""}</td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
               </div>
             </div>
           )}
