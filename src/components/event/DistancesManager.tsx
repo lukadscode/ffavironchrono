@@ -348,16 +348,30 @@ export default function DistancesPage() {
       const racesData = res.data.data || [];
       
       // Enrichir chaque course avec son distance_id pour s'assurer qu'il est à jour
+      // Ajouter un petit délai pour éviter les problèmes de cache
       const enrichedRaces = await Promise.all(
-        racesData.map(async (race: any) => {
+        racesData.map(async (race: any, index: number) => {
+          // Ajouter un petit délai progressif pour éviter de surcharger l'API
+          if (index > 0 && index % 5 === 0) {
+            await new Promise(resolve => setTimeout(resolve, 50));
+          }
+          
           // Récupérer les détails complets de la course pour avoir le distance_id à jour
+          // Ajouter un timestamp pour éviter le cache
           try {
-            const raceRes = await api.get(`/races/${race.id}`);
+            const raceRes = await api.get(`/races/${race.id}`, {
+              params: { _t: Date.now() }
+            });
             const raceDetail = raceRes.data.data || raceRes.data;
+            
+            // S'assurer que distance_id est bien null si non défini (pas undefined)
+            const distanceId = raceDetail.distance_id !== undefined 
+              ? (raceDetail.distance_id || null)
+              : (race.distance_id !== undefined ? (race.distance_id || null) : null);
             
             return {
               ...race,
-              distance_id: raceDetail.distance_id || null,
+              distance_id: distanceId,
               distance: raceDetail.distance || null,
             };
           } catch (err) {
@@ -365,7 +379,7 @@ export default function DistancesPage() {
             // Si erreur, utiliser les données de base avec distance_id si présent
             return {
               ...race,
-              distance_id: race.distance_id || null,
+              distance_id: race.distance_id !== undefined ? (race.distance_id || null) : null,
             };
           }
         })
@@ -856,15 +870,13 @@ export default function DistancesPage() {
       }
 
       // Recharger les données pour s'assurer qu'elles sont à jour
-      // Attendre un peu pour que l'API ait le temps de persister les données en base
-      await new Promise(resolve => setTimeout(resolve, 300));
+      // Attendre que l'API ait le temps de persister les données en base
+      // Augmenter le délai pour s'assurer de la persistance
+      await new Promise(resolve => setTimeout(resolve, 500));
       
-      // Recharger les données fraîches depuis l'API
-      if (itemType === "category") {
-        await fetchCategories();
-      } else {
-        await fetchRaces();
-      }
+      // Recharger TOUTES les données (catégories ET courses) pour éviter les incohérences
+      // et s'assurer que tout est synchronisé
+      await Promise.all([fetchCategories(), fetchRaces()]);
 
       toast({
         title: "Modification enregistrée",

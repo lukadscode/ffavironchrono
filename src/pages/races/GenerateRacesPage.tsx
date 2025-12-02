@@ -12,7 +12,9 @@ import { DndContext, closestCenter, useDroppable } from "@dnd-kit/core";
 import type { DragEndEvent } from "@dnd-kit/core";
 import { SortableContext, verticalListSortingStrategy, useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { Loader2, GripVertical, Tag, Info, ArrowLeft, Save, Sparkles, Plus, X, Minus, FileText, Download } from "lucide-react";
+import { Loader2, GripVertical, Tag, Info, ArrowLeft, Save, Sparkles, Plus, X, Minus, FileText, Download, Copy, CheckCircle2 } from "lucide-react";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 
 interface Category {
   id: string;
@@ -331,6 +333,9 @@ export default function GenerateRacesPage() {
   const [loadingSchema, setLoadingSchema] = useState(false);
   const [savingDraft, setSavingDraft] = useState(false);
   const [hasSavedSchema, setHasSavedSchema] = useState(false);
+  const [validationErrors, setValidationErrors] = useState<string[]>([]);
+  const [showErrorDialog, setShowErrorDialog] = useState(false);
+  const [copiedError, setCopiedError] = useState(false);
 
   // Charger les phases
   useEffect(() => {
@@ -1024,7 +1029,7 @@ export default function GenerateRacesPage() {
     }
 
     // Validation des séries avant envoi
-    const validationErrors: string[] = [];
+    const localValidationErrors: string[] = [];
     
     series.forEach((s, index) => {
       const seriesNumber = index + 1;
@@ -1032,7 +1037,7 @@ export default function GenerateRacesPage() {
       // Vérifier la capacité des lignes d'eau
       const totalParticipants = Object.values(s.categories).reduce((sum, count) => sum + count, 0);
       if (totalParticipants > laneCount) {
-        validationErrors.push(`Série ${seriesNumber}: Le nombre total de participants (${totalParticipants}) dépasse le nombre de lignes d'eau (${laneCount})`);
+        localValidationErrors.push(`Série ${seriesNumber}: Le nombre total de participants (${totalParticipants}) dépasse le nombre de lignes d'eau (${laneCount})`);
       }
       
       // Vérifier la compatibilité des distances
@@ -1048,16 +1053,18 @@ export default function GenerateRacesPage() {
         if (distances.length > 0) {
           const uniqueDistances = [...new Set(distances)];
           if (uniqueDistances.length > 1) {
-            validationErrors.push(`Série ${seriesNumber}: Les catégories ont des distances différentes (${uniqueDistances.join("m, ")}m). Toutes les catégories d'une série doivent avoir la même distance.`);
+            localValidationErrors.push(`Série ${seriesNumber}: Les catégories ont des distances différentes (${uniqueDistances.join("m, ")}m). Toutes les catégories d'une série doivent avoir la même distance.`);
           }
         }
       }
     });
     
-    if (validationErrors.length > 0) {
+    if (localValidationErrors.length > 0) {
+      setValidationErrors(localValidationErrors);
+      setShowErrorDialog(true);
       toast({
         title: "Erreurs de validation",
-        description: validationErrors.join("\n"),
+        description: `${localValidationErrors.length} erreur(s) détectée(s). Voir les détails ci-dessous.`,
         variant: "destructive",
       });
       return;
@@ -1102,9 +1109,30 @@ export default function GenerateRacesPage() {
       // Gérer les erreurs de validation avec détails
       const errorData = err?.response?.data;
       if (errorData?.errors && Array.isArray(errorData.errors)) {
+        // Améliorer la lisibilité des messages d'erreur
+        const improvedErrors = errorData.errors.map((error: string) => {
+          // Si le message contient des informations sur les équipages, le rendre plus lisible
+          if (error.includes("équipages disponibles")) {
+            // Extraire les informations du message
+            // Format attendu: "Série X: La catégorie 'NAME' n'a que Y équipages disponibles (Z au total, W déjà assignés), mais N sont demandés au total."
+            const match = error.match(/Série (\d+): La catégorie '([^']+)' n'a que (\d+) équipages disponibles \((\d+) au total, (\d+) déjà assignés\), mais (\d+) sont demandés au total\./);
+            if (match) {
+              const [, serie, category, disponibles, total, assignes, demandes] = match;
+              return `Série ${serie} - Catégorie "${category}":\n` +
+                     `  • Équipages disponibles: ${disponibles}\n` +
+                     `  • Équipages au total: ${total}\n` +
+                     `  • Équipages déjà assignés: ${assignes}\n` +
+                     `  • Équipages demandés: ${demandes}\n` +
+                     `  → ${disponibles === "0" ? "Aucun équipage disponible pour cette catégorie dans cette série." : `Il manque ${parseInt(demandes) - parseInt(disponibles)} équipages.`}`;
+            }
+          }
+          return error;
+        });
+        setValidationErrors(improvedErrors);
+        setShowErrorDialog(true);
         toast({
           title: "Erreurs de validation",
-          description: errorData.errors.join("\n"),
+          description: `${errorData.errors.length} erreur(s) détectée(s). Voir les détails ci-dessous.`,
           variant: "destructive",
         });
       } else {
@@ -1433,6 +1461,100 @@ export default function GenerateRacesPage() {
           </CardContent>
         </Card>
       )}
+
+      {/* Dialog d'affichage des erreurs de validation */}
+      <Dialog open={showErrorDialog} onOpenChange={setShowErrorDialog}>
+        <DialogContent className="max-w-3xl max-h-[80vh]">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-destructive">
+              <Info className="w-5 h-5" />
+              Erreurs de validation
+            </DialogTitle>
+            <DialogDescription>
+              Des erreurs ont été détectées lors de la validation. Veuillez corriger les problèmes suivants avant de générer les courses.
+            </DialogDescription>
+          </DialogHeader>
+          
+          <Alert variant="destructive" className="mb-4">
+            <AlertTitle>Problème détecté</AlertTitle>
+            <AlertDescription>
+              {validationErrors.length} erreur(s) de validation détectée(s). Les détails sont listés ci-dessous.
+            </AlertDescription>
+          </Alert>
+
+          <div className="space-y-4">
+            <div className="flex items-center justify-between">
+              <Label className="text-sm font-semibold">Détails des erreurs :</Label>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  const errorText = validationErrors.join("\n\n");
+                  navigator.clipboard.writeText(errorText);
+                  setCopiedError(true);
+                  setTimeout(() => setCopiedError(false), 2000);
+                  toast({
+                    title: "Copié !",
+                    description: "Les erreurs ont été copiées dans le presse-papiers",
+                  });
+                }}
+              >
+                {copiedError ? (
+                  <>
+                    <CheckCircle2 className="w-4 h-4 mr-2" />
+                    Copié !
+                  </>
+                ) : (
+                  <>
+                    <Copy className="w-4 h-4 mr-2" />
+                    Copier les erreurs
+                  </>
+                )}
+              </Button>
+            </div>
+            
+            <ScrollArea className="h-[400px] w-full rounded-md border p-4">
+              <div className="space-y-4">
+                {validationErrors.map((error, index) => (
+                  <div
+                    key={index}
+                    className="p-4 bg-destructive/10 border border-destructive/20 rounded-lg"
+                  >
+                    <div className="flex items-start gap-2">
+                      <span className="text-destructive font-bold mt-1">#{index + 1}</span>
+                      <pre className="text-sm whitespace-pre-wrap font-sans text-foreground flex-1">
+                        {error}
+                      </pre>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </ScrollArea>
+          </div>
+
+          <div className="flex justify-end gap-2 mt-4">
+            <Button
+              variant="outline"
+              onClick={() => {
+                const errorText = validationErrors.join("\n\n");
+                navigator.clipboard.writeText(errorText);
+                setCopiedError(true);
+                setTimeout(() => setCopiedError(false), 2000);
+                toast({
+                  title: "Copié !",
+                  description: "Les erreurs ont été copiées dans le presse-papiers",
+                });
+              }}
+            >
+              <Copy className="w-4 h-4 mr-2" />
+              Copier toutes les erreurs
+            </Button>
+            <Button onClick={() => setShowErrorDialog(false)}>
+              Fermer
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
