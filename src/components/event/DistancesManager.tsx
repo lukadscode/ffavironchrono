@@ -1329,15 +1329,39 @@ export default function DistancesPage() {
       grouped[dist.id] = [];
     });
 
+    // Créer un Set des IDs de distances valides pour vérification rapide
+    const validDistanceIds = new Set(distances.map(d => d.id));
+
     categories.forEach((cat) => {
       const distanceId = cat.distance_id;
       
       if (distanceId && grouped[distanceId]) {
+        // distance_id existe et correspond à une distance valide
         grouped[distanceId].push(cat);
       } else {
+        // Catégorie non affectée ou distance_id invalide
+        if (distanceId && !validDistanceIds.has(distanceId)) {
+          // ⚠️ PROBLÈME : la catégorie a un distance_id mais cette distance n'existe pas !
+          console.warn(`⚠️ Catégorie "${cat.label || cat.code}" (${cat.id}) a un distance_id="${distanceId}" qui ne correspond à aucune distance existante.`, {
+            categoryId: cat.id,
+            categoryName: cat.label || cat.code,
+            invalidDistanceId: distanceId,
+            availableDistanceIds: distances.map(d => d.id),
+          });
+        }
         grouped.unassigned.push(cat);
       }
     });
+
+    // Logger les catégories non affectées pour debug
+    if (grouped.unassigned.length > 0) {
+      console.log("📋 Catégories dans 'Non affecté':", grouped.unassigned.map(cat => ({
+        id: cat.id,
+        label: cat.label || cat.code,
+        distance_id: cat.distance_id,
+        hasInvalidDistance: cat.distance_id ? !validDistanceIds.has(cat.distance_id) : false,
+      })));
+    }
 
     return grouped;
   })();
@@ -1349,15 +1373,39 @@ export default function DistancesPage() {
       grouped[dist.id] = [];
     });
 
+    // Créer un Set des IDs de distances valides pour vérification rapide
+    const validDistanceIds = new Set(distances.map(d => d.id));
+
     races.forEach((race) => {
       const distanceId = race.distance_id;
       
       if (distanceId && grouped[distanceId]) {
+        // distance_id existe et correspond à une distance valide
         grouped[distanceId].push(race);
       } else {
+        // Course non affectée ou distance_id invalide
+        if (distanceId && !validDistanceIds.has(distanceId)) {
+          // ⚠️ PROBLÈME : la course a un distance_id mais cette distance n'existe pas !
+          console.warn(`⚠️ Course "${race.name}" (${race.id}) a un distance_id="${distanceId}" qui ne correspond à aucune distance existante.`, {
+            raceId: race.id,
+            raceName: race.name,
+            invalidDistanceId: distanceId,
+            availableDistanceIds: distances.map(d => d.id),
+          });
+        }
         grouped.unassigned.push(race);
       }
     });
+
+    // Logger les courses non affectées pour debug
+    if (grouped.unassigned.length > 0) {
+      console.log("📋 Courses dans 'Non affecté':", grouped.unassigned.map(race => ({
+        id: race.id,
+        name: race.name,
+        distance_id: race.distance_id,
+        hasInvalidDistance: race.distance_id ? !validDistanceIds.has(race.distance_id) : false,
+      })));
+    }
 
     return grouped;
   })();
