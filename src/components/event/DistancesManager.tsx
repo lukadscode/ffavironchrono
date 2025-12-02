@@ -495,18 +495,25 @@ export default function DistancesPage() {
 
         const response = await api.post("/distances", payload);
         const newDistanceId = response.data?.data?.id || response.data?.id;
+        const wasCreated = response.data?.created !== false; // true si créée, false si réutilisée
         
-        // Associer la distance créée à l'événement
+        // Associer la distance créée (ou réutilisée) à l'événement
         if (newDistanceId && eventId) {
           try {
             await api.post("/event-distances", {
               event_id: eventId,
               distance_id: newDistanceId,
             });
+            console.log(`✅ Distance ${wasCreated ? 'créée' : 'réutilisée'} et associée à l'événement: ${newDistanceId}`);
           } catch (linkError: any) {
             // Si l'endpoint n'existe pas ou si le backend le fait déjà automatiquement,
             // on ignore l'erreur et on continue
-            console.log("Note: Le lien distance-événement peut être créé automatiquement par le backend", linkError);
+            // Mais si c'est une erreur 409 (conflict), c'est que l'association existe déjà
+            if (linkError?.response?.status === 409) {
+              console.log(`ℹ️ La distance ${newDistanceId} est déjà associée à l'événement`);
+            } else {
+              console.log("Note: Le lien distance-événement peut être créé automatiquement par le backend", linkError);
+            }
           }
         }
       } else {
@@ -535,23 +542,33 @@ export default function DistancesPage() {
 
         const response = await api.post("/distances", payload);
         const newDistanceId = response.data?.data?.id || response.data?.id;
+        const wasCreated = response.data?.created !== false; // true si créée, false si réutilisée
         
-        // Associer la distance créée à l'événement
+        // Associer la distance créée (ou réutilisée) à l'événement
         if (newDistanceId && eventId) {
           try {
             await api.post("/event-distances", {
               event_id: eventId,
               distance_id: newDistanceId,
             });
+            console.log(`✅ Distance ${wasCreated ? 'créée' : 'réutilisée'} et associée à l'événement: ${newDistanceId}`);
           } catch (linkError: any) {
             // Si l'endpoint n'existe pas ou si le backend le fait déjà automatiquement,
             // on ignore l'erreur et on continue
-            console.log("Note: Le lien distance-événement peut être créé automatiquement par le backend", linkError);
+            // Mais si c'est une erreur 409 (conflict), c'est que l'association existe déjà
+            if (linkError?.response?.status === 409) {
+              console.log(`ℹ️ La distance ${newDistanceId} est déjà associée à l'événement`);
+            } else {
+              console.log("Note: Le lien distance-événement peut être créé automatiquement par le backend", linkError);
+            }
           }
         }
       }
 
-      toast({ title: "Distance ajoutée avec succès." });
+      toast({ 
+        title: "Distance ajoutée avec succès.",
+        description: "La distance a été ajoutée à l'événement."
+      });
       setNewMeters("");
       setIsRelay(false);
       setRelayCount("");
