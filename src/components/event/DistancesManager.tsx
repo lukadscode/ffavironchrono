@@ -57,10 +57,11 @@ type Race = {
 };
 
 // Composant draggable pour une catégorie
-function DraggableCategory({ category }: { category: Category }) {
+function DraggableCategory({ category, isSaving }: { category: Category; isSaving?: boolean }) {
   const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
     id: `category-${category.id}`,
     data: { type: "category", category },
+    disabled: isSaving,
   });
 
   const style = {
@@ -75,10 +76,16 @@ function DraggableCategory({ category }: { category: Category }) {
       {...listeners}
       {...attributes}
       className={clsx(
-        "p-2 border rounded-lg bg-white cursor-move hover:shadow-md hover:border-blue-300 transition-all border-gray-200 group",
-        isDragging && "opacity-50 scale-95"
+        "p-2 border rounded-lg bg-white cursor-move hover:shadow-md hover:border-blue-300 transition-all border-gray-200 group relative",
+        isDragging && "opacity-50 scale-95",
+        isSaving && "opacity-60 cursor-wait"
       )}
     >
+      {isSaving && (
+        <div className="absolute inset-0 bg-white/80 rounded-lg flex items-center justify-center z-10">
+          <Loader2 className="w-4 h-4 animate-spin text-blue-600" />
+        </div>
+      )}
       <div className="font-semibold text-xs text-slate-900 group-hover:text-blue-600 transition-colors break-words">
         {category.label || category.code}
       </div>
@@ -93,10 +100,11 @@ function DraggableCategory({ category }: { category: Category }) {
 }
 
 // Composant draggable pour une course
-function DraggableRace({ race }: { race: Race }) {
+function DraggableRace({ race, isSaving }: { race: Race; isSaving?: boolean }) {
   const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
     id: `race-${race.id}`,
     data: { type: "race", race },
+    disabled: isSaving,
   });
 
   const style = {
@@ -111,10 +119,16 @@ function DraggableRace({ race }: { race: Race }) {
       {...listeners}
       {...attributes}
       className={clsx(
-        "p-2 border rounded-lg bg-white cursor-move hover:shadow-md hover:border-amber-300 transition-all border-gray-200 group",
-        isDragging && "opacity-50 scale-95"
+        "p-2 border rounded-lg bg-white cursor-move hover:shadow-md hover:border-amber-300 transition-all border-gray-200 group relative",
+        isDragging && "opacity-50 scale-95",
+        isSaving && "opacity-60 cursor-wait"
       )}
     >
+      {isSaving && (
+        <div className="absolute inset-0 bg-white/80 rounded-lg flex items-center justify-center z-10">
+          <Loader2 className="w-4 h-4 animate-spin text-amber-600" />
+        </div>
+      )}
       <div className="font-semibold text-xs text-slate-900 group-hover:text-amber-600 transition-colors break-words">
         Course {race.race_number} - {race.name}
       </div>
@@ -133,10 +147,12 @@ function DroppableDistance({
   distance,
   items,
   type,
+  savingItemId,
 }: {
   distance: Distance | { id: "unassigned"; label: "Non affecté" };
   items: (Category | Race)[];
   type: "category" | "race";
+  savingItemId?: string | null;
 }) {
   const { setNodeRef, isOver } = useDroppable({
     id: distance.id === "unassigned" ? "unassigned" : `distance-${distance.id}`,
@@ -226,9 +242,17 @@ function DroppableDistance({
         ) : (
           items.map((item) =>
             type === "category" ? (
-              <DraggableCategory key={item.id} category={item as Category} />
+              <DraggableCategory 
+                key={item.id} 
+                category={item as Category} 
+                isSaving={savingItemId === item.id}
+              />
             ) : (
-              <DraggableRace key={item.id} race={item as Race} />
+              <DraggableRace 
+                key={item.id} 
+                race={item as Race}
+                isSaving={savingItemId === item.id}
+              />
             )
           )
         )}
@@ -260,6 +284,7 @@ export default function DistancesPage() {
   const [viewMode, setViewMode] = useState<"categories" | "races">("categories");
   const [activeId, setActiveId] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
+  const [savingItemId, setSavingItemId] = useState<string | null>(null);
   const [autoAssignDialogOpen, setAutoAssignDialogOpen] = useState(false);
   const [suggestions, setSuggestions] = useState<Array<{
     id: string;
@@ -912,6 +937,7 @@ export default function DistancesPage() {
       });
     } finally {
       setIsSaving(false);
+      setSavingItemId(null);
     }
   };
 
@@ -1024,10 +1050,10 @@ export default function DistancesPage() {
               Réaffectation automatique
             </Button>
           )}
-          {isSaving && (
-            <span className="text-sm text-muted-foreground flex items-center gap-2 px-3 py-2 bg-blue-50 rounded-lg border border-blue-200">
+          {isSaving && savingItemId && (
+            <span className="text-sm text-muted-foreground flex items-center gap-2 px-3 py-2 bg-blue-50 rounded-lg border border-blue-200 animate-pulse">
               <Loader2 className="w-4 h-4 animate-spin text-blue-600" />
-              Enregistrement...
+              Enregistrement en cours...
             </span>
           )}
         </div>
@@ -1270,6 +1296,7 @@ export default function DistancesPage() {
                 distance={{ id: "unassigned", label: "Non affecté" }}
                 items={viewMode === "categories" ? categoriesByDistance.unassigned : racesByDistance.unassigned}
                 type={viewMode === "categories" ? "category" : "race"}
+                savingItemId={savingItemId}
               />
 
               {/* Zones pour chaque distance */}
@@ -1283,6 +1310,7 @@ export default function DistancesPage() {
                       : racesByDistance[distance.id] || []
                   }
                   type={viewMode === "categories" ? "category" : "race"}
+                  savingItemId={savingItemId}
                 />
               ))}
             </div>
