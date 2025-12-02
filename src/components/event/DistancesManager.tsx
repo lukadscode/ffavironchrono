@@ -6,10 +6,11 @@ import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogDescription, DialogFooter } from "@/components/ui/dialog";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
-import { PlusIcon, Tag, Trophy, ArrowLeft, ArrowRight, Save, Gauge, Sparkles, Loader2, Wand2, Check, X } from "lucide-react";
+import { PlusIcon, Tag, Trophy, ArrowLeft, ArrowRight, Save, Gauge, Sparkles, Loader2, Wand2, Check, X, AlertCircle } from "lucide-react";
 import {
   DndContext,
   DragOverlay,
@@ -285,6 +286,14 @@ export default function DistancesPage() {
   const [activeId, setActiveId] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
   const [savingItemId, setSavingItemId] = useState<string | null>(null);
+  const [pendingChanges, setPendingChanges] = useState<Array<{
+    type: "category" | "race";
+    id: string;
+    newDistanceId: string | null;
+    oldDistanceId: string | null;
+    name: string;
+  }>>([]);
+  const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
   const [autoAssignDialogOpen, setAutoAssignDialogOpen] = useState(false);
   const [suggestions, setSuggestions] = useState<Array<{
     id: string;
@@ -800,6 +809,218 @@ export default function DistancesPage() {
     setActiveId(String(event.active.id));
   };
 
+  // Fonction pour sauvegarder tous les changements en attente
+  const handleSaveAllChanges = async () => {
+    if (pendingChanges.length === 0) {
+      toast({
+        title: "Aucun changement",
+        description: "Il n'y a aucun changement à sauvegarder.",
+      });
+      return;
+    }
+
+    setIsSaving(true);
+    setSavingItemId(null); // Pas d'élément spécifique, on sauvegarde tout
+
+    try {
+      // Sauvegarder tous les changements en parallèle
+      const savePromises = pendingChanges.map(async (change) => {
+        const endpoint = change.type === "category" 
+          ? `/categories/${change.id}` 
+          : `/races/${change.id}`;
+        
+        const payload = { distance_id: change.newDistanceId };
+        
+        console.log(`Sauvegarde ${change.type} ${change.id}:`, { endpoint, payload });
+        
+        const response = await api.put(endpoint, payload);
+        
+        return {
+          success: true,
+          change,
+          response: response.data,
+        };
+      });
+
+      // Attendre que toutes les sauvegardes soient terminées
+      const results = await Promise.allSettled(savePromises);
+      
+      // Vérifier les résultats
+      const successful: any[] = [];
+      const failed: any[] = [];
+
+      results.forEach((result, index) => {
+        if (result.status === "fulfilled" && result.value.success) {
+          successful.push(result.value);
+        } else {
+          failed.push({
+            change: pendingChanges[index],
+            error: result.status === "rejected" ? result.reason : result.value,
+          });
+        }
+      });
+
+      if (failed.length > 0) {
+        console.error("Erreurs lors de la sauvegarde:", failed);
+        toast({
+          title: "Erreur partielle",
+          description: `${successful.length} modification(s) sauvegardée(s), ${failed.length} erreur(s).`,
+          variant: "destructive",
+        });
+        // Ne pas vider les changements si certains ont échoué
+        if (successful.length > 0) {
+          // Retirer seulement les changements réussis
+          setPendingChanges((prev) => 
+            prev.filter(p => !successful.some(s => s.change.id === p.id && s.change.type === p.type))
+          );
+        }
+        return;
+      }
+
+      // Toutes les sauvegardes ont réussi, attendre un peu pour la persistance
+      await new Promise(resolve => setTimeout(resolve, 500));
+
+      // Vérifier la persistance en re-lisant tous les éléments modifiés
+      const verificationPromises = pendingChanges.map(async (change) => {
+        try {
+          const verifyResponse = await api.get(
+            change.type === "category" ? `/categories/${change.id}` : `/races/${change.id}`,
+            { params: { _t: Date.now() } }
+          );
+          
+          const verifiedDistanceId = verifyResponse.data?.data?.distance_id ?? verifyResponse.data?.distance_id ?? null;
+          const normalizedVerified = verifiedDistanceId !== undefined ? verifiedDistanceId : null;
+          const normalizedTarget = change.newDistanceId !== undefined ? change.newDistanceId : null;
+          
+          return {
+            change,
+            verified: normalizedVerified === normalizedTarget,
+            expected: normalizedTarget,
+            actual: normalizedVerified,
+          };
+        } catch (err) {
+          console.error(`Erreur vérification ${change.type} ${change.id}:`, err);
+          return {
+            change,
+            verified: false,
+            error: err,
+          };
+        }
+      });
+
+      const verifications = await Promise.all(verificationPromises);
+      const verifiedCount = verifications.filter(v => v.verified).length;
+
+      if (verifiedCount === pendingChanges.length) {
+        // Toutes les vérifications ont réussi
+        console.log("✅ Toutes les sauvegardes sont vérifiées et persistées");
+        
+        // Recharger toutes les données pour être sûr
+        await Promise.all([fetchCategories(), fetchRaces()]);
+        
+        // Sauvegarder le nombre avant de vider
+        const savedCount = pendingChanges.length;
+        
+        // Vider les changements en attente
+        setPendingChanges([]);
+        setHasUnsavedChanges(false);
+
+        toast({
+          title: "Modifications enregistrées",
+          description: `${savedCount} modification(s) sauvegardée(s) et vérifiée(s) avec succès.`,
+        });
+      } else {
+        // Certaines vérifications ont échoué, réessayer une fois
+        console.warn(`⚠️ ${verifiedCount}/${pendingChanges.length} vérifications réussies, nouvelle tentative...`);
+        await new Promise(resolve => setTimeout(resolve, 500));
+        await Promise.all([fetchCategories(), fetchRaces()]);
+        
+        // Vérifier à nouveau (recréer les promesses avec les changements actuels)
+        const secondVerificationPromises = pendingChanges.map(async (change) => {
+          try {
+            const verifyResponse = await api.get(
+              change.type === "category" ? `/categories/${change.id}` : `/races/${change.id}`,
+              { params: { _t: Date.now() } }
+            );
+            
+            const verifiedDistanceId = verifyResponse.data?.data?.distance_id ?? verifyResponse.data?.distance_id ?? null;
+            const normalizedVerified = verifiedDistanceId !== undefined ? verifiedDistanceId : null;
+            const normalizedTarget = change.newDistanceId !== undefined ? change.newDistanceId : null;
+            
+            return {
+              change,
+              verified: normalizedVerified === normalizedTarget,
+            };
+          } catch (err) {
+            return {
+              change,
+              verified: false,
+            };
+          }
+        });
+        
+        const secondVerifications = await Promise.all(secondVerificationPromises);
+        const secondVerifiedCount = secondVerifications.filter(v => v.verified).length;
+        const totalCount = pendingChanges.length;
+
+        if (secondVerifiedCount === totalCount) {
+          setPendingChanges([]);
+          setHasUnsavedChanges(false);
+          toast({
+            title: "Modifications enregistrées",
+            description: `${totalCount} modification(s) sauvegardée(s) et vérifiée(s) avec succès.`,
+          });
+        } else {
+          toast({
+            title: "Vérification incomplète",
+            description: `${secondVerifiedCount}/${totalCount} modification(s) vérifiée(s). Les données ont été sauvegardées mais certaines vérifications ont échoué. Veuillez rafraîchir la page.`,
+            variant: "destructive",
+          });
+          // Vider quand même les changements pour éviter de réessayer indéfiniment
+          setPendingChanges([]);
+          setHasUnsavedChanges(false);
+        }
+      }
+    } catch (err: any) {
+      console.error("Erreur lors de la sauvegarde globale:", err);
+      toast({
+        title: "Erreur",
+        description: err?.response?.data?.message || err?.message || "Impossible de sauvegarder les modifications.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  // Fonction pour annuler tous les changements en attente
+  const handleDiscardChanges = () => {
+    // Restaurer les valeurs originales
+    pendingChanges.forEach((change) => {
+      if (change.type === "category") {
+        setCategories((prev) =>
+          prev.map((cat) =>
+            cat.id === change.id ? { ...cat, distance_id: change.oldDistanceId } : cat
+          )
+        );
+      } else if (change.type === "race") {
+        setRaces((prev) =>
+          prev.map((race) =>
+            race.id === change.id ? { ...race, distance_id: change.oldDistanceId } : race
+          )
+        );
+      }
+    });
+
+    setPendingChanges([]);
+    setHasUnsavedChanges(false);
+
+    toast({
+      title: "Changements annulés",
+      description: "Tous les changements non sauvegardés ont été annulés.",
+    });
+  };
+
   const handleDragEnd = async (event: DragEndEvent) => {
     const { active, over } = event;
     setActiveId(null);
@@ -852,6 +1073,10 @@ export default function DistancesPage() {
     if (currentDistanceId === targetDistanceId) return;
 
     // Mettre à jour l'état local immédiatement pour un feedback visuel
+    const itemName = itemType === "category"
+      ? (categories.find((c) => c.id === itemId)?.label || categories.find((c) => c.id === itemId)?.code || "Inconnu")
+      : (races.find((r) => r.id === itemId)?.name || "Inconnu");
+
     if (itemType === "category") {
       setCategories((prev) =>
         prev.map((cat) =>
@@ -866,137 +1091,30 @@ export default function DistancesPage() {
       );
     }
 
-    // Sauvegarder immédiatement via l'API
-    // L'API attend maintenant { distance_id: string | null } pour les catégories et courses
-    try {
-      setIsSaving(true);
-      const endpoint = itemType === "category" 
-        ? `/categories/${itemId}` 
-        : `/races/${itemId}`;
-      
-      const payload = { distance_id: targetDistanceId };
-      
-      console.log("Sauvegarde API:", { endpoint, payload, itemType });
-      
-      // Pour les catégories : PUT /categories/{id} avec { distance_id: string | null }
-      // Pour les courses : PUT /races/{id} avec { distance_id: string | null }
-      const response = await api.put(endpoint, payload);
-      
-      console.log("Réponse API:", response.data);
+    // Ajouter aux changements en attente au lieu de sauvegarder immédiatement
+    setPendingChanges((prev) => {
+      // Vérifier si un changement pour cet élément existe déjà
+      const existingIndex = prev.findIndex(p => p.id === itemId && p.type === itemType);
+      const newChange = {
+        type: itemType,
+        id: itemId,
+        newDistanceId: targetDistanceId,
+        oldDistanceId: currentDistanceId || null,
+        name: itemName,
+      };
 
-      // Vérifier que la sauvegarde a bien fonctionné dans la réponse
-      const savedDistanceId = response.data?.data?.distance_id ?? response.data?.distance_id ?? targetDistanceId;
-      
-      if (savedDistanceId !== targetDistanceId && targetDistanceId !== null) {
-        console.warn("La distance sauvegardée ne correspond pas à celle demandée", {
-          requested: targetDistanceId,
-          saved: savedDistanceId
-        });
-      }
-
-      // Recharger les données pour s'assurer qu'elles sont à jour
-      // Attendre que l'API ait le temps de persister les données en base
-      await new Promise(resolve => setTimeout(resolve, 500));
-      
-      // Recharger TOUTES les données (catégories ET courses) pour éviter les incohérences
-      // et s'assurer que tout est synchronisé
-      await Promise.all([fetchCategories(), fetchRaces()]);
-
-      // Vérifier que la sauvegarde est bien persistée en re-lisant directement l'élément
-      // Si la vérification échoue, on réessaie après un court délai (max 3 tentatives)
-      let verified = false;
-      let attempts = 0;
-      const maxAttempts = 3;
-      
-      while (!verified && attempts < maxAttempts) {
-        try {
-          // Re-lire directement l'élément depuis l'API avec cache-busting
-          const verifyResponse = await api.get(
-            itemType === "category" ? `/categories/${itemId}` : `/races/${itemId}`,
-            { params: { _t: Date.now() } }
-          );
-          
-          const verifiedDistanceId = verifyResponse.data?.data?.distance_id ?? verifyResponse.data?.distance_id ?? null;
-          
-          // Normaliser : convertir undefined en null pour la comparaison
-          const normalizedVerified = verifiedDistanceId !== undefined ? verifiedDistanceId : null;
-          const normalizedTarget = targetDistanceId !== undefined ? targetDistanceId : null;
-          
-          if (normalizedVerified === normalizedTarget) {
-            verified = true;
-            console.log("✅ Vérification réussie : la sauvegarde est persistée", {
-              itemId,
-              expected: normalizedTarget,
-              actual: normalizedVerified,
-            });
-          } else {
-            attempts++;
-            console.warn(`⚠️ Vérification échouée (tentative ${attempts}/${maxAttempts})`, {
-              itemId,
-              expected: normalizedTarget,
-              actual: normalizedVerified,
-            });
-            
-            if (attempts < maxAttempts) {
-              // Attendre un peu plus et recharger les données
-              await new Promise(resolve => setTimeout(resolve, 300));
-              await Promise.all([fetchCategories(), fetchRaces()]);
-            }
-          }
-        } catch (err) {
-          console.error("Erreur lors de la vérification:", err);
-          attempts++;
-          if (attempts < maxAttempts) {
-            await new Promise(resolve => setTimeout(resolve, 300));
-          }
-        }
-      }
-
-      if (verified) {
-        toast({
-          title: "Modification enregistrée",
-          description: `La ${itemType === "category" ? "catégorie" : "course"} a été ${targetDistanceId ? "affectée à" : "retirée de"} la distance.`,
-        });
+      if (existingIndex >= 0) {
+        // Remplacer le changement existant
+        const updated = [...prev];
+        updated[existingIndex] = newChange;
+        return updated;
       } else {
-        console.error("❌ La vérification de persistance a échoué après plusieurs tentatives");
-        toast({
-          title: "Avertissement",
-          description: `La modification a été envoyée mais la vérification de persistance a échoué. Veuillez rafraîchir la page.`,
-          variant: "destructive",
-        });
+        // Ajouter un nouveau changement
+        return [...prev, newChange];
       }
-    } catch (err: any) {
-      console.error("Erreur sauvegarde:", err);
-      console.error("Détails erreur:", {
-        status: err?.response?.status,
-        data: err?.response?.data,
-        message: err?.message,
-      });
-      
-      // En cas d'erreur, restaurer l'état précédent
-      if (itemType === "category") {
-        setCategories((prev) =>
-          prev.map((cat) =>
-            cat.id === itemId ? { ...cat, distance_id: currentDistanceId } : cat
-          )
-        );
-      } else if (itemType === "race") {
-        setRaces((prev) =>
-          prev.map((race) =>
-            race.id === itemId ? { ...race, distance_id: currentDistanceId } : race
-          )
-        );
-      }
+    });
 
-      toast({
-        title: "Erreur",
-        description: err?.response?.data?.message || err?.message || "Impossible de sauvegarder la modification.",
-        variant: "destructive",
-      });
-    } finally {
-      setIsSaving(false);
-      setSavingItemId(null);
-    }
+    setHasUnsavedChanges(true);
   };
 
 
@@ -1108,11 +1226,36 @@ export default function DistancesPage() {
               Réaffectation automatique
             </Button>
           )}
-          {isSaving && savingItemId && (
-            <span className="text-sm text-muted-foreground flex items-center gap-2 px-3 py-2 bg-blue-50 rounded-lg border border-blue-200 animate-pulse">
-              <Loader2 className="w-4 h-4 animate-spin text-blue-600" />
-              Enregistrement en cours...
-            </span>
+          {hasUnsavedChanges && (
+            <Button
+              variant="default"
+              onClick={handleSaveAllChanges}
+              disabled={isSaving || pendingChanges.length === 0}
+              className="gap-2 bg-green-600 hover:bg-green-700"
+            >
+              {isSaving ? (
+                <>
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  Enregistrement...
+                </>
+              ) : (
+                <>
+                  <Save className="w-4 h-4" />
+                  Enregistrer les changements ({pendingChanges.length})
+                </>
+              )}
+            </Button>
+          )}
+          {hasUnsavedChanges && (
+            <Button
+              variant="outline"
+              onClick={handleDiscardChanges}
+              disabled={isSaving}
+              className="gap-2"
+            >
+              <X className="w-4 h-4" />
+              Annuler
+            </Button>
           )}
         </div>
       </div>
@@ -1338,6 +1481,17 @@ export default function DistancesPage() {
           )}
         </CardContent>
       </Card>
+
+      {/* Bannière d'alerte pour les changements non sauvegardés */}
+      {hasUnsavedChanges && (
+        <Alert className="border-orange-300 bg-orange-50">
+          <AlertCircle className="w-4 h-4 text-orange-600" />
+          <AlertTitle className="text-orange-900">Changements non sauvegardés</AlertTitle>
+          <AlertDescription className="text-orange-800">
+            Vous avez {pendingChanges.length} modification(s) en attente. N'oubliez pas de cliquer sur "Enregistrer les changements" pour sauvegarder.
+          </AlertDescription>
+        </Alert>
+      )}
 
       {/* Interface drag-and-drop */}
       {!loading && (
