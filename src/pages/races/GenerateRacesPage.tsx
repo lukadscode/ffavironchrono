@@ -89,6 +89,11 @@ function SortableCategoryItem({
           }`}>
             {assignedCount} / {category.crew_count} équipages
           </span>
+          {category.distance && (
+            <span className="text-xs px-1.5 py-0.5 bg-blue-100 text-blue-700 rounded font-medium">
+              {category.distance.label}
+            </span>
+          )}
         </div>
         <div className="text-xs text-slate-600 break-words">{category.label}</div>
       </div>
@@ -261,16 +266,16 @@ function SeriesCard({
               
               return (
                 <div key={code} className="flex items-center justify-between p-2 bg-white rounded border border-slate-200">
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-2 flex-wrap">
                     <span className="text-sm font-medium">{cat.label || code}</span>
-                    <span className="text-xs text-slate-500">
-                      ({cat.crew_count} au total, {categoryAssignedCounts[code] || 0} assignés)
-                    </span>
                     {cat.distance && (
-                      <span className="text-xs px-1.5 py-0.5 bg-slate-100 text-slate-600 rounded">
+                      <span className="text-xs px-1.5 py-0.5 bg-blue-100 text-blue-700 rounded font-medium">
                         {cat.distance.label}
                       </span>
                     )}
+                    <span className="text-xs text-slate-500">
+                      ({cat.crew_count} au total, {categoryAssignedCounts[code] || 0} assignés)
+                    </span>
                   </div>
                   <div className="flex items-center gap-1">
                     <Button
@@ -1049,7 +1054,7 @@ export default function GenerateRacesPage() {
 
   // Générer depuis le schéma enregistré
   const handleGenerateFromSchema = async () => {
-    if (!phaseId) {
+    if (!phaseId || !eventId) {
       toast({
         title: "Erreur",
         description: "Veuillez sélectionner une phase",
@@ -1060,6 +1065,28 @@ export default function GenerateRacesPage() {
 
     try {
       setLoading(true);
+
+      // Vérifier et supprimer UNIQUEMENT les courses existantes de CETTE phase avant de générer
+      // ⚠️ Important : on ne supprime que les courses de la phase courante (phaseId), pas celles des autres phases
+      try {
+        const existingRacesRes = await api.get(`/races/event/${eventId}`);
+        // Filtrer UNIQUEMENT les courses de la phase courante (phaseId)
+        const existingRaces = (existingRacesRes.data.data || []).filter((r: any) => r.phase_id === phaseId);
+        
+        if (existingRaces.length > 0) {
+          // Supprimer uniquement les courses existantes de cette phase spécifique
+          await Promise.all(
+            existingRaces.map((race: any) => api.delete(`/races/${race.id}`))
+          );
+          toast({
+            title: "Courses existantes supprimées",
+            description: `${existingRaces.length} course${existingRaces.length > 1 ? 's' : ''} de cette phase supprimée${existingRaces.length > 1 ? 's' : ''} avant la génération.`,
+          });
+        }
+      } catch (deleteError: any) {
+        console.warn("Erreur lors de la suppression des courses existantes:", deleteError);
+        // Continuer quand même la génération
+      }
 
       const response = await api.post(`/race-phases/${phaseId}/generate-from-schema`, {});
       
@@ -1112,6 +1139,24 @@ export default function GenerateRacesPage() {
     // Validation des séries avant envoi
     const localValidationErrors: string[] = [];
     
+    // Calculer le total demandé par catégorie dans toutes les séries
+    const totalRequestedByCategory: Record<string, number> = {};
+    series.forEach(s => {
+      Object.entries(s.categories).forEach(([code, count]) => {
+        totalRequestedByCategory[code] = (totalRequestedByCategory[code] || 0) + count;
+      });
+    });
+    
+    // Vérifier que le total demandé ne dépasse pas le nombre d'équipages disponibles pour chaque catégorie
+    Object.entries(totalRequestedByCategory).forEach(([code, requested]) => {
+      const cat = categories.find(c => c.code === code);
+      if (cat && requested > cat.crew_count) {
+        localValidationErrors.push(
+          `Catégorie "${cat.label || code}": ${requested} équipage(s) demandé(s) au total, mais seulement ${cat.crew_count} disponible(s).`
+        );
+      }
+    });
+    
     series.forEach((s, index) => {
       const seriesNumber = index + 1;
       
@@ -1153,6 +1198,28 @@ export default function GenerateRacesPage() {
 
     try {
       setLoading(true);
+
+      // Vérifier et supprimer UNIQUEMENT les courses existantes de CETTE phase avant de générer
+      // ⚠️ Important : on ne supprime que les courses de la phase courante (phaseId), pas celles des autres phases
+      try {
+        const existingRacesRes = await api.get(`/races/event/${eventId}`);
+        // Filtrer UNIQUEMENT les courses de la phase courante (phaseId)
+        const existingRaces = (existingRacesRes.data.data || []).filter((r: any) => r.phase_id === phaseId);
+        
+        if (existingRaces.length > 0) {
+          // Supprimer uniquement les courses existantes de cette phase spécifique
+          await Promise.all(
+            existingRaces.map((race: any) => api.delete(`/races/${race.id}`))
+          );
+          toast({
+            title: "Courses existantes supprimées",
+            description: `${existingRaces.length} course${existingRaces.length > 1 ? 's' : ''} de cette phase supprimée${existingRaces.length > 1 ? 's' : ''} avant la génération.`,
+          });
+        }
+      } catch (deleteError: any) {
+        console.warn("Erreur lors de la suppression des courses existantes:", deleteError);
+        // Continuer quand même la génération
+      }
 
       // Construire le payload avec la structure des séries
       const payload: any = {
