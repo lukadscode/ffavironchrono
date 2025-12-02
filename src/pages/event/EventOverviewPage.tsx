@@ -271,6 +271,8 @@ export default function EventOverviewPage() {
     if (!eventId) return;
 
     setUploadingImage(true);
+    let blobUrl: string | null = null;
+    
     try {
       // Générer un nom de fichier unique
       const fileExtension = file.name.split('.').pop() || 'jpg';
@@ -281,31 +283,29 @@ export default function EventOverviewPage() {
       const imageUrl = `/event-covers/${fileName}`;
 
       // Créer un blob URL temporaire pour l'aperçu
-      const blobUrl = URL.createObjectURL(file);
+      blobUrl = URL.createObjectURL(file);
       setImagePreview(blobUrl);
 
-      // Sauvegarder l'image dans le dossier public via une API
-      // L'API doit sauvegarder le fichier dans le dossier public
-      const saveFormData = new FormData();
-      saveFormData.append("file", file);
-      saveFormData.append("path", `event-covers`);
-      saveFormData.append("filename", fileName);
-      
-      // Utiliser un endpoint générique de sauvegarde de fichiers
-      // Cet endpoint sauvegarde le fichier dans le dossier public du frontend
-      await api.post(`/files/upload`, saveFormData, {
-        headers: {
-          "Content-Type": "multipart/form-data",
-        },
+      // Convertir l'image en base64 pour l'envoyer à l'API
+      const base64Image = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result as string);
+        reader.onerror = reject;
+        reader.readAsDataURL(file);
       });
 
-      // Envoyer uniquement l'URL à l'API pour mettre à jour l'événement
+      // Envoyer l'image (en base64) et l'URL à l'API pour mise à jour
+      // L'API sauvegardera l'image dans le dossier public et stockera l'URL
       await api.put(`/events/${eventId}`, {
         image_url: imageUrl,
+        image_base64: base64Image, // Image en base64 pour que le backend la sauvegarde
+        image_filename: fileName,
       });
 
       // Mettre à jour l'aperçu avec l'URL finale et libérer le blob URL temporaire
-      URL.revokeObjectURL(blobUrl);
+      if (blobUrl) {
+        URL.revokeObjectURL(blobUrl);
+      }
       setImagePreview(imageUrl);
       setEvent((prev: any) => ({ ...prev, cover_url: imageUrl, image_url: imageUrl }));
       
@@ -317,13 +317,13 @@ export default function EventOverviewPage() {
       console.error("Erreur upload image", err);
       
       // Libérer le blob URL en cas d'erreur
-      if (imagePreview && imagePreview.startsWith('blob:')) {
-        URL.revokeObjectURL(imagePreview);
+      if (blobUrl) {
+        URL.revokeObjectURL(blobUrl);
       }
       
       toast({
         title: "Erreur",
-        description: err.response?.data?.message || err.message || "Erreur lors du téléversement de l'image. Veuillez vérifier que l'endpoint /files/upload est configuré.",
+        description: err.response?.data?.message || err.message || "Erreur lors du téléversement de l'image.",
         variant: "destructive",
       });
       // Réinitialiser l'aperçu en cas d'erreur
