@@ -881,15 +881,40 @@ export default function DistancesPage() {
         
         const payload = { distance_id: change.newDistanceId };
         
-        console.log(`Sauvegarde ${change.type} ${change.id}:`, { endpoint, payload });
+        console.log(`📤 ENVOI API ${change.type} ${change.name} (${change.id}):`, { 
+          endpoint, 
+          payload,
+          from: change.oldDistanceId,
+          to: change.newDistanceId
+        });
         
-        const response = await api.put(endpoint, payload);
-        
-        return {
-          success: true,
-          change,
-          response: response.data,
-        };
+        try {
+          const response = await api.put(endpoint, payload);
+          
+          // Vérifier immédiatement ce que l'API a retourné
+          const returnedDistanceId = response.data?.data?.distance_id ?? response.data?.distance_id ?? null;
+          console.log(`📥 RÉPONSE API ${change.type} ${change.name} (${change.id}):`, {
+            status: response.status,
+            returnedDistanceId: returnedDistanceId,
+            expected: change.newDistanceId,
+            match: returnedDistanceId === change.newDistanceId,
+            fullResponse: response.data
+          });
+          
+          return {
+            success: true,
+            change,
+            response: response.data,
+            returnedDistanceId: returnedDistanceId,
+          };
+        } catch (err: any) {
+          console.error(`❌ ERREUR API ${change.type} ${change.name} (${change.id}):`, {
+            status: err?.response?.status,
+            data: err?.response?.data,
+            message: err?.message,
+          });
+          throw err;
+        }
       });
 
       // Attendre que toutes les sauvegardes soient terminées
@@ -911,7 +936,15 @@ export default function DistancesPage() {
       });
 
       if (failed.length > 0) {
-        console.error("Erreurs lors de la sauvegarde:", failed);
+        console.error("❌ ERREURS lors de la sauvegarde:", failed);
+        failed.forEach(f => {
+          console.error("Élément en échec:", {
+            type: f.change.type,
+            id: f.change.id,
+            name: f.change.name,
+            error: f.error,
+          });
+        });
         toast({
           title: "Erreur partielle",
           description: `${successful.length} modification(s) sauvegardée(s), ${failed.length} erreur(s).`,
@@ -927,109 +960,212 @@ export default function DistancesPage() {
         return;
       }
 
-      // Toutes les sauvegardes ont réussi, attendre un peu pour la persistance
-      await new Promise(resolve => setTimeout(resolve, 500));
+      // Vérifier immédiatement si l'API a retourné les bonnes valeurs
+      console.log("🔍 Vérification immédiate des réponses API...");
+      const immediateMismatches = successful.filter(s => {
+        const returned = s.returnedDistanceId;
+        const expected = s.change.newDistanceId;
+        const match = returned === expected;
+        if (!match) {
+          console.error(`❌ IMMÉDIAT: ${s.change.type} ${s.change.name} - Attendu: ${expected}, Reçu: ${returned}`);
+        }
+        return !match;
+      });
 
-      // Vérifier la persistance en re-lisant tous les éléments modifiés
-      const verificationPromises = pendingChanges.map(async (change) => {
+      if (immediateMismatches.length > 0) {
+        console.error(`❌ ${immediateMismatches.length} élément(s) retourné(s) par l'API avec une distance_id incorrecte dès la réponse !`);
+        toast({
+          title: "⚠️ Problème API détecté",
+          description: `${immediateMismatches.length} élément(s) ont été retourné(s) par l'API avec une distance_id incorrecte. Cela peut indiquer un problème côté backend.`,
+          variant: "destructive",
+        });
+      }
+
+      // Toutes les sauvegardes ont réussi, maintenant vérifier la persistance
+      console.log("🔍 Début de la vérification de persistance pour", pendingChanges.length, "changements");
+      
+      // Fonction de vérification réutilisable
+      const verifyChange = async (change: typeof pendingChanges[0], attempt: number = 1): Promise<{
+        change: typeof pendingChanges[0];
+        verified: boolean;
+        expected: string | null;
+        actual: string | null;
+      }> => {
         try {
           const verifyResponse = await api.get(
             change.type === "category" ? `/categories/${change.id}` : `/races/${change.id}`,
-            { params: { _t: Date.now() } }
+            { params: { _t: Date.now() + attempt } } // Cache-busting par tentative
           );
           
           const verifiedDistanceId = verifyResponse.data?.data?.distance_id ?? verifyResponse.data?.distance_id ?? null;
           const normalizedVerified = verifiedDistanceId !== undefined ? verifiedDistanceId : null;
           const normalizedTarget = change.newDistanceId !== undefined ? change.newDistanceId : null;
           
+          const verified = normalizedVerified === normalizedTarget;
+          
+          if (!verified) {
+            console.warn(`⚠️ Tentative ${attempt}: ${change.type} ${change.name} (${change.id})`, {
+              expected: normalizedTarget,
+              actual: normalizedVerified,
+            });
+          } else {
+            console.log(`✅ Tentative ${attempt}: ${change.type} ${change.name} (${change.id}) vérifié`);
+          }
+          
           return {
             change,
-            verified: normalizedVerified === normalizedTarget,
+            verified,
             expected: normalizedTarget,
             actual: normalizedVerified,
           };
         } catch (err) {
-          console.error(`Erreur vérification ${change.type} ${change.id}:`, err);
+          console.error(`❌ Erreur vérification tentative ${attempt} ${change.type} ${change.id}:`, err);
           return {
             change,
             verified: false,
-            error: err,
+            expected: change.newDistanceId ?? null,
+            actual: null,
           };
         }
-      });
+      };
 
-      const verifications = await Promise.all(verificationPromises);
-      const verifiedCount = verifications.filter(v => v.verified).length;
-
-      if (verifiedCount === pendingChanges.length) {
-        // Toutes les vérifications ont réussi
-        console.log("✅ Toutes les sauvegardes sont vérifiées et persistées");
+      // Première vérification : immédiate
+      console.log("📋 Première vérification (immédiate)...");
+      await new Promise(resolve => setTimeout(resolve, 300));
+      
+      let allVerifications = await Promise.all(
+        pendingChanges.map(change => verifyChange(change, 1))
+      );
+      let verifiedCount = allVerifications.filter(v => v.verified).length;
+      
+      // Si toutes les vérifications passent du premier coup, continuer
+      if (verifiedCount < pendingChanges.length) {
+        console.log(`⚠️ Première vérification: ${verifiedCount}/${pendingChanges.length} réussies, nouvelle tentative dans 500ms...`);
+        await new Promise(resolve => setTimeout(resolve, 500));
         
-        // Recharger toutes les données pour être sûr
-        await Promise.all([fetchCategories(), fetchRaces()]);
+        // Deuxième vérification
+        allVerifications = await Promise.all(
+          pendingChanges.map(change => verifyChange(change, 2))
+        );
+        verifiedCount = allVerifications.filter(v => v.verified).length;
+      }
+      
+      // Si toujours pas tout vérifié, troisième tentative
+      if (verifiedCount < pendingChanges.length) {
+        console.log(`⚠️ Deuxième vérification: ${verifiedCount}/${pendingChanges.length} réussies, nouvelle tentative dans 1000ms...`);
+        await new Promise(resolve => setTimeout(resolve, 1000));
+        
+        allVerifications = await Promise.all(
+          pendingChanges.map(change => verifyChange(change, 3))
+        );
+        verifiedCount = allVerifications.filter(v => v.verified).length;
+      }
+
+      // Recharger toutes les données de l'API
+      console.log("🔄 Rechargement des données depuis l'API...");
+      await Promise.all([fetchCategories(), fetchRaces()]);
+      
+      // Attendre un peu pour que les données soient bien chargées
+      await new Promise(resolve => setTimeout(resolve, 300));
+
+      // Vérification finale : vérifier que les éléments sont bien dans les bonnes zones après rechargement
+      console.log("🔍 Vérification finale après rechargement...");
+      const finalVerifications = await Promise.all(
+        pendingChanges.map(async (change) => {
+          try {
+            // Vérifier dans les données locales rechargées
+            let foundItem: Category | Race | undefined;
+            if (change.type === "category") {
+              foundItem = categories.find(c => c.id === change.id);
+            } else {
+              foundItem = races.find(r => r.id === change.id);
+            }
+
+            if (!foundItem) {
+              console.warn(`⚠️ ${change.type} ${change.name} (${change.id}) non trouvé après rechargement`);
+              // Essayer de récupérer directement depuis l'API
+              const apiResponse = await api.get(
+                change.type === "category" ? `/categories/${change.id}` : `/races/${change.id}`,
+                { params: { _t: Date.now() } }
+              );
+              const apiItem = apiResponse.data?.data || apiResponse.data;
+              const apiDistanceId = apiItem?.distance_id ?? null;
+              const normalizedApi = apiDistanceId !== undefined ? apiDistanceId : null;
+              const normalizedTarget = change.newDistanceId !== undefined ? change.newDistanceId : null;
+              
+              return {
+                change,
+                verified: normalizedApi === normalizedTarget,
+                source: "api",
+              };
+            }
+
+            const itemDistanceId = foundItem.distance_id ?? null;
+            const normalizedItem = itemDistanceId !== undefined ? itemDistanceId : null;
+            const normalizedTarget = change.newDistanceId !== undefined ? change.newDistanceId : null;
+            
+            const verified = normalizedItem === normalizedTarget;
+            
+            if (!verified) {
+              console.error(`❌ Vérification finale échouée: ${change.type} ${change.name} (${change.id})`, {
+                expected: normalizedTarget,
+                actual: normalizedItem,
+                foundIn: change.type === "category" ? "categories" : "races",
+              });
+            } else {
+              console.log(`✅ Vérification finale réussie: ${change.type} ${change.name} (${change.id})`);
+            }
+            
+            return {
+              change,
+              verified,
+              source: "local",
+            };
+          } catch (err) {
+            console.error(`❌ Erreur vérification finale ${change.type} ${change.id}:`, err);
+            return {
+              change,
+              verified: false,
+              source: "error",
+            };
+          }
+        })
+      );
+
+      const finalVerifiedCount = finalVerifications.filter(v => v.verified).length;
+      const totalCount = pendingChanges.length;
+
+      if (finalVerifiedCount === totalCount) {
+        // TOUTES les vérifications ont réussi
+        console.log(`✅✅✅ TOUTES les ${totalCount} modifications sont vérifiées et persistées en base de données !`);
         
         // Sauvegarder le nombre avant de vider
-        const savedCount = pendingChanges.length;
+        const savedCount = totalCount;
         
         // Vider les changements en attente
         setPendingChanges([]);
         setHasUnsavedChanges(false);
-
+        
         toast({
-          title: "Modifications enregistrées",
-          description: `${savedCount} modification(s) sauvegardée(s) et vérifiée(s) avec succès.`,
+          title: "✅ Modifications enregistrées et vérifiées",
+          description: `${savedCount} modification(s) sauvegardée(s) et vérifiée(s) avec succès en base de données.`,
         });
       } else {
-        // Certaines vérifications ont échoué, réessayer une fois
-        console.warn(`⚠️ ${verifiedCount}/${pendingChanges.length} vérifications réussies, nouvelle tentative...`);
-        await new Promise(resolve => setTimeout(resolve, 500));
-        await Promise.all([fetchCategories(), fetchRaces()]);
+        // Certaines vérifications ont échoué
+        const failedChanges = finalVerifications.filter(v => !v.verified).map(v => v.change);
+        console.error(`❌ ÉCHEC: Seulement ${finalVerifiedCount}/${totalCount} modifications vérifiées`);
+        console.error("Éléments non vérifiés:", failedChanges);
         
-        // Vérifier à nouveau (recréer les promesses avec les changements actuels)
-        const secondVerificationPromises = pendingChanges.map(async (change) => {
-          try {
-            const verifyResponse = await api.get(
-              change.type === "category" ? `/categories/${change.id}` : `/races/${change.id}`,
-              { params: { _t: Date.now() } }
-            );
-            
-            const verifiedDistanceId = verifyResponse.data?.data?.distance_id ?? verifyResponse.data?.distance_id ?? null;
-            const normalizedVerified = verifiedDistanceId !== undefined ? verifiedDistanceId : null;
-            const normalizedTarget = change.newDistanceId !== undefined ? change.newDistanceId : null;
-            
-            return {
-              change,
-              verified: normalizedVerified === normalizedTarget,
-            };
-          } catch (err) {
-            return {
-              change,
-              verified: false,
-            };
-          }
+        toast({
+          title: "⚠️ Vérification incomplète",
+          description: `${finalVerifiedCount}/${totalCount} modification(s) vérifiée(s). ${totalCount - finalVerifiedCount} modification(s) n'ont pas pu être vérifiées. Les données ont été sauvegardées mais certaines vérifications ont échoué. Veuillez rafraîchir la page pour vérifier.`,
+          variant: "destructive",
         });
         
-        const secondVerifications = await Promise.all(secondVerificationPromises);
-        const secondVerifiedCount = secondVerifications.filter(v => v.verified).length;
-        const totalCount = pendingChanges.length;
-
-        if (secondVerifiedCount === totalCount) {
-          setPendingChanges([]);
-          setHasUnsavedChanges(false);
-          toast({
-            title: "Modifications enregistrées",
-            description: `${totalCount} modification(s) sauvegardée(s) et vérifiée(s) avec succès.`,
-          });
-        } else {
-          toast({
-            title: "Vérification incomplète",
-            description: `${secondVerifiedCount}/${totalCount} modification(s) vérifiée(s). Les données ont été sauvegardées mais certaines vérifications ont échoué. Veuillez rafraîchir la page.`,
-            variant: "destructive",
-          });
-          // Vider quand même les changements pour éviter de réessayer indéfiniment
-          setPendingChanges([]);
-          setHasUnsavedChanges(false);
-        }
+        // Vider quand même les changements pour éviter de réessayer indéfiniment
+        // L'utilisateur devra vérifier manuellement
+        setPendingChanges([]);
+        setHasUnsavedChanges(false);
       }
     } catch (err: any) {
       console.error("Erreur lors de la sauvegarde globale:", err);
