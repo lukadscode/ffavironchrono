@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -46,16 +46,38 @@ export default function RaceFormDialog({ phaseId, eventId, onSuccess }: RaceForm
     const fetchDistances = async () => {
       try {
         const res = await api.get(`/distances/event/${eventId}`);
-        setDistances(res.data.data || []);
+        const distancesData = res.data.data || [];
+        setDistances(distancesData);
+        console.log("Distances chargées:", distancesData);
       } catch (err) {
         console.error("Erreur chargement distances:", err);
         setDistances([]);
       }
     };
-    if (eventId) {
+    if (eventId && dialogOpen) {
       fetchDistances();
     }
-  }, [eventId]);
+  }, [eventId, dialogOpen]);
+
+  // Réinitialiser le formulaire quand le dialog s'ouvre
+  useEffect(() => {
+    if (dialogOpen) {
+      setForm({ name: "", race_type: "course en ligne", lane_count: 6, race_number: 1, distance_id: "" });
+    }
+  }, [dialogOpen]);
+
+  // Calculer le label de la distance sélectionnée
+  const selectedDistanceLabel = useMemo(() => {
+    if (!form.distance_id) return null;
+    const distance = distances.find(d => d.id === form.distance_id);
+    if (!distance) {
+      console.warn("Distance non trouvée pour ID:", form.distance_id, "Distances disponibles:", distances.map(d => ({ id: d.id, label: d.label })));
+      return null;
+    }
+    return distance.label || (distance.is_time_based 
+      ? `${distance.duration_seconds}s` 
+      : `${distance.meters}m`);
+  }, [form.distance_id, distances]);
 
   const handleSubmit = async () => {
     try {
@@ -109,11 +131,16 @@ export default function RaceFormDialog({ phaseId, eventId, onSuccess }: RaceForm
           <div>
             <Label>Distance</Label>
             <Select
-              value={form.distance_id || undefined}
-              onValueChange={(val) => setForm({ ...form, distance_id: val })}
+              value={form.distance_id || ""}
+              onValueChange={(val) => {
+                console.log("Distance sélectionnée:", val, "Distances:", distances.map(d => ({ id: d.id, label: d.label })));
+                setForm({ ...form, distance_id: val });
+              }}
             >
               <SelectTrigger>
-                <SelectValue placeholder="Sélectionner une distance" />
+                <SelectValue placeholder="Sélectionner une distance">
+                  {selectedDistanceLabel || (form.distance_id ? "Chargement..." : null)}
+                </SelectValue>
               </SelectTrigger>
               <SelectContent>
                 {distances.length === 0 && (
@@ -124,7 +151,7 @@ export default function RaceFormDialog({ phaseId, eventId, onSuccess }: RaceForm
                 {distances
                   .filter((d) => !d.is_time_based)
                   .map((dist) => (
-                    <SelectItem key={dist.id} value={dist.id}>
+                    <SelectItem key={dist.id} value={String(dist.id)}>
                       {dist.label || `${dist.meters}m`}
                     </SelectItem>
                   ))}
@@ -136,7 +163,7 @@ export default function RaceFormDialog({ phaseId, eventId, onSuccess }: RaceForm
                 {distances
                   .filter((d) => d.is_time_based)
                   .map((dist) => (
-                    <SelectItem key={dist.id} value={dist.id}>
+                    <SelectItem key={dist.id} value={String(dist.id)}>
                       {dist.label || `${dist.duration_seconds}s`}
                     </SelectItem>
                   ))}
