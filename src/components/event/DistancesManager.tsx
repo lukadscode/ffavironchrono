@@ -304,7 +304,6 @@ export default function DistancesPage() {
     confidence: number;
   }>>([]);
   const [selectedSuggestions, setSelectedSuggestions] = useState<Set<string>>(new Set());
-  const [isApplying, setIsApplying] = useState(false);
 
   const sensors = useSensors(
     useSensor(PointerSensor, {
@@ -751,7 +750,7 @@ export default function DistancesPage() {
     setAutoAssignDialogOpen(true);
   };
 
-  const handleApplySuggestions = async () => {
+  const handleApplySuggestions = () => {
     if (selectedSuggestions.size === 0) {
       toast({
         title: "Aucune sélection",
@@ -761,48 +760,99 @@ export default function DistancesPage() {
       return;
     }
 
-    setIsApplying(true);
-    try {
-      const toApply = suggestions.filter((s) => selectedSuggestions.has(s.id));
+    const toApply = suggestions.filter((s) => selectedSuggestions.has(s.id));
 
-      // Appliquer les réaffectations
-      for (const suggestion of toApply) {
-        try {
-          if (suggestion.type === "category") {
-            await api.put(`/categories/${suggestion.id}`, {
-              distance_id: suggestion.suggestedDistanceId,
-            });
-          } else {
-            await api.put(`/races/${suggestion.id}`, {
-              distance_id: suggestion.suggestedDistanceId,
-            });
-          }
-        } catch (err) {
-          console.error(`Erreur réaffectation ${suggestion.type} ${suggestion.id}:`, err);
+    // Appliquer les réaffectations localement (mise à jour de l'état)
+    const newPendingChanges: Array<{
+      type: "category" | "race";
+      id: string;
+      newDistanceId: string | null;
+      oldDistanceId: string | null;
+      name: string;
+    }> = [];
+
+    for (const suggestion of toApply) {
+      // Trouver l'élément actuel pour obtenir son ancienne distance
+      let oldDistanceId: string | null = null;
+      let itemName = "Inconnu";
+
+      if (suggestion.type === "category") {
+        const category = categories.find((c) => c.id === suggestion.id);
+        if (category) {
+          oldDistanceId = category.distance_id || null;
+          itemName = category.label || category.code || "Inconnu";
+          
+          // Mettre à jour l'état local
+          setCategories((prev) =>
+            prev.map((cat) =>
+              cat.id === suggestion.id
+                ? { ...cat, distance_id: suggestion.suggestedDistanceId }
+                : cat
+            )
+          );
+        }
+      } else {
+        const race = races.find((r) => r.id === suggestion.id);
+        if (race) {
+          oldDistanceId = race.distance_id || null;
+          itemName = race.name || "Inconnu";
+          
+          // Mettre à jour l'état local
+          setRaces((prev) =>
+            prev.map((r) =>
+              r.id === suggestion.id
+                ? { ...r, distance_id: suggestion.suggestedDistanceId }
+                : r
+            )
+          );
         }
       }
 
-      // Recharger les données
-      await Promise.all([fetchCategories(), fetchRaces()]);
+      // Ajouter aux changements en attente (vérifier si existe déjà)
+      const existingIndex = pendingChanges.findIndex(
+        (p) => p.id === suggestion.id && p.type === suggestion.type
+      );
 
-      toast({
-        title: "Succès",
-        description: `${toApply.length} réaffectation${toApply.length > 1 ? "s" : ""} appliquée${toApply.length > 1 ? "s" : ""} avec succès.`,
-      });
-
-      setAutoAssignDialogOpen(false);
-      setSuggestions([]);
-      setSelectedSuggestions(new Set());
-    } catch (err) {
-      console.error("Erreur application suggestions:", err);
-      toast({
-        title: "Erreur",
-        description: "Erreur lors de l'application des réaffectations.",
-        variant: "destructive",
-      });
-    } finally {
-      setIsApplying(false);
+      if (existingIndex >= 0) {
+        // Mettre à jour le changement existant
+        setPendingChanges((prev) => {
+          const updated = [...prev];
+          updated[existingIndex] = {
+            type: suggestion.type,
+            id: suggestion.id,
+            newDistanceId: suggestion.suggestedDistanceId,
+            oldDistanceId: oldDistanceId,
+            name: itemName,
+          };
+          return updated;
+        });
+      } else {
+        // Ajouter un nouveau changement
+        newPendingChanges.push({
+          type: suggestion.type,
+          id: suggestion.id,
+          newDistanceId: suggestion.suggestedDistanceId,
+          oldDistanceId: oldDistanceId,
+          name: itemName,
+        });
+      }
     }
+
+    // Ajouter les nouveaux changements
+    if (newPendingChanges.length > 0) {
+      setPendingChanges((prev) => [...prev, ...newPendingChanges]);
+    }
+
+    setHasUnsavedChanges(true);
+
+    toast({
+      title: "Réaffectations préparées",
+      description: `${toApply.length} réaffectation${toApply.length > 1 ? "s" : ""} préparée${toApply.length > 1 ? "s" : ""}. N'oubliez pas de cliquer sur "Enregistrer les changements" pour sauvegarder.`,
+    });
+
+    setAutoAssignDialogOpen(false);
+    setSuggestions([]);
+    setSelectedSuggestions(new Set());
   };
 
   const handleDragStart = (event: DragStartEvent) => {
@@ -1653,26 +1703,16 @@ export default function DistancesPage() {
                   setAutoAssignDialogOpen(false);
                   setSelectedSuggestions(new Set());
                 }}
-                disabled={isApplying}
               >
                 <X className="w-4 h-4 mr-2" />
                 Annuler
               </Button>
               <Button
                 onClick={handleApplySuggestions}
-                disabled={isApplying || selectedSuggestions.size === 0}
+                disabled={selectedSuggestions.size === 0}
               >
-                {isApplying ? (
-                  <>
-                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                    Application...
-                  </>
-                ) : (
-                  <>
-                    <Check className="w-4 h-4 mr-2" />
-                    Appliquer ({selectedSuggestions.size})
-                  </>
-                )}
+                <Check className="w-4 h-4 mr-2" />
+                Appliquer ({selectedSuggestions.size})
               </Button>
             </div>
           </DialogFooter>
