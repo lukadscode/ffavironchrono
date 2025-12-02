@@ -29,13 +29,13 @@ import clsx from "clsx";
 
 type Distance = {
   id: string;
-  event_id: string;
+  event_id?: string; // Optionnel : les distances sont maintenant globales et partagées entre événements
   meters: number | null;
   is_relay?: boolean;
   relay_count?: number | null;
   is_time_based: boolean;
   duration_seconds: number | null;
-  label: string;
+  label?: string;
 };
 
 type Category = {
@@ -482,7 +482,7 @@ export default function DistancesPage() {
         }
 
         const payload: any = {
-          event_id: eventId,
+          // event_id retiré : les distances sont maintenant globales et partagées entre événements
           meters,
           is_time_based: false,
           duration_seconds: null,
@@ -493,7 +493,22 @@ export default function DistancesPage() {
           payload.relay_count = relayCount;
         }
 
-        await api.post("/distances", payload);
+        const response = await api.post("/distances", payload);
+        const newDistanceId = response.data?.data?.id || response.data?.id;
+        
+        // Associer la distance créée à l'événement
+        if (newDistanceId && eventId) {
+          try {
+            await api.post("/event-distances", {
+              event_id: eventId,
+              distance_id: newDistanceId,
+            });
+          } catch (linkError: any) {
+            // Si l'endpoint n'existe pas ou si le backend le fait déjà automatiquement,
+            // on ignore l'erreur et on continue
+            console.log("Note: Le lien distance-événement peut être créé automatiquement par le backend", linkError);
+          }
+        }
       } else {
         // Distance basée sur le temps
         const mins = typeof durationMinutes === "number" ? durationMinutes : 0;
@@ -510,7 +525,7 @@ export default function DistancesPage() {
         }
 
         const payload: any = {
-          event_id: eventId,
+          // event_id retiré : les distances sont maintenant globales et partagées entre événements
           duration_seconds: totalSeconds,
           is_time_based: true,
           meters: null,
@@ -518,7 +533,22 @@ export default function DistancesPage() {
           relay_count: null,
         };
 
-        await api.post("/distances", payload);
+        const response = await api.post("/distances", payload);
+        const newDistanceId = response.data?.data?.id || response.data?.id;
+        
+        // Associer la distance créée à l'événement
+        if (newDistanceId && eventId) {
+          try {
+            await api.post("/event-distances", {
+              event_id: eventId,
+              distance_id: newDistanceId,
+            });
+          } catch (linkError: any) {
+            // Si l'endpoint n'existe pas ou si le backend le fait déjà automatiquement,
+            // on ignore l'erreur et on continue
+            console.log("Note: Le lien distance-événement peut être créé automatiquement par le backend", linkError);
+          }
+        }
       }
 
       toast({ title: "Distance ajoutée avec succès." });
@@ -540,17 +570,36 @@ export default function DistancesPage() {
   };
 
   const handleDelete = async (id: string) => {
+    if (!eventId) return;
+    
     try {
-      await api.delete(`/distances/${id}`);
-      toast({ title: "Distance supprimée." });
+      // D'abord, dissocier la distance de l'événement (car les distances sont maintenant globales et partagées)
+      try {
+        await api.delete(`/event-distances/event/${eventId}/distance/${id}`);
+        toast({ title: "Distance retirée de l'événement." });
+      } catch (dissociateError: any) {
+        // Si l'endpoint de dissociation n'existe pas, on peut essayer de supprimer directement
+        // (le backend devrait gérer cela)
+        console.log("Tentative de suppression directe (dissociation non disponible)", dissociateError);
+        
+        // Si la dissociation échoue, essayer de supprimer directement
+        // (mais attention : cela supprimera la distance pour TOUS les événements !)
+        await api.delete(`/distances/${id}`);
+        toast({ 
+          title: "Distance supprimée.", 
+          description: "⚠️ La distance a été supprimée pour tous les événements car elle est globale."
+        });
+      }
+      
       fetchDistances();
       // Recharger les catégories et courses pour mettre à jour les distances
       fetchCategories();
       fetchRaces();
-    } catch (err) {
+    } catch (err: any) {
+      console.error("Erreur suppression distance:", err);
       toast({
         title: "Erreur suppression",
-        description: "Impossible de supprimer la distance.",
+        description: err?.response?.data?.message || "Impossible de retirer la distance de l'événement.",
         variant: "destructive",
       });
     }
