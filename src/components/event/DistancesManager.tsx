@@ -896,17 +896,75 @@ export default function DistancesPage() {
 
       // Recharger les données pour s'assurer qu'elles sont à jour
       // Attendre que l'API ait le temps de persister les données en base
-      // Augmenter le délai pour s'assurer de la persistance
       await new Promise(resolve => setTimeout(resolve, 500));
       
       // Recharger TOUTES les données (catégories ET courses) pour éviter les incohérences
       // et s'assurer que tout est synchronisé
       await Promise.all([fetchCategories(), fetchRaces()]);
 
-      toast({
-        title: "Modification enregistrée",
-        description: `La ${itemType === "category" ? "catégorie" : "course"} a été ${targetDistanceId ? "affectée à" : "retirée de"} la distance.`,
-      });
+      // Vérifier que la sauvegarde est bien persistée en re-lisant directement l'élément
+      // Si la vérification échoue, on réessaie après un court délai (max 3 tentatives)
+      let verified = false;
+      let attempts = 0;
+      const maxAttempts = 3;
+      
+      while (!verified && attempts < maxAttempts) {
+        try {
+          // Re-lire directement l'élément depuis l'API avec cache-busting
+          const verifyResponse = await api.get(
+            itemType === "category" ? `/categories/${itemId}` : `/races/${itemId}`,
+            { params: { _t: Date.now() } }
+          );
+          
+          const verifiedDistanceId = verifyResponse.data?.data?.distance_id ?? verifyResponse.data?.distance_id ?? null;
+          
+          // Normaliser : convertir undefined en null pour la comparaison
+          const normalizedVerified = verifiedDistanceId !== undefined ? verifiedDistanceId : null;
+          const normalizedTarget = targetDistanceId !== undefined ? targetDistanceId : null;
+          
+          if (normalizedVerified === normalizedTarget) {
+            verified = true;
+            console.log("✅ Vérification réussie : la sauvegarde est persistée", {
+              itemId,
+              expected: normalizedTarget,
+              actual: normalizedVerified,
+            });
+          } else {
+            attempts++;
+            console.warn(`⚠️ Vérification échouée (tentative ${attempts}/${maxAttempts})`, {
+              itemId,
+              expected: normalizedTarget,
+              actual: normalizedVerified,
+            });
+            
+            if (attempts < maxAttempts) {
+              // Attendre un peu plus et recharger les données
+              await new Promise(resolve => setTimeout(resolve, 300));
+              await Promise.all([fetchCategories(), fetchRaces()]);
+            }
+          }
+        } catch (err) {
+          console.error("Erreur lors de la vérification:", err);
+          attempts++;
+          if (attempts < maxAttempts) {
+            await new Promise(resolve => setTimeout(resolve, 300));
+          }
+        }
+      }
+
+      if (verified) {
+        toast({
+          title: "Modification enregistrée",
+          description: `La ${itemType === "category" ? "catégorie" : "course"} a été ${targetDistanceId ? "affectée à" : "retirée de"} la distance.`,
+        });
+      } else {
+        console.error("❌ La vérification de persistance a échoué après plusieurs tentatives");
+        toast({
+          title: "Avertissement",
+          description: `La modification a été envoyée mais la vérification de persistance a échoué. Veuillez rafraîchir la page.`,
+          variant: "destructive",
+        });
+      }
     } catch (err: any) {
       console.error("Erreur sauvegarde:", err);
       console.error("Détails erreur:", {

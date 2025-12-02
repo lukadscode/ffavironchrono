@@ -90,7 +90,7 @@ function SortableCategoryItem({
             {assignedCount} / {category.crew_count} équipages
           </span>
         </div>
-        <div className="text-xs text-slate-600">{category.label}</div>
+        <div className="text-xs text-slate-600 break-words">{category.label}</div>
       </div>
     </div>
   );
@@ -264,8 +264,15 @@ function SeriesCard({
                   <div className="flex items-center gap-2">
                     <span className="text-sm font-medium">{cat.label || code}</span>
                     <span className="text-xs text-slate-500">
-                      ({cat.crew_count} au total)
+                      ({cat.crew_count} au total, {categoryAssignedCounts[code] || 0} assignés)
                     </span>
+                    {(() => {
+                      const available = cat.crew_count - (categoryAssignedCounts[code] || 0);
+                      if (available <= 0) {
+                        return <span className="text-xs px-1.5 py-0.5 bg-red-100 text-red-700 rounded font-medium">⚠ Épuisé</span>;
+                      }
+                      return <span className="text-xs px-1.5 py-0.5 bg-green-100 text-green-700 rounded font-medium">{available} disponible{available > 1 ? 's' : ''}</span>;
+                    })()}
                     {cat.distance && (
                       <span className="text-xs px-1.5 py-0.5 bg-slate-100 text-slate-600 rounded">
                         {cat.distance.label}
@@ -637,25 +644,27 @@ export default function GenerateRacesPage() {
     const category = categories.find(c => c.code === categoryCode);
     if (!category) return;
 
+    // Calculer les équipages disponibles pour cette catégorie
+    const totalAssignedForCategory = categoryAssignedCounts[categoryCode] || 0;
+    const availableCrews = category.crew_count - totalAssignedForCategory;
+
     if (seriesId && series.some(s => s.id === seriesId) && !forceNewSeries) {
       // Ajouter à une série existante
       const targetSeries = series.find(s => s.id === seriesId);
       if (!targetSeries) return;
 
+      // Vérifier qu'il reste des équipages disponibles pour cette catégorie
+      if (availableCrews <= 0) {
+        toast({
+          title: "Impossible d'ajouter la catégorie",
+          description: `La catégorie "${category.label || category.code}" n'a plus d'équipages disponibles (${category.crew_count} au total, ${totalAssignedForCategory} déjà assignés dans d'autres séries).`,
+          variant: "destructive",
+        });
+        return;
+      }
+
       // Vérifier la compatibilité des distances AVANT d'ajouter
       const validation = canAddCategoryToSeries(category, targetSeries);
-      console.log("Validation distance:", {
-        category: category.code,
-        categoryDistance: getCategoryDistance(category),
-        categoryDistanceObj: category.distance,
-        seriesId,
-        existingCategories: Object.keys(targetSeries.categories),
-        existingCategoriesWithDistances: Object.keys(targetSeries.categories).map(code => {
-          const cat = categories.find(c => c.code === code);
-          return { code, distance: cat ? getCategoryDistance(cat) : null, distanceObj: cat?.distance };
-        }),
-        validationResult: validation
-      });
       
       if (!validation.canAdd) {
         toast({
@@ -668,37 +677,52 @@ export default function GenerateRacesPage() {
 
       const currentTotal = Object.values(targetSeries.categories).reduce((sum, count) => sum + count, 0);
       const availableInSeries = laneCount - currentTotal;
+      const currentCountInSeries = targetSeries.categories[categoryCode] || 0;
 
-      if (availableInSeries > 0) {
-        // Il y a de la place dans cette série
-        const toAdd = Math.min(category.crew_count, availableInSeries);
-        const newCategories = {
-          ...targetSeries.categories,
-          [categoryCode]: (targetSeries.categories[categoryCode] || 0) + toAdd
-        };
+      if (availableInSeries <= 0) {
+        toast({
+          title: "Impossible d'ajouter la catégorie",
+          description: `Cette série est pleine (${laneCount} lignes d'eau utilisées).`,
+          variant: "destructive",
+        });
+        return;
+      }
 
-        setSeries(prev => prev.map(s => 
-          s.id === seriesId 
-            ? { ...s, categories: newCategories }
-            : s
-        ));
+      // Calculer combien on peut ajouter : minimum entre :
+      // - Les équipages disponibles pour cette catégorie
+      // - Les lignes d'eau disponibles dans la série
+      const maxToAdd = Math.min(availableCrews, availableInSeries);
+      
+      if (maxToAdd <= 0) {
+        toast({
+          title: "Impossible d'ajouter la catégorie",
+          description: `Plus d'espace disponible : ${availableCrews} équipage(s) disponible(s) pour cette catégorie, ${availableInSeries} ligne(s) d'eau disponible(s) dans cette série.`,
+          variant: "destructive",
+        });
+        return;
+      }
 
-        // Si il reste des participants, créer une nouvelle série
-        const remaining = category.crew_count - toAdd;
-        if (remaining > 0) {
-          const newSeries: Series = {
-            id: `series-${Date.now()}`,
-            categories: { [categoryCode]: remaining }
-          };
-          setSeries(prev => [...prev, newSeries]);
-        }
-      } else {
-        // La série est pleine, créer une nouvelle série
-        const newSeries: Series = {
-          id: `series-${Date.now()}`,
-          categories: { [categoryCode]: category.crew_count }
-        };
-        setSeries(prev => [...prev, newSeries]);
+      // Si la catégorie est déjà dans cette série, augmenter le compte
+      // Sinon, ajouter tous les équipages disponibles (ou jusqu'à la limite de la série)
+      const toAdd = currentCountInSeries > 0 ? maxToAdd : Math.min(category.crew_count, maxToAdd);
+      
+      const newCategories = {
+        ...targetSeries.categories,
+        [categoryCode]: (targetSeries.categories[categoryCode] || 0) + toAdd
+      };
+
+      setSeries(prev => prev.map(s => 
+        s.id === seriesId 
+          ? { ...s, categories: newCategories }
+          : s
+      ));
+
+      // Afficher un message informatif
+      if (toAdd < availableCrews) {
+        toast({
+          title: "Catégorie ajoutée partiellement",
+          description: `${toAdd} équipage(s) ajouté(s) à la série. ${availableCrews - toAdd} équipage(s) restant(s) disponible(s) pour cette catégorie.`,
+        });
       }
     } else {
       // Créer une nouvelle série pour cette catégorie
@@ -790,12 +814,65 @@ export default function GenerateRacesPage() {
 
     const overId = over.id.toString();
 
+    // Vérifier qu'il reste des équipages disponibles avant d'autoriser l'ajout
+    const totalAssignedForCategory = categoryAssignedCounts[category.code] || 0;
+    const availableCrews = category.crew_count - totalAssignedForCategory;
+
     // Si on dépose sur une série existante
     if (overId.startsWith("series-") && series.some(s => s.id === overId)) {
+      const targetSeries = series.find(s => s.id === overId);
+      
+      // Vérifier les limites avant d'ajouter
+      if (targetSeries) {
+        const currentCountInSeries = targetSeries.categories[category.code] || 0;
+        const currentTotal = Object.values(targetSeries.categories).reduce((sum, count) => sum + count, 0);
+        const availableInSeries = laneCount - currentTotal;
+        
+        // Si la catégorie n'est pas encore dans la série, vérifier qu'il y a des équipages disponibles
+        if (currentCountInSeries === 0 && availableCrews <= 0) {
+          toast({
+            title: "Impossible d'ajouter",
+            description: `La catégorie "${category.label || category.code}" n'a plus d'équipages disponibles (${category.crew_count} au total, ${totalAssignedForCategory} déjà assignés).`,
+            variant: "destructive",
+          });
+          return;
+        }
+        
+        // Si la catégorie est déjà dans la série, vérifier qu'on peut encore en ajouter
+        if (currentCountInSeries > 0 && availableCrews <= 0) {
+          toast({
+            title: "Tous les équipages sont déjà assignés",
+            description: `Tous les ${category.crew_count} équipages de cette catégorie sont déjà assignés dans les séries.`,
+            variant: "destructive",
+          });
+          return;
+        }
+        
+        // Vérifier qu'il y a de la place dans la série
+        if (availableInSeries <= 0 && currentCountInSeries === 0) {
+          toast({
+            title: "Série pleine",
+            description: `Cette série est déjà pleine (${laneCount} lignes d'eau utilisées).`,
+            variant: "destructive",
+          });
+          return;
+        }
+      }
+      
       handleAddCategoryToSeries(category.code, overId);
     } 
     // Si on dépose sur la zone "nouvelle série"
     else if (overId === "new-series") {
+      // Vérifier qu'il reste des équipages disponibles avant de créer une nouvelle série
+      if (availableCrews <= 0) {
+        toast({
+          title: "Impossible de créer une série",
+          description: `La catégorie "${category.label || category.code}" n'a plus d'équipages disponibles (${category.crew_count} au total, ${totalAssignedForCategory} déjà assignés dans d'autres séries).`,
+          variant: "destructive",
+        });
+        return;
+      }
+      
       handleAddCategoryToSeries(category.code, undefined, true); // forceNewSeries = true
     }
     // Si on dépose sur "unassigned" (retirer de toutes les séries)
@@ -1118,12 +1195,21 @@ export default function GenerateRacesPage() {
             const match = error.match(/Série (\d+): La catégorie '([^']+)' n'a que (\d+) équipages disponibles \((\d+) au total, (\d+) déjà assignés\), mais (\d+) sont demandés au total\./);
             if (match) {
               const [, serie, category, disponibles, total, assignes, demandes] = match;
+              const disponiblesNum = parseInt(disponibles);
+              const totalNum = parseInt(total);
+              const assignesNum = parseInt(assignes);
+              const demandesNum = parseInt(demandes);
+              
+              // Le problème : on demande plus d'équipages qu'il n'en reste disponibles
+              const manque = demandesNum - disponiblesNum;
+              
               return `Série ${serie} - Catégorie "${category}":\n` +
-                     `  • Équipages disponibles: ${disponibles}\n` +
-                     `  • Équipages au total: ${total}\n` +
-                     `  • Équipages déjà assignés: ${assignes}\n` +
-                     `  • Équipages demandés: ${demandes}\n` +
-                     `  → ${disponibles === "0" ? "Aucun équipage disponible pour cette catégorie dans cette série." : `Il manque ${parseInt(demandes) - parseInt(disponibles)} équipages.`}`;
+                     `  • Équipages au total dans cette catégorie: ${totalNum}\n` +
+                     `  • Équipages déjà assignés dans d'autres séries: ${assignesNum}\n` +
+                     `  • Équipages disponibles restants: ${disponiblesNum}\n` +
+                     `  • Équipages demandés dans cette série: ${demandesNum}\n` +
+                     `  → ❌ Il manque ${manque} équipage(s) !\n` +
+                     `     Solution : Réduisez le nombre d'équipages de cette catégorie dans la série ${serie} (boutons -) ou retirez la catégorie si nécessaire.`;
             }
           }
           return error;
