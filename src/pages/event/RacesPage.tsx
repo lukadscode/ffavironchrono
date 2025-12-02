@@ -574,10 +574,10 @@ export default function RacesPage() {
                     .filter((d) => !d.is_time_based)
                     .map((dist) => (
                       <SelectItem key={dist.id} value={dist.id}>
-                        {dist.label}
+                        {dist.label || `${dist.meters}m`}
                       </SelectItem>
                     ))}
-                  {availableDistances.some((d) => d.is_time_based) && availableDistances.some((d) => !d.is_time_based) && (
+                  {availableDistances.some((d) => d.is_time_based) && availableDistances.some((d) => !d.is_time_based) && availableDistances.length > 0 && (
                     <div className="px-2 py-1.5 text-xs font-semibold text-muted-foreground border-t">
                       Durées (temps)
                     </div>
@@ -586,7 +586,7 @@ export default function RacesPage() {
                     .filter((d) => d.is_time_based)
                     .map((dist) => (
                       <SelectItem key={dist.id} value={dist.id}>
-                        {dist.label}
+                        {dist.label || `${dist.duration_seconds}s`}
                       </SelectItem>
                     ))}
                 </SelectContent>

@@ -44,10 +44,17 @@ export default function RaceFormDialog({ phaseId, eventId, onSuccess }: RaceForm
 
   useEffect(() => {
     const fetchDistances = async () => {
-      const res = await api.get(`/distances/event/${eventId}`);
-      setDistances(res.data.data);
+      try {
+        const res = await api.get(`/distances/event/${eventId}`);
+        setDistances(res.data.data || []);
+      } catch (err) {
+        console.error("Erreur chargement distances:", err);
+        setDistances([]);
+      }
     };
-    fetchDistances();
+    if (eventId) {
+      fetchDistances();
+    }
   }, [eventId]);
 
   const handleSubmit = async () => {
@@ -102,21 +109,26 @@ export default function RaceFormDialog({ phaseId, eventId, onSuccess }: RaceForm
           <div>
             <Label>Distance</Label>
             <Select
-              value={form.distance_id}
+              value={form.distance_id || undefined}
               onValueChange={(val) => setForm({ ...form, distance_id: val })}
             >
               <SelectTrigger>
-                <SelectValue placeholder="Distance" />
+                <SelectValue placeholder="Sélectionner une distance" />
               </SelectTrigger>
               <SelectContent>
+                {distances.length === 0 && (
+                  <div className="px-2 py-1.5 text-sm text-muted-foreground">
+                    Aucune distance disponible
+                  </div>
+                )}
                 {distances
                   .filter((d) => !d.is_time_based)
                   .map((dist) => (
                     <SelectItem key={dist.id} value={dist.id}>
-                      {dist.label}
+                      {dist.label || `${dist.meters}m`}
                     </SelectItem>
                   ))}
-                {distances.some((d) => d.is_time_based) && distances.some((d) => !d.is_time_based) && (
+                {distances.some((d) => d.is_time_based) && distances.some((d) => !d.is_time_based) && distances.length > 0 && (
                   <div className="px-2 py-1.5 text-xs font-semibold text-muted-foreground border-t">
                     Durées (temps)
                   </div>
@@ -125,7 +137,7 @@ export default function RaceFormDialog({ phaseId, eventId, onSuccess }: RaceForm
                   .filter((d) => d.is_time_based)
                   .map((dist) => (
                     <SelectItem key={dist.id} value={dist.id}>
-                      {dist.label}
+                      {dist.label || `${dist.duration_seconds}s`}
                     </SelectItem>
                   ))}
               </SelectContent>
