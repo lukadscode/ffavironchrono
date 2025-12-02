@@ -850,10 +850,10 @@ export default function IndoorRaceDetailPage() {
       } else {
         // Couloir vide
         boats.push({
-          class_name: "EMPTY",
+          class_name: "X",
           id: `Lane ${lane}`,
           lane_number: lane,
-          name: "EMPTY",
+          name: "X",
           participants: [
             {
               id: `Lane ${lane}`,
@@ -940,15 +940,17 @@ export default function IndoorRaceDetailPage() {
 
     // Valeurs finales pour le fichier .rac2
     // Pour une course basée sur le temps : duration = durée en secondes, duration_type = "seconds"
-    // Pour un relais: duration = distance totale, split_value = 250m (fixe pour indoor)
-    // Pour une course normale basée sur distance : duration = distance totale, split_value = 250m (fixe pour indoor)
+    // Pour un relais: duration = distance totale, split_value = 250m
+    // Pour une course normale basée sur distance : duration = distance totale, split_value = 500m
     const finalDuration = isTimeBased && durationSeconds
       ? durationSeconds
       : (isRelay && relayCount && relayDistance 
         ? relayDistance * relayCount 
         : totalDistance);
-    // Pour les courses indoor, le split est toujours fixé à 250m (même pour les courses basées sur le temps)
-    const finalSplitValue = 250;
+    // Pour les courses indoor :
+    // - Relais : split_value = 250m
+    // - Course normale : split_value = 500m
+    const finalSplitValue = isRelay ? 250 : 500;
     const finalDurationType = isTimeBased ? "seconds" : "meters";
 
     console.log("📐 Calculs finaux:", {
@@ -973,7 +975,7 @@ export default function IndoorRaceDetailPage() {
         race_type: raceType,
         boats: boats,
         split_type: "even",
-        split_value: finalSplitValue, // Toujours 250m pour les courses indoor
+        split_value: finalSplitValue, // 250m pour les relais, 500m pour les courses normales
         team_size: 1,
         handicap_enabled: false,
         time_cap: 0,

@@ -272,36 +272,62 @@ export default function EventOverviewPage() {
 
     setUploadingImage(true);
     try {
-      const formData = new FormData();
-      formData.append("cover", file);
+      // Générer un nom de fichier unique
+      const fileExtension = file.name.split('.').pop() || 'jpg';
+      const timestamp = Date.now();
+      const fileName = `event-${eventId}-${timestamp}.${fileExtension}`;
+      
+      // URL relative dans le dossier public
+      const imageUrl = `/event-covers/${fileName}`;
 
-      // L'API sauvegarde l'image dans le dossier public et retourne l'URL
-      const response = await api.post(`/events/${eventId}/upload-cover`, formData, {
+      // Créer un blob URL temporaire pour l'aperçu
+      const blobUrl = URL.createObjectURL(file);
+      setImagePreview(blobUrl);
+
+      // Sauvegarder l'image dans le dossier public via une API
+      // L'API doit sauvegarder le fichier dans le dossier public
+      const saveFormData = new FormData();
+      saveFormData.append("file", file);
+      saveFormData.append("path", `event-covers`);
+      saveFormData.append("filename", fileName);
+      
+      // Utiliser un endpoint générique de sauvegarde de fichiers
+      // Cet endpoint sauvegarde le fichier dans le dossier public du frontend
+      await api.post(`/files/upload`, saveFormData, {
         headers: {
           "Content-Type": "multipart/form-data",
         },
       });
 
-      const coverUrl = response.data.data?.cover_url || response.data.cover_url || response.data.data?.image_url || response.data.image_url;
+      // Envoyer uniquement l'URL à l'API pour mettre à jour l'événement
+      await api.put(`/events/${eventId}`, {
+        image_url: imageUrl,
+      });
+
+      // Mettre à jour l'aperçu avec l'URL finale et libérer le blob URL temporaire
+      URL.revokeObjectURL(blobUrl);
+      setImagePreview(imageUrl);
+      setEvent((prev: any) => ({ ...prev, cover_url: imageUrl, image_url: imageUrl }));
       
-      if (coverUrl) {
-        setImagePreview(coverUrl);
-        setEvent((prev: any) => ({ ...prev, cover_url: coverUrl, image_url: coverUrl }));
-        
-        toast({
-          title: "Succès",
-          description: "L'image a été téléversée avec succès.",
-        });
-      } else {
-        throw new Error("URL de l'image non retournée par l'API");
-      }
+      toast({
+        title: "Succès",
+        description: "L'image a été téléversée avec succès.",
+      });
     } catch (err: any) {
       console.error("Erreur upload image", err);
+      
+      // Libérer le blob URL en cas d'erreur
+      if (imagePreview && imagePreview.startsWith('blob:')) {
+        URL.revokeObjectURL(imagePreview);
+      }
+      
       toast({
         title: "Erreur",
-        description: err.response?.data?.message || "Erreur lors du téléversement de l'image",
+        description: err.response?.data?.message || err.message || "Erreur lors du téléversement de l'image. Veuillez vérifier que l'endpoint /files/upload est configuré.",
         variant: "destructive",
       });
+      // Réinitialiser l'aperçu en cas d'erreur
+      setImagePreview(event?.cover_url || event?.image_url || null);
     } finally {
       setUploadingImage(false);
     }
