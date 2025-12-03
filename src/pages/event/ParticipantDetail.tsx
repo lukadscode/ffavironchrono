@@ -56,13 +56,63 @@ export default function ParticipantDetailsPage() {
         const res = await api.get(`/participants/${participantId}`);
         console.log("✅ Réponse API participant:", res.data);
         
-        const participantData = res.data.data || res.data;
+        let participantData = res.data.data || res.data;
         
         if (!participantData) {
           setError("Participant introuvable");
           setLoading(false);
           return;
         }
+
+        // Enrichir les équipages avec leur eventId si nécessaire
+        const crewParticipants = participantData.crew_participants ||
+                                 participantData.CrewParticipants ||
+                                 participantData.crewParticipants ||
+                                 [];
+        
+        // Enrichir chaque équipage avec son eventId si pas déjà présent
+        const enrichedCrewParticipants = await Promise.all(
+          crewParticipants.map(async (cp: any) => {
+            const crew = cp.crew || cp.Crew;
+            if (!crew) return cp;
+            
+            // Vérifier si eventId est déjà présent
+            const existingEventId = crew.Event?.id || 
+                                   crew.event_id || 
+                                   crew.EventId || 
+                                   crew.eventId;
+            
+            // Si eventId n'est pas présent, récupérer le crew complet
+            if (!existingEventId && crew.id) {
+              try {
+                const crewRes = await api.get(`/crews/${crew.id}`);
+                const fullCrew = crewRes.data.data || crewRes.data;
+                return {
+                  ...cp,
+                  crew: {
+                    ...crew,
+                    ...fullCrew,
+                    // S'assurer que eventId est accessible
+                    event_id: fullCrew.event_id || fullCrew.Event?.id || fullCrew.EventId || fullCrew.eventId,
+                    Event: fullCrew.Event || crew.Event,
+                  }
+                };
+              } catch (err) {
+                console.warn(`⚠️ Impossible de récupérer l'eventId pour le crew ${crew.id}`, err);
+                return cp;
+              }
+            }
+            
+            return cp;
+          })
+        );
+        
+        participantData = {
+          ...participantData,
+          crew_participants: enrichedCrewParticipants,
+          CrewParticipants: enrichedCrewParticipants,
+          crewParticipants: enrichedCrewParticipants,
+        };
 
         setParticipant(participantData);
         setError(null);
@@ -185,17 +235,56 @@ export default function ParticipantDetailsPage() {
                            participant.crewParticipants ||
                            [];
 
+  // Normaliser l'eventId pour la comparaison (string)
+  const normalizedEventId = eventId ? String(eventId).trim() : null;
+
+  // Fonction helper pour extraire l'eventId d'un équipage
+  const getCrewEventId = (cp: any): string | null => {
+    const crew = cp.crew || cp.Crew;
+    if (!crew) return null;
+    
+    // Vérifier différentes façons dont l'eventId peut être stocké
+    const crewEventId = crew.Event?.id || 
+                        crew.event_id || 
+                        crew.EventId || 
+                        crew.eventId;
+    
+    return crewEventId ? String(crewEventId).trim() : null;
+  };
+
   // Séparer les équipages par événement
   const currentEventCrews = crewParticipants.filter((cp: any) => {
-    const crew = cp.crew || cp.Crew;
-    const event = crew?.Event;
-    return event?.id === eventId;
+    const crewEventId = getCrewEventId(cp);
+    if (!normalizedEventId || !crewEventId) return false;
+    
+    const match = crewEventId === normalizedEventId;
+    
+    // Log pour debug (uniquement si pas de match suspect)
+    if (!match && normalizedEventId) {
+      console.log("🔍 Équipage non match:", {
+        crewId: (cp.crew || cp.Crew)?.id,
+        crewEventId,
+        currentEventId: normalizedEventId,
+        match
+      });
+    }
+    
+    return match;
   });
 
   const otherEventsCrews = crewParticipants.filter((cp: any) => {
-    const crew = cp.crew || cp.Crew;
-    const event = crew?.Event;
-    return event?.id !== eventId;
+    const crewEventId = getCrewEventId(cp);
+    if (!normalizedEventId) return crewEventId !== null; // Si pas d'eventId courant, tous les autres
+    if (!crewEventId) return false; // Ignorer ceux sans eventId
+    
+    return crewEventId !== normalizedEventId;
+  });
+  
+  console.log("📊 Résultat filtrage:", {
+    total: crewParticipants.length,
+    currentEvent: currentEventCrews.length,
+    otherEvents: otherEventsCrews.length,
+    eventId: normalizedEventId
   });
 
   return (
