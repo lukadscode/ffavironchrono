@@ -28,6 +28,7 @@ import {
   Mail,
   Hash,
   Calendar,
+  Flag,
 } from "lucide-react";
 import dayjs from "dayjs";
 
@@ -42,6 +43,8 @@ export default function ParticipantDetailsPage() {
   const [isDeleting, setIsDeleting] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
+  const [crewRacesMap, setCrewRacesMap] = useState<Record<string, any[]>>({});
+  const [loadingRaces, setLoadingRaces] = useState(false);
 
   useEffect(() => {
     async function fetchData() {
@@ -116,6 +119,11 @@ export default function ParticipantDetailsPage() {
 
         setParticipant(participantData);
         setError(null);
+        
+        // Charger les races pour les équipages de cet événement
+        if (eventId) {
+          await fetchCrewRaces(enrichedCrewParticipants, eventId);
+        }
       } catch (err: any) {
         console.error("❌ Erreur chargement participant:", err);
         const errorMessage =
@@ -134,7 +142,74 @@ export default function ParticipantDetailsPage() {
       }
     }
     fetchData();
-  }, [participantId, toast]);
+  }, [participantId, toast, eventId]);
+
+  // Fonction pour récupérer les races de chaque équipage
+  const fetchCrewRaces = async (crewParticipants: any[], eventId: string) => {
+    if (!eventId) return;
+    
+    setLoadingRaces(true);
+    try {
+      // Récupérer toutes les races de l'événement
+      const racesRes = await api.get(`/races/event/${eventId}`);
+      const allRaces = racesRes.data.data || [];
+      
+      // Récupérer toutes les race-crews en une seule fois pour toutes les races
+      const allRaceCrews = await Promise.all(
+        allRaces.map(async (race: any) => {
+          try {
+            const raceCrewsRes = await api.get(`/race-crews/${race.id}`);
+            return {
+              raceId: race.id,
+              race: race,
+              crews: raceCrewsRes.data.data || [],
+            };
+          } catch (err) {
+            console.warn(`⚠️ Erreur récupération race-crews pour race ${race.id}`, err);
+            return {
+              raceId: race.id,
+              race: race,
+              crews: [],
+            };
+          }
+        })
+      );
+      
+      // Créer un map crew_id -> races
+      const crewRaces: Record<string, any[]> = {};
+      
+      // Pour chaque équipage, trouver ses races
+      for (const cp of crewParticipants) {
+        const crew = cp.crew || cp.Crew;
+        if (!crew?.id) continue;
+        
+        const crewEventId = crew.Event?.id || 
+                           crew.event_id || 
+                           crew.EventId || 
+                           crew.eventId;
+        
+        // Ne traiter que les équipages de cet événement
+        if (String(crewEventId).trim() !== String(eventId).trim()) {
+          continue;
+        }
+        
+        // Trouver les races où cet équipage participe
+        const racesForCrew = allRaceCrews
+          .filter((rc: any) => rc.crews.some((rcc: any) => rcc.crew_id === crew.id))
+          .map((rc: any) => rc.race);
+        
+        if (racesForCrew.length > 0) {
+          crewRaces[crew.id] = racesForCrew;
+        }
+      }
+      
+      setCrewRacesMap(crewRaces);
+    } catch (err) {
+      console.error("❌ Erreur chargement races des équipages:", err);
+    } finally {
+      setLoadingRaces(false);
+    }
+  };
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setParticipant({ ...participant, [e.target.name]: e.target.value });
@@ -564,6 +639,32 @@ export default function ParticipantDetailsPage() {
                             <span className="line-clamp-1">{event.name}</span>
                           </div>
                         )}
+
+                        {/* Séries/Races affectées */}
+                        {crew?.id && crewRacesMap[crew.id] && crewRacesMap[crew.id].length > 0 && (
+                          <div className="pt-2 mt-2 border-t">
+                            <div className="flex items-center gap-2 text-sm">
+                              <Flag className="w-4 h-4 text-blue-600" />
+                              <div className="flex-1">
+                                <p className="font-medium text-blue-700 mb-1">
+                                  Série{crewRacesMap[crew.id].length > 1 ? 's' : ''} :
+                                </p>
+                                <div className="flex flex-wrap gap-1">
+                                  {crewRacesMap[crew.id]
+                                    .sort((a: any, b: any) => (a.race_number || 0) - (b.race_number || 0))
+                                    .map((race: any) => (
+                                      <span
+                                        key={race.id}
+                                        className="inline-flex items-center px-2 py-1 rounded-md bg-blue-100 text-blue-800 text-xs font-medium"
+                                      >
+                                        Série {race.race_number || '?'}
+                                      </span>
+                                    ))}
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                        )}
                       </div>
                     </CardContent>
                   </Card>
@@ -638,9 +739,15 @@ export default function ParticipantDetailsPage() {
                         </div>
 
                         {event && (
-                          <div className="flex items-center gap-2 text-sm">
+                          <div className="flex items-center gap-2 text-sm pt-2 mt-2 border-t border-purple-200">
                             <Calendar className="w-4 h-4 text-purple-600" />
-                            <span className="font-medium text-purple-700 line-clamp-1">{event.name}</span>
+                            <div className="flex-1">
+                              <p className="text-xs text-purple-500 mb-1">Événement</p>
+                              <p className="font-medium text-purple-700 line-clamp-2">{event.name}</p>
+                              {event.location && (
+                                <p className="text-xs text-purple-600 mt-1">{event.location}</p>
+                              )}
+                            </div>
                           </div>
                         )}
                       </div>
