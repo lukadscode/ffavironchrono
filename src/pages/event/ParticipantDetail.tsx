@@ -73,7 +73,7 @@ export default function ParticipantDetailsPage() {
                                  participantData.crewParticipants ||
                                  [];
         
-        // Enrichir chaque équipage avec son eventId si pas déjà présent
+        // Enrichir chaque équipage avec son eventId et Event si pas déjà présent
         const enrichedCrewParticipants = await Promise.all(
           crewParticipants.map(async (cp: any) => {
             const crew = cp.crew || cp.Crew;
@@ -85,24 +85,55 @@ export default function ParticipantDetailsPage() {
                                    crew.EventId || 
                                    crew.eventId;
             
-            // Si eventId n'est pas présent, récupérer le crew complet
-            if (!existingEventId && crew.id) {
+            // Si eventId ou Event n'est pas présent, récupérer le crew complet
+            if ((!existingEventId || !crew.Event) && crew.id) {
               try {
                 const crewRes = await api.get(`/crews/${crew.id}`);
                 const fullCrew = crewRes.data.data || crewRes.data;
+                
+                // Si l'événement n'est toujours pas présent, le récupérer
+                let eventData = fullCrew.Event || crew.Event;
+                const crewEventId = fullCrew.event_id || fullCrew.Event?.id || fullCrew.EventId || fullCrew.eventId || existingEventId;
+                
+                if (!eventData && crewEventId) {
+                  try {
+                    const eventRes = await api.get(`/events/${crewEventId}`);
+                    eventData = eventRes.data.data || eventRes.data;
+                  } catch (eventErr) {
+                    console.warn(`⚠️ Impossible de récupérer l'événement ${crewEventId}`, eventErr);
+                  }
+                }
+                
                 return {
                   ...cp,
                   crew: {
                     ...crew,
                     ...fullCrew,
                     // S'assurer que eventId est accessible
-                    event_id: fullCrew.event_id || fullCrew.Event?.id || fullCrew.EventId || fullCrew.eventId,
-                    Event: fullCrew.Event || crew.Event,
+                    event_id: crewEventId,
+                    Event: eventData || fullCrew.Event || crew.Event,
                   }
                 };
               } catch (err) {
-                console.warn(`⚠️ Impossible de récupérer l'eventId pour le crew ${crew.id}`, err);
+                console.warn(`⚠️ Impossible de récupérer les données pour le crew ${crew.id}`, err);
                 return cp;
+              }
+            }
+            
+            // Si l'événement n'est pas présent mais que l'eventId existe, récupérer l'événement
+            if (!crew.Event && existingEventId) {
+              try {
+                const eventRes = await api.get(`/events/${existingEventId}`);
+                const eventData = eventRes.data.data || eventRes.data;
+                return {
+                  ...cp,
+                  crew: {
+                    ...crew,
+                    Event: eventData,
+                  }
+                };
+              } catch (eventErr) {
+                console.warn(`⚠️ Impossible de récupérer l'événement ${existingEventId}`, eventErr);
               }
             }
             
@@ -738,14 +769,22 @@ export default function ParticipantDetailsPage() {
                           </span>
                         </div>
 
-                        {event && (
+                        {(event || otherEventId) && (
                           <div className="flex items-center gap-2 text-sm pt-2 mt-2 border-t border-purple-200">
                             <Calendar className="w-4 h-4 text-purple-600" />
                             <div className="flex-1">
                               <p className="text-xs text-purple-500 mb-1">Événement</p>
-                              <p className="font-medium text-purple-700 line-clamp-2">{event.name}</p>
-                              {event.location && (
-                                <p className="text-xs text-purple-600 mt-1">{event.location}</p>
+                              {event?.name ? (
+                                <>
+                                  <p className="font-medium text-purple-700 line-clamp-2">{event.name}</p>
+                                  {event.location && (
+                                    <p className="text-xs text-purple-600 mt-1">{event.location}</p>
+                                  )}
+                                </>
+                              ) : (
+                                <p className="font-medium text-purple-700 line-clamp-2 text-xs">
+                                  ID: {otherEventId || crew?.event_id || crew?.EventId || crew?.eventId}
+                                </p>
                               )}
                             </div>
                           </div>
