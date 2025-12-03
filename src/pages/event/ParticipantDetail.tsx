@@ -185,6 +185,19 @@ export default function ParticipantDetailsPage() {
                            participant.crewParticipants ||
                            [];
 
+  // Séparer les équipages par événement
+  const currentEventCrews = crewParticipants.filter((cp: any) => {
+    const crew = cp.crew || cp.Crew;
+    const event = crew?.Event;
+    return event?.id === eventId;
+  });
+
+  const otherEventsCrews = crewParticipants.filter((cp: any) => {
+    const crew = cp.crew || cp.Crew;
+    const event = crew?.Event;
+    return event?.id !== eventId;
+  });
+
   return (
     <div className="space-y-6">
       {/* Header avec gradient */}
@@ -221,12 +234,13 @@ export default function ParticipantDetailsPage() {
             </div>
           </div>
 
-          {crewParticipants.length > 0 && (
+          {currentEventCrews.length > 0 && (
             <div className="mt-4 pt-4 border-t border-white/20">
               <div className="flex items-center gap-2 text-purple-100">
                 <Users className="w-4 h-4" />
                 <span className="text-sm">
-                  {crewParticipants.length} équipage{crewParticipants.length > 1 ? 's' : ''}
+                  {currentEventCrews.length} équipage{currentEventCrews.length > 1 ? 's' : ''} dans cet événement
+                  {otherEventsCrews.length > 0 && ` • ${otherEventsCrews.length} dans d'autres événements`}
                 </span>
               </div>
             </div>
@@ -393,18 +407,18 @@ export default function ParticipantDetailsPage() {
         </CardContent>
       </Card>
 
-      {/* Équipages */}
-      {crewParticipants.length > 0 && (
+      {/* Équipages dans cet événement */}
+      {currentEventCrews.length > 0 && (
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <Users className="w-5 h-5" />
-              Équipages ({crewParticipants.length})
+              Équipages dans cet événement ({currentEventCrews.length})
             </CardTitle>
           </CardHeader>
           <CardContent>
             <div className="grid gap-4 md:grid-cols-2">
-              {crewParticipants.map((cp: any) => {
+              {currentEventCrews.map((cp: any) => {
                 const crew = cp.crew || cp.Crew;
                 const category = crew?.category;
                 const event = crew?.Event;
@@ -459,6 +473,85 @@ export default function ParticipantDetailsPage() {
                           <div className="flex items-center gap-2 text-sm text-muted-foreground">
                             <Calendar className="w-4 h-4" />
                             <span className="line-clamp-1">{event.name}</span>
+                          </div>
+                        )}
+                      </div>
+                    </CardContent>
+                  </Card>
+                );
+              })}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Autres participations dans d'autres événements */}
+      {otherEventsCrews.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Users className="w-5 h-5" />
+              Autres participations ({otherEventsCrews.length})
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="grid gap-4 md:grid-cols-2">
+              {otherEventsCrews.map((cp: any) => {
+                const crew = cp.crew || cp.Crew;
+                const category = crew?.category;
+                const event = crew?.Event;
+                const otherEventId = event?.id;
+                
+                return (
+                  <Card
+                    key={cp.id}
+                    className="cursor-pointer hover:shadow-lg transition-all duration-200 border-2 hover:border-purple-500"
+                    onClick={() => otherEventId && navigate(`/event/${otherEventId}/crews/${crew?.id}`)}
+                  >
+                    <CardContent className="p-5">
+                      <div className="flex items-start justify-between mb-4">
+                        <div className="flex-1">
+                          <h3 className="font-semibold text-lg mb-1 flex items-center gap-2">
+                            <Building2 className="w-4 h-4 text-purple-600" />
+                            {crew?.club_name || "Club inconnu"}
+                          </h3>
+                          {crew?.club_code && (
+                            <p className="text-sm text-muted-foreground">Code: {crew.club_code}</p>
+                          )}
+                        </div>
+                        <div className="flex-shrink-0 w-10 h-10 rounded-full bg-gradient-to-br from-purple-500 to-purple-600 flex items-center justify-center text-white font-bold text-sm shadow-md">
+                          {cp.seat_position || "—"}
+                        </div>
+                      </div>
+
+                      <div className="space-y-2">
+                        {category && (
+                          <div className="flex items-center gap-2">
+                            <Award className="w-4 h-4 text-muted-foreground" />
+                            <div>
+                              <p className="text-sm font-medium">{category.label || category.code}</p>
+                              {category.code && category.code !== category.label && (
+                                <p className="text-xs text-muted-foreground">{category.code}</p>
+                              )}
+                            </div>
+                          </div>
+                        )}
+
+                        <div className="flex items-center gap-2 text-sm">
+                          <Users className="w-4 h-4 text-muted-foreground" />
+                          <span className="text-muted-foreground">
+                            {cp.is_coxswain ? (
+                              <span className="font-medium text-orange-600">Barreur / Cox</span>
+                            ) : (
+                              <span>Rameur - Place {cp.seat_position}</span>
+                            )}
+                          </span>
+                        </div>
+
+                        {event && (
+                          <div className="flex items-center gap-2 text-sm">
+                            <Calendar className="w-4 h-4 text-purple-600" />
+                            <span className="font-medium text-purple-700 line-clamp-1">{event.name}</span>
                           </div>
                         )}
                       </div>
