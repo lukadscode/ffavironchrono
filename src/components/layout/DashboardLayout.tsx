@@ -1,6 +1,6 @@
 import { Outlet, NavLink } from "react-router-dom";
 import { Sheet, SheetTrigger, SheetContent } from "@/components/ui/sheet";
-import { Menu, LogOut, Home, Calendar, User, Settings, Trophy, Users } from "lucide-react";
+import { Menu, LogOut, Home, Calendar, User, Settings, Trophy, Users, Tag } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/context/AuthContext";
 import { cn } from "@/lib/utils"; // utile pour combiner les classes conditionnelles
@@ -18,6 +18,10 @@ export default function DashboardLayout() {
     // Afficher le lien de gestion des événements seulement pour les admins
     ...(isAdmin
       ? [{ to: "/dashboard/events-management", label: "Gestion événements", icon: Settings }]
+      : []),
+    // Afficher le lien de gestion des catégories seulement pour les admins
+    ...(isAdmin
+      ? [{ to: "/dashboard/categories-management", label: "Gestion catégories", icon: Tag }]
       : []),
     // Afficher le lien de gestion des templates de scoring seulement pour les superadmins
     ...(isSuperAdmin
