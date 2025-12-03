@@ -465,14 +465,13 @@ export default function CategoriesManagementPage() {
               <div className="space-y-2">
                 <Label htmlFor="gender">Genre</Label>
                 <Select
-                  value={formData.gender}
-                  onValueChange={(value) => setFormData({ ...formData, gender: value })}
+                  value={formData.gender || undefined}
+                  onValueChange={(value) => setFormData({ ...formData, gender: value || "" })}
                 >
                   <SelectTrigger>
-                    <SelectValue placeholder="Sélectionner un genre" />
+                    <SelectValue placeholder="Sélectionner un genre (optionnel)" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="">Aucun</SelectItem>
                     <SelectItem value="Homme">Homme</SelectItem>
                     <SelectItem value="Femme">Femme</SelectItem>
                     <SelectItem value="Mixte">Mixte</SelectItem>
@@ -572,14 +571,13 @@ export default function CategoriesManagementPage() {
               <div className="space-y-2">
                 <Label htmlFor="edit-gender">Genre</Label>
                 <Select
-                  value={formData.gender}
-                  onValueChange={(value) => setFormData({ ...formData, gender: value })}
+                  value={formData.gender || undefined}
+                  onValueChange={(value) => setFormData({ ...formData, gender: value || "" })}
                 >
                   <SelectTrigger>
-                    <SelectValue placeholder="Sélectionner un genre" />
+                    <SelectValue placeholder="Sélectionner un genre (optionnel)" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="">Aucun</SelectItem>
                     <SelectItem value="Homme">Homme</SelectItem>
                     <SelectItem value="Femme">Femme</SelectItem>
                     <SelectItem value="Mixte">Mixte</SelectItem>
