@@ -95,7 +95,7 @@ export default function CrewStatusManagementPage() {
   const searchDebounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Formulaire multi-étapes
-  const [step, setStep] = useState<1 | 2 | 3>(1);
+  const [step, setStep] = useState<1 | 2 | 3 | 4>(1);
   const [selectedCrew, setSelectedCrew] = useState<Crew | null>(null);
   const [changeType, setChangeType] = useState<StatusChangeType | "">("");
   const [newParticipants, setNewParticipants] = useState<Array<{
@@ -130,6 +130,8 @@ export default function CrewStatusManagementPage() {
     seat_position: number;
     is_coxswain: boolean;
   }>>([]);
+  const [allCrewsWithParticipants, setAllCrewsWithParticipants] = useState<Crew[]>([]);
+  const [hasLoadedAllCrews, setHasLoadedAllCrews] = useState(false);
 
   // Changement de catégorie
   const [eventCategories, setEventCategories] = useState<EventCategory[]>([]);
@@ -162,41 +164,50 @@ export default function CrewStatusManagementPage() {
     
     setLoading(true);
     try {
-      const res = await api.get(`/crews/event/${eventId}`);
-      const crewsData = res.data.data || [];
-      
       const query = searchQuery.toLowerCase().trim();
       
-      // Charger TOUS les équipages avec leurs participants (pour pouvoir rechercher par participant)
-      const crewsWithParticipants = await Promise.all(
-        crewsData.map(async (crew: any) => {
-          try {
-            // Récupérer les détails complets du crew (incluant les participants)
-            const crewDetailRes = await api.get(`/crews/${crew.id}`);
-            const crewDetail = crewDetailRes.data.data || crewDetailRes.data;
-            
-            const participants = crewDetail.crew_participants || 
-                               crewDetail.CrewParticipants || 
-                               crewDetail.crewParticipants || 
-                               crew.crew_participants || 
-                               [];
-            
-            return {
-              ...crew,
-              crew_participants: participants,
-            };
-          } catch (err) {
-            console.error(`Erreur chargement participants pour crew ${crew.id}:`, err);
-            return {
-              ...crew,
-              crew_participants: crew.crew_participants || [],
-            };
-          }
-        })
-      );
+      let sourceCrews: Crew[] = allCrewsWithParticipants;
+
+      // Charger une seule fois tous les équipages avec leurs participants,
+      // puis réutiliser ce cache pour les recherches suivantes
+      if (!hasLoadedAllCrews) {
+        const res = await api.get(`/crews/event/${eventId}`);
+        const crewsData = res.data.data || [];
+
+        const crewsWithParticipants = await Promise.all(
+          crewsData.map(async (crew: any) => {
+            try {
+              // Récupérer les détails complets du crew (incluant les participants)
+              const crewDetailRes = await api.get(`/crews/${crew.id}`);
+              const crewDetail = crewDetailRes.data.data || crewDetailRes.data;
+              
+              const participants = crewDetail.crew_participants || 
+                                 crewDetail.CrewParticipants || 
+                                 crewDetail.crewParticipants || 
+                                 crew.crew_participants || 
+                                 [];
+              
+              return {
+                ...crew,
+                crew_participants: participants,
+              };
+            } catch (err) {
+              console.error(`Erreur chargement participants pour crew ${crew.id}:`, err);
+              return {
+                ...crew,
+                crew_participants: crew.crew_participants || [],
+              };
+            }
+          })
+        );
+
+        sourceCrews = crewsWithParticipants as Crew[];
+        setAllCrewsWithParticipants(sourceCrews);
+        setHasLoadedAllCrews(true);
+      }
       
       // Filtrer après avoir chargé tous les participants (recherche sur tous les critères)
-      const finalFiltered = crewsWithParticipants.filter((crew: Crew) => {
+      const finalFiltered = (sourceCrews || []).filter((crew: Crew) => {
         const club = (crew.club_name || "").toLowerCase();
         const clubCode = (crew.club_code || "").toLowerCase();
         const categoryCode = (crew.category?.code || "").toLowerCase();
@@ -750,18 +761,13 @@ export default function CrewStatusManagementPage() {
           }
         }
 
-        // Optionnel : le replacer dans une nouvelle série / course si l'utilisateur en a choisi une
-        if (selectedRaceId && selectedLane) {
-          try {
-            await api.post("/race-crews", {
-              race_id: selectedRaceId,
-              crew_id: selectedCrew.id,
-              lane: selectedLane,
-            });
-          } catch (err) {
-            console.error("Erreur lors de la réaffectation de l'équipage à une course:", err);
-          }
-        }
+        // Passer à l'étape 4 pour éventuellement replacer l'équipage dans une série
+        toast({
+          title: "Catégorie mise à jour",
+          description: "La catégorie de l'équipage a été modifiée. Vous pouvez maintenant le replacer dans une série.",
+        });
+        setStep(4);
+        return;
       } else {
         // Changement de statut simple
         await api.put(`/crews/${selectedCrew.id}`, {
@@ -1463,7 +1469,7 @@ export default function CrewStatusManagementPage() {
                   </div>
                 )}
               </>
-            ) : changeType === "category_change" ? (
+            ) : changeType === "category_change" && step === 3 ? (
               <>
                 <Alert>
                   <AlertCircle className="h-4 w-4" />
@@ -1523,114 +1529,6 @@ export default function CrewStatusManagementPage() {
                   </div>
                 </div>
 
-                {/* Séries actuelles de l'équipage */}
-                {crewRaceAssignments.length > 0 && (
-                  <div className="space-y-2">
-                    <Label className="text-base font-semibold">Séries actuelles</Label>
-                    <div className="text-sm text-muted-foreground">
-                      Cet équipage est actuellement présent dans les séries suivantes. Il sera retiré de ces séries lors de la confirmation.
-                    </div>
-                    <ul className="text-sm list-disc pl-5">
-                      {crewRaceAssignments.map((a) => (
-                        <li key={a.raceCrewId}>
-                          {a.raceName} – Ligne {a.lane}
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-                )}
-
-                {/* Choix d'une nouvelle série / course */}
-                <div className="space-y-3 pt-2 border-t">
-                  <Label className="text-base font-semibold">Replacer l'équipage dans une autre série</Label>
-                  <div className="text-sm text-muted-foreground">
-                    Optionnel : sélectionnez une course qui dispose encore de lignes libres pour y replacer l'équipage après changement de catégorie.
-                  </div>
-
-                  <div className="relative">
-                    <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground w-4 h-4" />
-                    <Input
-                      placeholder="Rechercher une course par nom ou numéro..."
-                      value={raceSearchQuery}
-                      onChange={(e) => setRaceSearchQuery(e.target.value)}
-                      className="pl-10"
-                    />
-                  </div>
-
-                  <div className="border rounded-md max-h-56 overflow-y-auto">
-                    {availableRaces
-                      .filter((race) => {
-                        if (!raceSearchQuery.trim()) return true;
-                        const q = raceSearchQuery.toLowerCase();
-                        return (
-                          (race.name || "").toLowerCase().includes(q) ||
-                          String(race.race_number || "").includes(q)
-                        );
-                      })
-                      .map((race) => {
-                        const laneCount = race.lane_count || 0;
-                        const takenLanes = new Set(
-                          race.race_crews.map((rc) => rc.lane)
-                        );
-                        const availableLanes = Array.from({ length: laneCount }, (_, i) => i + 1).filter(
-                          (lane) => !takenLanes.has(lane)
-                        );
-
-                        if (availableLanes.length === 0) return null;
-
-                        const isSelected = selectedRaceId === race.id;
-
-                        return (
-                          <div
-                            key={race.id}
-                            className={`px-3 py-2 border-b last:border-b-0 cursor-pointer hover:bg-slate-50 ${
-                              isSelected ? "bg-blue-50 border-blue-200" : ""
-                            }`}
-                            onClick={() => {
-                              setSelectedRaceId(race.id);
-                              setSelectedLane(availableLanes[0] ?? null);
-                            }}
-                          >
-                            <div className="flex items-center justify-between gap-2">
-                              <div>
-                                <div className="font-semibold">
-                                  {race.name || `Course ${race.race_number ?? ""}`}
-                                </div>
-                                <div className="text-xs text-muted-foreground">
-                                  Lignes libres : {availableLanes.join(", ")}
-                                </div>
-                              </div>
-                            </div>
-
-                            {isSelected && availableLanes.length > 0 && (
-                              <div className="mt-2 flex flex-wrap gap-2">
-                                {availableLanes.map((lane) => (
-                                  <Button
-                                    key={lane}
-                                    type="button"
-                                    size="sm"
-                                    variant={selectedLane === lane ? "default" : "outline"}
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      setSelectedRaceId(race.id);
-                                      setSelectedLane(lane);
-                                    }}
-                                  >
-                                    Ligne {lane}
-                                  </Button>
-                                ))}
-                              </div>
-                            )}
-                          </div>
-                        );
-                      })}
-                    {availableRaces.length === 0 && (
-                      <div className="p-3 text-sm text-muted-foreground">
-                        Aucune course avec des lignes disponibles trouvée pour cet événement.
-                      </div>
-                    )}
-                  </div>
-                </div>
               </>
             ) : (
               <Alert>
@@ -1672,6 +1570,182 @@ export default function CrewStatusManagementPage() {
                   <>
                     <Check className="w-4 h-4 mr-2" />
                     Confirmer
+                  </>
+                )}
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Étape 4: Replacer dans une série après changement de catégorie */}
+      {step === 4 && selectedCrew && changeType === "category_change" && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Étape 4 : Replacer l'équipage dans une série</CardTitle>
+            <p className="text-sm text-muted-foreground mt-2">
+              Équipage : <strong>{selectedCrew.club_name}</strong>
+              {selectedCrew.category && ` - ${selectedCrew.category.label}`}
+            </p>
+          </CardHeader>
+          <CardContent className="space-y-6">
+            {/* Séries actuelles (après retrait, il ne devrait plus y en avoir, mais on garde l'info si besoin) */}
+            {crewRaceAssignments.length > 0 && (
+              <div className="space-y-2">
+                <Label className="text-base font-semibold">Anciennes séries</Label>
+                <ul className="text-sm list-disc pl-5 text-muted-foreground">
+                  {crewRaceAssignments.map((a) => (
+                    <li key={a.raceCrewId}>
+                      {a.raceName} – Ligne {a.lane}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
+            {/* Choix d'une nouvelle série / course */}
+            <div className="space-y-3">
+              <Label className="text-base font-semibold">Sélectionner une série</Label>
+              <div className="text-sm text-muted-foreground">
+                Optionnel : sélectionnez une course qui dispose encore de lignes libres pour y replacer l'équipage.
+              </div>
+
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground w-4 h-4" />
+                <Input
+                  placeholder="Rechercher une course par nom ou numéro..."
+                  value={raceSearchQuery}
+                  onChange={(e) => setRaceSearchQuery(e.target.value)}
+                  className="pl-10"
+                />
+              </div>
+
+              <div className="border rounded-md max-h-56 overflow-y-auto">
+                {availableRaces
+                  .filter((race) => {
+                    if (!raceSearchQuery.trim()) return true;
+                    const q = raceSearchQuery.toLowerCase();
+                    return (
+                      (race.name || "").toLowerCase().includes(q) ||
+                      String(race.race_number || "").includes(q)
+                    );
+                  })
+                  .map((race) => {
+                    const laneCount = race.lane_count || 0;
+                    const takenLanes = new Set(
+                      race.race_crews.map((rc) => rc.lane)
+                    );
+                    const availableLanes = Array.from({ length: laneCount }, (_, i) => i + 1).filter(
+                      (lane) => !takenLanes.has(lane)
+                    );
+
+                    if (availableLanes.length === 0) return null;
+
+                    const isSelected = selectedRaceId === race.id;
+
+                    return (
+                      <div
+                        key={race.id}
+                        className={`px-3 py-2 border-b last:border-b-0 cursor-pointer hover:bg-slate-50 ${
+                          isSelected ? "bg-blue-50 border-blue-200" : ""
+                        }`}
+                        onClick={() => {
+                          setSelectedRaceId(race.id);
+                          setSelectedLane(availableLanes[0] ?? null);
+                        }}
+                      >
+                        <div className="flex items-center justify-between gap-2">
+                          <div>
+                            <div className="font-semibold">
+                              {race.name || `Course ${race.race_number ?? ""}`}
+                            </div>
+                            <div className="text-xs text-muted-foreground">
+                              Lignes libres : {availableLanes.join(", ")}
+                            </div>
+                          </div>
+                        </div>
+
+                        {isSelected && availableLanes.length > 0 && (
+                          <div className="mt-2 flex flex-wrap gap-2">
+                            {availableLanes.map((lane) => (
+                              <Button
+                                key={lane}
+                                type="button"
+                                size="sm"
+                                variant={selectedLane === lane ? "default" : "outline"}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setSelectedRaceId(race.id);
+                                  setSelectedLane(lane);
+                                }}
+                              >
+                                Ligne {lane}
+                              </Button>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                {availableRaces.length === 0 && (
+                  <div className="p-3 text-sm text-muted-foreground">
+                    Aucune course avec des lignes disponibles trouvée pour cet événement.
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <div className="flex gap-2 pt-4 border-t">
+              <Button variant="outline" onClick={handleBackToStep1}>
+                <ArrowLeft className="w-4 h-4 mr-2" />
+                Terminer sans replacer
+              </Button>
+              <Button
+                onClick={async () => {
+                  if (!selectedCrew || !eventId || !selectedRaceId || !selectedLane) {
+                    toast({
+                      title: "Erreur",
+                      description: "Veuillez sélectionner une course et une ligne",
+                      variant: "destructive",
+                    });
+                    return;
+                  }
+                  setIsSubmitting(true);
+                  try {
+                    await api.post("/race-crews", {
+                      race_id: selectedRaceId,
+                      crew_id: selectedCrew.id,
+                      lane: selectedLane,
+                    });
+                    toast({
+                      title: "Succès",
+                      description: "Équipage replacé dans la série sélectionnée.",
+                    });
+                    handleBackToStep1();
+                  } catch (err: any) {
+                    console.error("Erreur lors de la réaffectation de l'équipage à une course:", err);
+                    toast({
+                      title: "Erreur",
+                      description:
+                        err?.response?.data?.message ||
+                        "Impossible de replacer l'équipage dans la série sélectionnée",
+                      variant: "destructive",
+                    });
+                  } finally {
+                    setIsSubmitting(false);
+                  }
+                }}
+                disabled={isSubmitting || !selectedRaceId || !selectedLane}
+              >
+                {isSubmitting ? (
+                  <>
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    Repositionnement...
+                  </>
+                ) : (
+                  <>
+                    <Check className="w-4 h-4 mr-2" />
+                    Replacer l'équipage
                   </>
                 )}
               </Button>
