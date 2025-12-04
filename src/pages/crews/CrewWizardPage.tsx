@@ -246,11 +246,8 @@ export default function CrewWizardPage() {
   const canGoNext = () => {
     switch (currentStep) {
       case 1:
-        return (
-          crewData.category_id
-          // club_name / club_code sont optionnels pour permettre des équipages sans club
-          crewData.category_id
-        );
+        // Étape 1 : seule la catégorie est obligatoire (club facultatif)
+        return !!crewData.category_id;
       case 2:
         // Vérifier que le nombre exact de participants requis est atteint
         if (selectedCategory) {
