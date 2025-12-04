@@ -247,8 +247,8 @@ export default function CrewWizardPage() {
     switch (currentStep) {
       case 1:
         return (
-          crewData.club_name &&
-          crewData.club_code &&
+          crewData.category_id
+          // club_name / club_code sont optionnels pour permettre des équipages sans club
           crewData.category_id
         );
       case 2:
@@ -339,15 +339,6 @@ export default function CrewWizardPage() {
   };
 
   const handleSearchIntranet = async () => {
-    if (!intranetLicenseNumber.trim()) {
-      toast({
-        title: "Numéro de licence requis",
-        description: "Veuillez saisir un numéro de licence",
-        variant: "destructive",
-      });
-      return;
-    }
-
     setLoadingIntranetSearch(true);
     try {
       // Rechercher sur l'intranet avec le numéro de licence
@@ -904,7 +895,7 @@ export default function CrewWizardPage() {
                   <div className="grid md:grid-cols-2 gap-4">
                     <div className="space-y-2">
                       <Label htmlFor="club_name">
-                        Nom du club <span className="text-red-500">*</span>
+                        Nom du club
                       </Label>
                       <Input
                         id="club_name"
@@ -918,7 +909,7 @@ export default function CrewWizardPage() {
 
                     <div className="space-y-2">
                       <Label htmlFor="club_code">
-                        Code club <span className="text-red-500">*</span>
+                        Code club
                       </Label>
                       <Input
                         id="club_code"
@@ -1223,7 +1214,7 @@ export default function CrewWizardPage() {
                         </Button>
                       </div>
                       <div className="space-y-2">
-                        <Label htmlFor="intranet_license">Numéro de licence *</Label>
+                        <Label htmlFor="intranet_license">Numéro de licence</Label>
                         <div className="flex gap-2">
                           <Input
                             id="intranet_license"

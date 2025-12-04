@@ -216,14 +216,18 @@ export default function IndoorPage() {
     }
 
     // Valeurs finales pour le fichier .rac2
+    // Pour une course basée sur le temps : duration = durée en secondes, duration_type = "time"
+    // Pour une course basée sur la distance : duration = distance totale en mètres, duration_type = "distance"
     const finalDuration = isTimeBased && durationSeconds
       ? durationSeconds
       : (isRelay && relayCount && relayDistance 
         ? relayDistance * relayCount 
         : totalDistance);
-    // Pour les courses indoor, le split est toujours fixé à 250m
-    const finalSplitValue = 250;
-    const finalDurationType = isTimeBased ? "seconds" : "meters";
+    // Pour les courses indoor :
+    // - Course temps : split_value = 60s
+    // - Course distance : split_value = 250m (valeur par défaut pour les splits)
+    const finalSplitValue = isTimeBased ? 60 : 250;
+    const finalDurationType = isTimeBased ? "time" : "distance";
 
     // Construire l'objet rac2
     const rac2Data: any = {

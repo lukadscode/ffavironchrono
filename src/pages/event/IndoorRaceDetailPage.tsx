@@ -939,7 +939,7 @@ export default function IndoorRaceDetailPage() {
     }
 
     // Valeurs finales pour le fichier .rac2
-    // Pour une course basée sur le temps : duration = durée en secondes, duration_type = "seconds"
+    // Pour une course basée sur le temps : duration = durée en secondes, duration_type = "time"
     // Pour un relais: duration = distance totale, split_value = 250m
     // Pour une course normale basée sur distance : duration = distance totale, split_value = 500m
     const finalDuration = isTimeBased && durationSeconds
@@ -948,10 +948,11 @@ export default function IndoorRaceDetailPage() {
         ? relayDistance * relayCount 
         : totalDistance);
     // Pour les courses indoor :
+    // - Course temps : split_value = 60s
     // - Relais : split_value = 250m
     // - Course normale : split_value = 500m
-    const finalSplitValue = isRelay ? 250 : 500;
-    const finalDurationType = isTimeBased ? "seconds" : "meters";
+    const finalSplitValue = isTimeBased ? 60 : (isRelay ? 250 : 500);
+    const finalDurationType = isTimeBased ? "time" : "distance";
 
     console.log("📐 Calculs finaux:", {
       isRelay,
@@ -966,8 +967,8 @@ export default function IndoorRaceDetailPage() {
     // Construire l'objet rac2
     const rac2Data: any = {
       race_definition: {
-        duration: finalDuration, // Distance totale (ex: 2000 pour 8x250m) ou durée en secondes (ex: 120 pour 2min)
-        duration_type: finalDurationType, // "meters" ou "seconds"
+        duration: finalDuration, // Distance totale (mètres) ou durée en secondes
+        duration_type: finalDurationType, // "distance" ou "time"
         event_name: event.name.toUpperCase(),
         name_long: nameLong,
         name_short: race.id,
