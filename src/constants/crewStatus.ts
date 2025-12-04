@@ -5,7 +5,6 @@ export const CrewStatus = {
   DISQUALIFIED: "disqualified",
   CHANGED: "changed",
   WITHDRAWN: "withdrawn",
-  SCRATCH: "scratch",
 } as const;
 
 export type CrewStatus = typeof CrewStatus[keyof typeof CrewStatus];
@@ -16,15 +15,13 @@ export const CREW_STATUS_LABELS: Record<CrewStatus, string> = {
   [CrewStatus.DNF]: "DNF (N'a pas terminé)",
   [CrewStatus.DISQUALIFIED]: "Disqualifié",
   [CrewStatus.CHANGED]: "Changement d'équipage",
-  [CrewStatus.WITHDRAWN]: "Retiré",
-  [CrewStatus.SCRATCH]: "Scratch",
+  [CrewStatus.WITHDRAWN]: "Forfait",
 };
 
 // Statuts qui empêchent la participation
 export const NON_PARTICIPATING_STATUSES: CrewStatus[] = [
   CrewStatus.DNS,
   CrewStatus.WITHDRAWN,
-  CrewStatus.SCRATCH,
 ];
 
 // Statuts qui indiquent une participation incomplète
