@@ -4,6 +4,8 @@
 
 Cette fonctionnalité permet d'importer une course qui a été créée dans ErgRace mais qui n'a pas été créée via le site web. L'utilisateur peut importer un fichier `.rac2` (format ErgRace) et configurer la course avec les bonnes informations (distance, catégorie, équipages).
 
+**⚠️ Restriction d'accès** : Cette fonctionnalité est réservée aux administrateurs (`admin`) et super-administrateurs (`superadmin`). Le bouton d'import n'est visible que pour ces utilisateurs, et le composant vérifie également les permissions pour empêcher tout accès non autorisé.
+
 ## Fonctionnalités Frontend
 
 ### Composant : `ImportErgRaceRaceDialog`

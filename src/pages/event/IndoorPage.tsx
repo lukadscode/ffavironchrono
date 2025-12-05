@@ -8,6 +8,7 @@ import { Download, Loader2, Upload } from "lucide-react";
 import dayjs from "dayjs";
 import { initializeClubsCache, getClubShortCode } from "@/api/clubs";
 import ImportErgRaceRaceDialog from "@/components/races/ImportErgRaceRaceDialog";
+import { useAuth } from "@/context/AuthContext";
 
 type Race = {
   id: string;
@@ -65,10 +66,14 @@ export default function IndoorPage() {
   const { eventId } = useParams();
   const navigate = useNavigate();
   const { toast } = useToast();
+  const { user } = useAuth();
   const [races, setRaces] = useState<Race[]>([]);
   const [loading, setLoading] = useState(true);
   const [isDownloadingAll, setIsDownloadingAll] = useState(false);
   const [importDialogOpen, setImportDialogOpen] = useState(false);
+
+  // Vérifier si l'utilisateur est admin ou superadmin
+  const isAdmin = user?.role === "admin" || user?.role === "superadmin";
 
   useEffect(() => {
     if (eventId) {
@@ -387,14 +392,16 @@ export default function IndoorPage() {
       <div className="flex items-center justify-between">
         <h2 className="text-2xl font-bold text-slate-900">Indoor - Liste des courses</h2>
         <div className="flex gap-2">
-          <Button
-            onClick={() => setImportDialogOpen(true)}
-            variant="outline"
-            className="bg-green-50 hover:bg-green-100 text-green-700 border-green-300"
-          >
-            <Upload className="w-4 h-4 mr-2" />
-            Importer une course ErgRace
-          </Button>
+          {isAdmin && (
+            <Button
+              onClick={() => setImportDialogOpen(true)}
+              variant="outline"
+              className="bg-green-50 hover:bg-green-100 text-green-700 border-green-300"
+            >
+              <Upload className="w-4 h-4 mr-2" />
+              Importer une course ErgRace
+            </Button>
+          )}
           {races.length > 0 && (
             <Button
               onClick={downloadAllRac2Files}
@@ -417,13 +424,15 @@ export default function IndoorPage() {
         </div>
       </div>
 
-      <ImportErgRaceRaceDialog
-        open={importDialogOpen}
-        onOpenChange={setImportDialogOpen}
-        onSuccess={() => {
-          fetchRaces();
-        }}
-      />
+      {isAdmin && (
+        <ImportErgRaceRaceDialog
+          open={importDialogOpen}
+          onOpenChange={setImportDialogOpen}
+          onSuccess={() => {
+            fetchRaces();
+          }}
+        />
+      )}
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
         {races.length === 0 ? (

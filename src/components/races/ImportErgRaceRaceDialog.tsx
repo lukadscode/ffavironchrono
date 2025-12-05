@@ -11,6 +11,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Loader2, Upload, X, AlertCircle, CheckCircle2 } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
+import { useAuth } from "@/context/AuthContext";
 
 interface ImportErgRaceRaceDialogProps {
   open: boolean;
@@ -89,6 +90,22 @@ export default function ImportErgRaceRaceDialog({
 }: ImportErgRaceRaceDialogProps) {
   const { eventId } = useParams();
   const { toast } = useToast();
+  const { user } = useAuth();
+
+  // Vérifier si l'utilisateur est admin ou superadmin
+  const isAdmin = user?.role === "admin" || user?.role === "superadmin";
+
+  // Si l'utilisateur n'est pas admin, fermer le dialog et afficher une erreur
+  useEffect(() => {
+    if (open && !isAdmin) {
+      onOpenChange(false);
+      toast({
+        title: "Accès refusé",
+        description: "Cette fonctionnalité est réservée aux administrateurs.",
+        variant: "destructive",
+      });
+    }
+  }, [open, isAdmin, onOpenChange, toast]);
 
   const [step, setStep] = useState<"upload" | "configure" | "map-crews">("upload");
   const [file, setFile] = useState<File | null>(null);
@@ -255,35 +272,208 @@ export default function ImportErgRaceRaceDialog({
         }
       }
 
+      // Attendre que les équipages soient chargés avant de faire le matching
+      // Si les équipages ne sont pas encore chargés, on les charge maintenant
+      let crewsToUse = availableCrews;
+      if (crewsToUse.length === 0) {
+        // Charger les équipages maintenant
+        try {
+          const res = await api.get(`/crews/event/${eventId}`);
+          const crewsData = res.data.data || [];
+          
+          // Enrichir chaque crew avec ses participants
+          crewsToUse = await Promise.all(
+            crewsData.map(async (crew: any) => {
+              try {
+                const crewDetailRes = await api.get(`/crews/${crew.id}`);
+                const crewDetail = crewDetailRes.data.data || crewDetailRes.data;
+                return {
+                  ...crew,
+                  crew_participants: crewDetail.crew_participants || 
+                                   crewDetail.CrewParticipants || 
+                                   crewDetail.crewParticipants || 
+                                   crew.crew_participants || 
+                                   [],
+                };
+              } catch (err) {
+                console.error(`Erreur chargement participants pour crew ${crew.id}:`, err);
+                return {
+                  ...crew,
+                  crew_participants: crew.crew_participants || [],
+                };
+              }
+            })
+          );
+          
+          // Mettre à jour l'état pour les prochaines fois
+          setAvailableCrews(crewsToUse);
+        } catch (err) {
+          console.error("Erreur chargement équipages", err);
+        }
+      }
+
+      // Fonction pour normaliser un nom (enlever accents, espaces multiples, etc.)
+      const normalizeName = (name: string): string => {
+        return name
+          .toLowerCase()
+          .normalize("NFD")
+          .replace(/[\u0300-\u036f]/g, "") // Enlever les accents
+          .replace(/\s+/g, " ") // Remplacer les espaces multiples par un seul
+          .trim();
+      };
+
+      // Fonction pour parser un nom ErgRace (format "NOM, Prénom" ou "NOM Prénom")
+      const parseErgRaceName = (name: string): { lastName: string; firstName: string } => {
+        const normalized = normalizeName(name);
+        // Essayer le format "nom, prenom"
+        if (normalized.includes(",")) {
+          const parts = normalized.split(",").map((p) => p.trim());
+          return {
+            lastName: parts[0] || "",
+            firstName: parts[1] || "",
+          };
+        }
+        // Sinon, essayer de séparer par le dernier espace (supposant "Prénom NOM")
+        const parts = normalized.split(" ");
+        if (parts.length >= 2) {
+          return {
+            lastName: parts[parts.length - 1] || "",
+            firstName: parts.slice(0, -1).join(" ") || "",
+          };
+        }
+        return { lastName: normalized, firstName: "" };
+      };
+
+      // Fonction pour comparer deux participants
+      const compareParticipants = (
+        ergraceName: string,
+        crewLastName: string,
+        crewFirstName: string
+      ): number => {
+        const ergraceParsed = parseErgRaceName(ergraceName);
+        const normalizedErgraceLast = normalizeName(ergraceParsed.lastName);
+        const normalizedErgraceFirst = normalizeName(ergraceParsed.firstName);
+        const normalizedCrewLast = normalizeName(crewLastName);
+        const normalizedCrewFirst = normalizeName(crewFirstName);
+
+        // Correspondance exacte
+        if (
+          normalizedErgraceLast === normalizedCrewLast &&
+          normalizedErgraceFirst === normalizedCrewFirst
+        ) {
+          return 100;
+        }
+
+        // Correspondance partielle (nom de famille exact)
+        if (normalizedErgraceLast === normalizedCrewLast) {
+          // Vérifier si le prénom commence par les mêmes lettres
+          if (
+            normalizedErgraceFirst &&
+            normalizedCrewFirst &&
+            (normalizedCrewFirst.startsWith(normalizedErgraceFirst) ||
+              normalizedErgraceFirst.startsWith(normalizedCrewFirst))
+          ) {
+            return 80;
+          }
+          return 50; // Nom de famille correspond mais pas le prénom
+        }
+
+        // Vérifier si les noms sont inversés (prénom/nom)
+        if (
+          normalizedErgraceLast === normalizedCrewFirst &&
+          normalizedErgraceFirst === normalizedCrewLast
+        ) {
+          return 90;
+        }
+
+        // Correspondance partielle sur le nom de famille (contient)
+        if (
+          normalizedCrewLast.includes(normalizedErgraceLast) ||
+          normalizedErgraceLast.includes(normalizedCrewLast)
+        ) {
+          return 30;
+        }
+
+        return 0;
+      };
+
+      // Fonction pour calculer le score de correspondance entre un boat ErgRace et un crew
+      const calculateMatchScore = (boat: any, crew: Crew): number => {
+        if (!boat.participants || boat.participants.length === 0) {
+          return 0;
+        }
+
+        if (!crew.crew_participants || crew.crew_participants.length === 0) {
+          return 0;
+        }
+
+        // Si le nombre de participants ne correspond pas, score faible
+        if (boat.participants.length !== crew.crew_participants.length) {
+          return 0;
+        }
+
+        // Comparer chaque participant
+        const boatParticipants = boat.participants.map((p: any) => parseErgRaceName(p.name));
+        const crewParticipants = crew.crew_participants
+          .sort((a, b) => a.seat_position - b.seat_position)
+          .map((cp) => ({
+            lastName: cp.participant.last_name,
+            firstName: cp.participant.first_name,
+          }));
+
+        // Essayer toutes les combinaisons possibles (car l'ordre peut être différent)
+        let bestScore = 0;
+
+        // Si même nombre, essayer de matcher chaque participant
+        const scores: number[] = [];
+        for (let i = 0; i < boatParticipants.length; i++) {
+          let bestParticipantScore = 0;
+          for (const crewPart of crewParticipants) {
+            const ergraceFullName = `${boatParticipants[i].lastName}, ${boatParticipants[i].firstName}`;
+            const score = compareParticipants(
+              ergraceFullName,
+              crewPart.lastName,
+              crewPart.firstName
+            );
+            bestParticipantScore = Math.max(bestParticipantScore, score);
+          }
+          scores.push(bestParticipantScore);
+        }
+
+        // Calculer la moyenne des scores
+        if (scores.length > 0) {
+          bestScore = scores.reduce((sum, score) => sum + score, 0) / scores.length;
+        }
+
+        return Math.round(bestScore);
+      };
+
       // Initialiser les mappings des équipages
       const initialMappings: BoatMapping[] = parsed.race_definition.boats.map((boat: any) => ({
         ergraceBoat: boat,
         selectedCrewId: null,
       }));
 
-      // Essayer de faire un auto-matching basique
+      // Essayer de faire un auto-matching amélioré
       initialMappings.forEach((mapping) => {
         const boat = mapping.ergraceBoat;
-        
-        // Chercher par nom de participant
-        if (boat.participants && boat.participants.length > 0) {
-          const participantNames = boat.participants.map((p: any) => p.name.toLowerCase());
-          
-          const matchingCrew = availableCrews.find((crew) => {
-            const crewNames = crew.crew_participants
-              .map((cp) => `${cp.participant.last_name}, ${cp.participant.first_name}`.toLowerCase());
-            
-            // Vérifier si tous les noms correspondent
-            if (participantNames.length === crewNames.length) {
-              return participantNames.every((name) => crewNames.includes(name));
-            }
-            return false;
-          });
 
-          if (matchingCrew) {
-            mapping.selectedCrewId = matchingCrew.id;
-            mapping.crew = matchingCrew;
-            mapping.matchScore = 100;
+        if (boat.participants && boat.participants.length > 0) {
+          // Calculer le score pour chaque équipage disponible
+          const crewScores = crewsToUse.map((crew) => ({
+            crew,
+            score: calculateMatchScore(boat, crew),
+          }));
+
+          // Trier par score décroissant
+          crewScores.sort((a, b) => b.score - a.score);
+
+          // Prendre le meilleur match si le score est >= 70
+          const bestMatch = crewScores[0];
+          if (bestMatch && bestMatch.score >= 70) {
+            mapping.selectedCrewId = bestMatch.crew.id;
+            mapping.crew = bestMatch.crew;
+            mapping.matchScore = bestMatch.score;
           }
         }
       });
@@ -485,6 +675,11 @@ export default function ImportErgRaceRaceDialog({
     return `${participantsStr}${categoryStr}${clubStr}`;
   };
 
+  // Ne pas afficher le contenu si l'utilisateur n'est pas admin
+  if (!isAdmin) {
+    return null;
+  }
+
   return (
     <Dialog open={open} onOpenChange={handleClose}>
       <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
@@ -656,6 +851,16 @@ export default function ImportErgRaceRaceDialog({
 
         {step === "map-crews" && rac2Data && (
           <div className="space-y-4">
+            {boatMappings.some((m) => m.matchScore !== undefined && m.matchScore >= 70) && (
+              <Alert>
+                <CheckCircle2 className="h-4 w-4" />
+                <AlertDescription>
+                  <strong>Détection automatique activée :</strong> Certains équipages ont été automatiquement
+                  détectés en comparant les noms des participants. Vérifiez que les correspondances sont
+                  correctes avant de valider l'import.
+                </AlertDescription>
+              </Alert>
+            )}
             <div>
               <Label htmlFor="search-crews">Rechercher un équipage</Label>
               <Input
@@ -669,20 +874,35 @@ export default function ImportErgRaceRaceDialog({
             <ScrollArea className="h-[400px] border rounded-lg p-4">
               <div className="space-y-4">
                 {boatMappings.map((mapping, index) => (
-                  <Card key={index}>
+                  <Card key={index} className={mapping.selectedCrewId ? "border-green-200 bg-green-50/30" : ""}>
                     <CardHeader>
-                      <CardTitle className="text-sm">
-                        Couloir {mapping.ergraceBoat.lane_number} - {mapping.ergraceBoat.name}
-                      </CardTitle>
+                      <div className="flex items-center justify-between">
+                        <CardTitle className="text-sm">
+                          Couloir {mapping.ergraceBoat.lane_number} - {mapping.ergraceBoat.name}
+                        </CardTitle>
+                        {mapping.matchScore !== undefined && mapping.matchScore >= 70 && (
+                          <span className="text-xs px-2 py-1 rounded-full bg-green-100 text-green-700 font-medium">
+                            Auto-détecté ({mapping.matchScore}%)
+                          </span>
+                        )}
+                      </div>
                       {mapping.ergraceBoat.class_name && (
-                        <p className="text-xs text-gray-500">
+                        <p className="text-xs text-gray-500 mt-1">
                           Catégorie ErgRace: {mapping.ergraceBoat.class_name}
                         </p>
                       )}
-                      {mapping.ergraceBoat.participants && (
-                        <p className="text-xs text-gray-500">
-                          Participants: {mapping.ergraceBoat.participants.map((p: any) => p.name).join(", ")}
-                        </p>
+                      {mapping.ergraceBoat.participants && mapping.ergraceBoat.participants.length > 0 && (
+                        <div className="mt-2">
+                          <p className="text-xs font-medium text-gray-700 mb-1">Participants ErgRace:</p>
+                          <div className="text-xs text-gray-600 space-y-0.5">
+                            {mapping.ergraceBoat.participants.map((p: any, pIndex: number) => (
+                              <div key={pIndex} className="flex items-center gap-2">
+                                <span className="w-2 h-2 rounded-full bg-blue-400"></span>
+                                <span>{p.name}</span>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
                       )}
                     </CardHeader>
                     <CardContent>
@@ -693,6 +913,7 @@ export default function ImportErgRaceRaceDialog({
                           const updated = [...boatMappings];
                           updated[index].selectedCrewId = value;
                           updated[index].crew = availableCrews.find((c) => c.id === value);
+                          updated[index].matchScore = undefined; // Réinitialiser le score si sélection manuelle
                           setBoatMappings(updated);
                         }}
                       >
@@ -708,8 +929,27 @@ export default function ImportErgRaceRaceDialog({
                         </SelectContent>
                       </Select>
                       {mapping.crew && (
-                        <div className="mt-2 text-xs text-green-600">
-                          ✓ Équipage sélectionné : {getCrewDisplayName(mapping.crew)}
+                        <div className="mt-2 space-y-1">
+                          <div className="text-xs text-green-600 font-medium">
+                            ✓ Équipage sélectionné : {getCrewDisplayName(mapping.crew)}
+                          </div>
+                          {mapping.crew.crew_participants && mapping.crew.crew_participants.length > 0 && (
+                            <div className="text-xs text-gray-600">
+                              <span className="font-medium">Participants système:</span>
+                              <div className="mt-0.5 space-y-0.5">
+                                {mapping.crew.crew_participants
+                                  .sort((a, b) => a.seat_position - b.seat_position)
+                                  .map((cp, cpIndex) => (
+                                    <div key={cpIndex} className="flex items-center gap-2">
+                                      <span className="w-2 h-2 rounded-full bg-green-400"></span>
+                                      <span>
+                                        {cp.participant.last_name}, {cp.participant.first_name}
+                                      </span>
+                                    </div>
+                                  ))}
+                              </div>
+                            </div>
+                          )}
                         </div>
                       )}
                     </CardContent>
