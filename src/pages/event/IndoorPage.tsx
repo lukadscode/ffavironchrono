@@ -4,9 +4,10 @@ import api from "@/lib/axios";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
-import { Download, Loader2 } from "lucide-react";
+import { Download, Loader2, Upload } from "lucide-react";
 import dayjs from "dayjs";
 import { initializeClubsCache, getClubShortCode } from "@/api/clubs";
+import ImportErgRaceRaceDialog from "@/components/races/ImportErgRaceRaceDialog";
 
 type Race = {
   id: string;
@@ -67,6 +68,7 @@ export default function IndoorPage() {
   const [races, setRaces] = useState<Race[]>([]);
   const [loading, setLoading] = useState(true);
   const [isDownloadingAll, setIsDownloadingAll] = useState(false);
+  const [importDialogOpen, setImportDialogOpen] = useState(false);
 
   useEffect(() => {
     if (eventId) {
@@ -384,26 +386,44 @@ export default function IndoorPage() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <h2 className="text-2xl font-bold text-slate-900">Indoor - Liste des courses</h2>
-        {races.length > 0 && (
+        <div className="flex gap-2">
           <Button
-            onClick={downloadAllRac2Files}
-            disabled={isDownloadingAll}
-            className="bg-blue-600 hover:bg-blue-700"
+            onClick={() => setImportDialogOpen(true)}
+            variant="outline"
+            className="bg-green-50 hover:bg-green-100 text-green-700 border-green-300"
           >
-            {isDownloadingAll ? (
-              <>
-                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                Téléchargement...
-              </>
-            ) : (
-              <>
-                <Download className="w-4 h-4 mr-2" />
-                Télécharger tous les .rac2
-              </>
-            )}
+            <Upload className="w-4 h-4 mr-2" />
+            Importer une course ErgRace
           </Button>
-        )}
+          {races.length > 0 && (
+            <Button
+              onClick={downloadAllRac2Files}
+              disabled={isDownloadingAll}
+              className="bg-blue-600 hover:bg-blue-700"
+            >
+              {isDownloadingAll ? (
+                <>
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  Téléchargement...
+                </>
+              ) : (
+                <>
+                  <Download className="w-4 h-4 mr-2" />
+                  Télécharger tous les .rac2
+                </>
+              )}
+            </Button>
+          )}
+        </div>
       </div>
+
+      <ImportErgRaceRaceDialog
+        open={importDialogOpen}
+        onOpenChange={setImportDialogOpen}
+        onSuccess={() => {
+          fetchRaces();
+        }}
+      />
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
         {races.length === 0 ? (
