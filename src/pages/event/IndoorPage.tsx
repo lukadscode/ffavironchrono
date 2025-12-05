@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
 import { Download, Loader2 } from "lucide-react";
 import dayjs from "dayjs";
+import { initializeClubsCache, getClubShortCode } from "@/api/clubs";
 
 type Race = {
   id: string;
@@ -68,7 +69,11 @@ export default function IndoorPage() {
   const [isDownloadingAll, setIsDownloadingAll] = useState(false);
 
   useEffect(() => {
-    if (eventId) fetchRaces();
+    if (eventId) {
+      fetchRaces();
+      // Initialiser le cache des clubs
+      initializeClubsCache();
+    }
   }, [eventId]);
 
   const fetchRaces = async () => {
@@ -147,6 +152,10 @@ export default function IndoorPage() {
 
         const categoryLabel = raceCrew.crew.category?.label || "";
         
+        // Récupérer le code court du club (ou le code par défaut)
+        const clubCode = raceCrew.crew.club_code || "";
+        const clubShortCode = await getClubShortCode(clubCode);
+        
         boats.push({
           class_name: categoryLabel || "Unknown",
           id: raceCrew.crew_id,
@@ -156,14 +165,14 @@ export default function IndoorPage() {
             id: p.id,
             name: `${p.last_name.toUpperCase()}, ${p.first_name}`,
           })),
-          affiliation: raceCrew.crew.club_code || "",
+          affiliation: clubShortCode || "",
         });
       } else {
         boats.push({
-          class_name: "EMPTY",
+          class_name: "X",
           id: `Lane ${lane}`,
           lane_number: lane,
-          name: "EMPTY",
+          name: "X",
           participants: [
             {
               id: `Lane ${lane}`,

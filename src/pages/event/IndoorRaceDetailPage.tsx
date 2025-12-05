@@ -20,6 +20,7 @@ import { useToast } from "@/hooks/use-toast";
 import NotificationDisplay from "@/components/notifications/NotificationDisplay";
 import { useAuth } from "@/context/AuthContext";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { initializeClubsCache, getClubShortCode, getClubShortCodeSync } from "@/api/clubs";
 
 type Category = {
   id: string;
@@ -200,6 +201,8 @@ export default function IndoorRaceDetailPage() {
   useEffect(() => {
     if (raceId && eventId) {
       fetchEvent();
+      // Initialiser le cache des clubs
+      initializeClubsCache();
       // Charger d'abord les distances, puis la course pour pouvoir suggérer
       fetchDistances().then(() => {
         fetchRace();
@@ -836,6 +839,10 @@ export default function IndoorRaceDetailPage() {
 
         const categoryLabel = raceCrew.crew.category?.label || "";
         
+        // Récupérer le code court du club (ou le code par défaut)
+        const clubCode = raceCrew.crew.club_code || "";
+        const clubShortCode = await getClubShortCode(clubCode);
+        
         boats.push({
           class_name: categoryLabel || "Unknown",
           id: raceCrew.crew_id,
@@ -845,15 +852,15 @@ export default function IndoorRaceDetailPage() {
             id: p.id,
             name: `${p.last_name.toUpperCase()}, ${p.first_name}`,
           })),
-          affiliation: raceCrew.crew.club_code || "",
+          affiliation: clubShortCode || "",
         });
       } else {
         // Couloir vide
         boats.push({
-          class_name: "EMPTY",
+          class_name: "X",
           id: `Lane ${lane}`,
           lane_number: lane,
-          name: "EMPTY",
+          name: "X",
           participants: [
             {
               id: `Lane ${lane}`,
@@ -1354,7 +1361,7 @@ export default function IndoorRaceDetailPage() {
                     return (
                       <tr key={raceCrew.id} className="border-b hover:bg-slate-50">
                         <td className="py-3 px-4 font-bold text-lg">{raceCrew.lane}</td>
-                        <td className="py-3 px-4 font-semibold">{raceCrew.crew.club_code}</td>
+                        <td className="py-3 px-4 font-semibold">{getClubShortCodeSync(raceCrew.crew.club_code)}</td>
                         <td className="py-3 px-4">{raceCrew.crew.club_name}</td>
                         <td className="py-3 px-4">
                           {raceCrew.crew.category ? (
@@ -1480,7 +1487,7 @@ export default function IndoorRaceDetailPage() {
                             <div>
                               <div className="font-semibold">{participant.crew.club_name}</div>
                               <div className="text-xs text-muted-foreground">
-                                {participant.crew.club_code}
+                                {getClubShortCodeSync(participant.crew.club_code)}
                                 {participant.crew.category && (
                                   <span className="ml-2 px-2 py-0.5 bg-blue-100 text-blue-700 rounded text-xs">
                                     {participant.crew.category.label}
