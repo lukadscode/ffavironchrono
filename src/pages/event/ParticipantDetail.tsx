@@ -29,7 +29,9 @@ import {
   Hash,
   Calendar,
   Flag,
+  Clock,
 } from "lucide-react";
+import { formatTempsPronostique } from "@/utils/formatTime";
 import dayjs from "dayjs";
 
 export default function ParticipantDetailsPage() {
@@ -671,6 +673,15 @@ export default function ParticipantDetailsPage() {
                           </div>
                         )}
 
+                        {crew?.temps_pronostique && (
+                          <div className="flex items-center gap-2 text-sm">
+                            <Clock className="w-4 h-4 text-muted-foreground" />
+                            <span className="text-muted-foreground">
+                              Temps pronostique: <span className="font-semibold text-blue-700">{formatTempsPronostique(crew.temps_pronostique)}</span>
+                            </span>
+                          </div>
+                        )}
+
                         {/* Séries/Races affectées */}
                         {crew?.id && crewRacesMap[crew.id] && crewRacesMap[crew.id].length > 0 && (
                           <div className="pt-2 mt-2 border-t">
@@ -768,6 +779,15 @@ export default function ParticipantDetailsPage() {
                             )}
                           </span>
                         </div>
+
+                        {crew?.temps_pronostique && (
+                          <div className="flex items-center gap-2 text-sm">
+                            <Clock className="w-4 h-4 text-muted-foreground" />
+                            <span className="text-muted-foreground">
+                              Temps pronostique: <span className="font-semibold text-purple-700">{formatTempsPronostique(crew.temps_pronostique)}</span>
+                            </span>
+                          </div>
+                        )}
 
                         {(event || otherEventId) && (
                           <div className="flex items-center gap-2 text-sm pt-2 mt-2 border-t border-purple-200">

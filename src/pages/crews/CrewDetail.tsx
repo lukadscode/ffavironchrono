@@ -19,6 +19,8 @@ import { Trash2, Plus, User, Search, UserPlus } from "lucide-react";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useNavigate } from "react-router-dom";
 import dayjs from "dayjs";
+import { formatTempsPronostique } from "@/utils/formatTime";
+import { Clock } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -705,6 +707,22 @@ export default function CrewDetail() {
             )}
           </CardContent>
         </Card>
+
+        {crew.temps_pronostique && (
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-2">
+                <Clock className="w-4 h-4" />
+                Temps pronostique
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <p className="text-lg font-semibold">
+                {formatTempsPronostique(crew.temps_pronostique)}
+              </p>
+            </CardContent>
+          </Card>
+        )}
       </div>
 
       {/* Participants */}

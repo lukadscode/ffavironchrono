@@ -16,6 +16,7 @@ import {
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from "recharts";
 import dayjs from "dayjs";
 import { ArrowLeft, Download, Upload, FileText, File, AlertTriangle, Save, Trophy, Clock, TrendingUp, Loader2, CheckCircle2, AlertCircle, BarChart3 } from "lucide-react";
+import { formatTempsPronostique } from "@/utils/formatTime";
 import { useToast } from "@/hooks/use-toast";
 import NotificationDisplay from "@/components/notifications/NotificationDisplay";
 import { useAuth } from "@/context/AuthContext";
@@ -76,6 +77,7 @@ type RaceCrew = {
     club_name: string;
     club_code: string;
     coach_name: string | null;
+    temps_pronostique: number | null;
     category: Category;
     crew_participants: CrewParticipant[];
   };
@@ -138,6 +140,7 @@ type IndoorParticipantResult = {
     id: string;
     club_name: string;
     club_code: string;
+    temps_pronostique?: number | null;
     category?: {
       id: string;
       code: string;
@@ -1362,7 +1365,17 @@ export default function IndoorRaceDetailPage() {
                       <tr key={raceCrew.id} className="border-b hover:bg-slate-50">
                         <td className="py-3 px-4 font-bold text-lg">{raceCrew.lane}</td>
                         <td className="py-3 px-4 font-semibold">{getClubShortCodeSync(raceCrew.crew.club_code)}</td>
-                        <td className="py-3 px-4">{raceCrew.crew.club_name}</td>
+                        <td className="py-3 px-4">
+                          <div>
+                            <div>{raceCrew.crew.club_name}</div>
+                            {raceCrew.crew.temps_pronostique && (
+                              <div className="text-xs text-muted-foreground mt-1 flex items-center gap-1">
+                                <Clock className="w-3 h-3" />
+                                <span>Temps pronostique: {formatTempsPronostique(raceCrew.crew.temps_pronostique)}</span>
+                              </div>
+                            )}
+                          </div>
+                        </td>
                         <td className="py-3 px-4">
                           {raceCrew.crew.category ? (
                             <span className="px-2 py-1 bg-blue-100 text-blue-700 rounded text-xs font-medium">

@@ -6,7 +6,8 @@ import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { useToast } from "@/hooks/use-toast";
 import dayjs from "dayjs";
-import { Edit, Users, MapPin, Calendar, Trophy } from "lucide-react";
+import { Edit, Users, MapPin, Calendar, Trophy, Clock } from "lucide-react";
+import { formatTempsPronostique } from "@/utils/formatTime";
 import {
   Dialog,
   DialogContent,
@@ -74,6 +75,7 @@ type RaceCrew = {
     club_name: string;
     club_code: string;
     coach_name: string | null;
+    temps_pronostique: number | null;
     category: Category;
     crew_participants: CrewParticipant[];
   };
@@ -438,6 +440,46 @@ export default function RacesPage() {
                       </span>
                     </div>
                   )}
+                  {/* Temps pronostiques */}
+                  {(() => {
+                    const crewsWithTime = selectedRace.race_crews.filter(
+                      (rc) => rc.crew?.temps_pronostique !== null && rc.crew?.temps_pronostique !== undefined
+                    );
+                    if (crewsWithTime.length > 0) {
+                      const times = crewsWithTime.map((rc) => rc.crew.temps_pronostique!);
+                      const minTime = Math.min(...times);
+                      const maxTime = Math.max(...times);
+                      const avgTime = Math.round(times.reduce((a, b) => a + b, 0) / times.length);
+                      
+                      return (
+                        <div className="pt-2 mt-2 border-t">
+                          <div className="flex items-center gap-2 mb-2">
+                            <Clock className="w-4 h-4 text-muted-foreground" />
+                            <span className="text-muted-foreground font-medium">Temps pronostiques:</span>
+                          </div>
+                          <div className="space-y-1 text-xs">
+                            <div className="flex justify-between">
+                              <span className="text-muted-foreground">Plus rapide:</span>
+                              <span className="font-medium">{formatTempsPronostique(minTime)}</span>
+                            </div>
+                            <div className="flex justify-between">
+                              <span className="text-muted-foreground">Plus lent:</span>
+                              <span className="font-medium">{formatTempsPronostique(maxTime)}</span>
+                            </div>
+                            <div className="flex justify-between">
+                              <span className="text-muted-foreground">Moyenne:</span>
+                              <span className="font-medium">{formatTempsPronostique(avgTime)}</span>
+                            </div>
+                            <div className="flex justify-between">
+                              <span className="text-muted-foreground">Équipages avec temps:</span>
+                              <span className="font-medium">{crewsWithTime.length} / {selectedRace.race_crews.length}</span>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    }
+                    return null;
+                  })()}
                 </div>
               </div>
 

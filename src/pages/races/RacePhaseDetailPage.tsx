@@ -19,7 +19,8 @@ import {
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import clsx from "clsx";
-import { X, Search, Pencil, Check, XCircle, ChevronDown, ChevronRight, Eye, EyeOff } from "lucide-react";
+import { X, Search, Pencil, Check, XCircle, ChevronDown, ChevronRight, Eye, EyeOff, Clock } from "lucide-react";
+import { formatTempsPronostique } from "@/utils/formatTime";
 import RaceFormDialog from "@/components/races/RaceFormDialog";
 import PhaseResultsPanel from "@/components/races/PhaseResultsPanel";
 
@@ -62,6 +63,7 @@ interface Crew {
   category_label?: string;
   category?: Category;
   status?: string;
+  temps_pronostique?: number | null;
   crew_participants?: CrewParticipant[];
 }
 
@@ -1272,6 +1274,12 @@ function DraggableCrew({ crew }: { crew: Crew }) {
       <div className="space-y-0.5">
         <div className="text-sm font-medium">{crew.club_name}</div>
         <div className="text-xs text-blue-600 font-semibold">{categoryLabel}</div>
+        {crew.temps_pronostique && (
+          <div className="text-[10px] text-blue-600 font-semibold flex items-center gap-1 mt-0.5">
+            <Clock className="w-2.5 h-2.5" />
+            <span>{formatTempsPronostique(crew.temps_pronostique)}</span>
+          </div>
+        )}
         {participants.length > 0 && (
           <div className="text-[10px] text-gray-600 space-y-0.5 mt-1">
             {participants.map((p, idx) => (
@@ -1329,6 +1337,12 @@ function DroppableLane({ lane, raceId, entry }: { lane: number; raceId: string; 
           {entry ? (
             <div className="space-y-0.5">
               <div className="font-medium truncate">{entry.crew?.club_name}</div>
+              {entry.crew?.temps_pronostique && (
+                <div className="text-[10px] text-blue-600 font-semibold flex items-center gap-0.5">
+                  <Clock className="w-2.5 h-2.5" />
+                  <span>{formatTempsPronostique(entry.crew.temps_pronostique)}</span>
+                </div>
+              )}
               {participants.length > 0 && (
                 <div className="text-[10px] text-gray-600 space-y-0.5">
                   {participants.map((p, idx) => (
