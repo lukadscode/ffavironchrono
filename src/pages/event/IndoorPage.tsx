@@ -225,8 +225,13 @@ export default function IndoorPage() {
         : totalDistance);
     // Pour les courses indoor :
     // - Course temps : split_value = 30s
-    // - Course distance : split_value = 250m (valeur par défaut pour les splits)
-    const finalSplitValue = isTimeBased ? 30 : 250;
+    // - Course distance : split_value = 250m si distance < 750m, sinon 500m
+    // - Relais : split_value = 250m
+    const finalSplitValue = isTimeBased 
+      ? 30 
+      : (isRelay 
+        ? 250 
+        : (totalDistance < 750 ? 250 : 500));
     const finalDurationType = isTimeBased ? "time" : "meters";
 
     // Construire l'objet rac2

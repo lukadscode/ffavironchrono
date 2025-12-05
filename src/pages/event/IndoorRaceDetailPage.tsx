@@ -941,7 +941,7 @@ export default function IndoorRaceDetailPage() {
     // Valeurs finales pour le fichier .rac2
     // Pour une course basée sur le temps : duration = durée en secondes, duration_type = "time"
     // Pour un relais: duration = distance totale, split_value = 250m
-    // Pour une course normale basée sur distance : duration = distance totale, split_value = 500m
+    // Pour une course normale basée sur distance : duration = distance totale, split_value dépend de la distance
     const finalDuration = isTimeBased && durationSeconds
       ? durationSeconds
       : (isRelay && relayCount && relayDistance 
@@ -950,8 +950,12 @@ export default function IndoorRaceDetailPage() {
     // Pour les courses indoor :
     // - Course temps : split_value = 30s
     // - Relais : split_value = 250m
-    // - Course normale : split_value = 500m
-    const finalSplitValue = isTimeBased ? 30 : (isRelay ? 250 : 500);
+    // - Course normale : split_value = 250m si distance < 750m, sinon 500m
+    const finalSplitValue = isTimeBased 
+      ? 30 
+      : (isRelay 
+        ? 250 
+        : (totalDistance < 750 ? 250 : 500));
     const finalDurationType = isTimeBased ? "time" : "meters";
 
     console.log("📐 Calculs finaux:", {
