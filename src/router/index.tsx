@@ -12,6 +12,7 @@ import ScoringTemplatesPage from "@/pages/dashboard/ScoringTemplatesPage";
 import UsersManagementPage from "@/pages/dashboard/UsersManagementPage";
 import UserDetailPage from "@/pages/dashboard/UserDetailPage";
 import CategoriesManagementPage from "@/pages/dashboard/CategoriesManagementPage";
+import ClubsManagementPage from "@/pages/dashboard/ClubsManagementPage";
 import EventAdminLayout from "@/components/layout/EventAdminLayout";
 import ParticipantsPage from "@/pages/event/ParticipantsPage";
 import RacesPage from "@/pages/event/RacesPage";
@@ -94,6 +95,7 @@ const router = createBrowserRouter([
       { path: "events", element: <EventsPage /> },
       { path: "events-management", element: <EventsManagementPage /> },
       { path: "categories-management", element: <CategoriesManagementPage /> },
+      { path: "clubs-management", element: <ClubsManagementPage /> },
       { path: "scoring-templates", element: <ScoringTemplatesPage /> },
       { path: "users-management", element: <UsersManagementPage /> },
       { path: "users-management/:userId", element: <UserDetailPage /> },
