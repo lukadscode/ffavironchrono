@@ -169,10 +169,10 @@ export default function IndoorPage() {
         });
       } else {
         boats.push({
-          class_name: "X",
+          class_name: "EMPTY",
           id: `Lane ${lane}`,
           lane_number: lane,
-          name: "X",
+          name: "EMPTY",
           participants: [
             {
               id: `Lane ${lane}`,

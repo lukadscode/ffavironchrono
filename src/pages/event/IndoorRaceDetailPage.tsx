@@ -860,10 +860,10 @@ export default function IndoorRaceDetailPage() {
       } else {
         // Couloir vide
         boats.push({
-          class_name: "X",
+          class_name: "EMPTY",
           id: `Lane ${lane}`,
           lane_number: lane,
-          name: "X",
+          name: "EMPTY",
           participants: [
             {
               id: `Lane ${lane}`,
