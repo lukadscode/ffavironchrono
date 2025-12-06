@@ -856,7 +856,8 @@ export default function RacePhaseDetailPage() {
 
   // Détecter s'il y a des relais dans les courses
   const hasRelays = useMemo(() => {
-    return races.some(race => race.distance?.is_relay === true);
+    if (!races || races.length === 0) return false;
+    return races.some(race => race?.distance?.is_relay === true);
   }, [races]);
 
   // Ajuster la largeur de la colonne de gauche selon le type de courses
