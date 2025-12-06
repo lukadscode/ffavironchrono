@@ -107,7 +107,7 @@ export default function ImportErgRaceRaceDialog({
     }
   }, [open, isAdmin, onOpenChange, toast]);
 
-  const [step, setStep] = useState<"upload" | "configure" | "map-crews">("upload");
+  const [step, setStep] = useState<"upload" | "map-crews" | "configure">("upload");
   const [file, setFile] = useState<File | null>(null);
   const [rac2Data, setRac2Data] = useState<Rac2File | null>(null);
   const [loading, setLoading] = useState(false);
@@ -620,7 +620,7 @@ export default function ImportErgRaceRaceDialog({
       }
 
       setBoatMappings(initialMappings);
-      setStep("configure");
+      setStep("map-crews"); // Aller directement au mapping des équipages
     } catch (err: any) {
       console.error("Erreur parsing fichier", err);
       toast({
@@ -645,50 +645,27 @@ export default function ImportErgRaceRaceDialog({
         });
         return;
       }
+      // Le step "map-crews" est déjà défini dans handleFileSelect
+    } else if (step === "map-crews") {
+      // Valider qu'au moins un équipage est mappé
+      const mappedCount = boatMappings.filter((m) => m.selectedCrewId).length;
+      if (mappedCount === 0) {
+        toast({
+          title: "Aucun équipage mappé",
+          description: "Veuillez mapper au moins un équipage avant de continuer",
+          variant: "destructive",
+        });
+        return;
+      }
       setStep("configure");
-    } else if (step === "configure") {
-      // Valider la configuration
-      if (!raceName.trim()) {
-        toast({
-          title: "Nom requis",
-          description: "Veuillez saisir un nom pour la course",
-          variant: "destructive",
-        });
-        return;
-      }
-      if (!selectedDistanceId) {
-        toast({
-          title: "Distance requise",
-          description: "Veuillez sélectionner une distance",
-          variant: "destructive",
-        });
-        return;
-      }
-      if (!selectedCategoryId) {
-        toast({
-          title: "Catégorie requise",
-          description: "Veuillez sélectionner une catégorie",
-          variant: "destructive",
-        });
-        return;
-      }
-      if (!phaseId) {
-        toast({
-          title: "Phase requise",
-          description: "Veuillez sélectionner une phase",
-          variant: "destructive",
-        });
-        return;
-      }
-      setStep("map-crews");
     }
   };
 
   const handleBack = () => {
-    if (step === "configure") {
+    if (step === "map-crews") {
       setStep("upload");
-    } else if (step === "map-crews") {
-      setStep("configure");
+    } else if (step === "configure") {
+      setStep("map-crews");
     }
   };
 
@@ -821,15 +798,38 @@ export default function ImportErgRaceRaceDialog({
     return null;
   }
 
+  // Récupérer les catégories détectées depuis les équipages matchés
+  const detectedCategoriesMap = new Map<string, { count: number; label: string; code: string }>();
+  boatMappings.forEach((mapping) => {
+    if (mapping.crew && mapping.crew.category) {
+      const catId = mapping.crew.category.id;
+      const existing = detectedCategoriesMap.get(catId);
+      if (existing) {
+        existing.count++;
+      } else {
+        detectedCategoriesMap.set(catId, {
+          count: 1,
+          label: mapping.crew.category.label,
+          code: mapping.crew.category.code,
+        });
+      }
+    }
+  });
+  const detectedCategoriesList = Array.from(detectedCategoriesMap.entries())
+    .map(([id, data]) => ({ id, ...data }))
+    .sort((a, b) => b.count - a.count);
+
   return (
     <Dialog open={open} onOpenChange={handleClose}>
-      <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
-        <DialogHeader>
-          <DialogTitle>Importer une course ErgRace</DialogTitle>
+      <DialogContent className="max-w-[95vw] max-h-[95vh] w-full h-full overflow-hidden flex flex-col p-0">
+        <DialogHeader className="px-6 pt-6 pb-4 border-b">
+          <DialogTitle className="text-2xl">Importer une course ErgRace</DialogTitle>
           <DialogDescription>
             Importez une course créée dans ErgRace qui n'a pas été créée via le site
           </DialogDescription>
         </DialogHeader>
+        
+        <div className="flex-1 overflow-y-auto px-6 py-4">
 
         {step === "upload" && (
           <div className="space-y-4">
@@ -882,7 +882,48 @@ export default function ImportErgRaceRaceDialog({
         )}
 
         {step === "configure" && rac2Data && (
-          <div className="space-y-4">
+          <div className="space-y-6">
+            <div className="flex items-center justify-between">
+              <h3 className="text-xl font-semibold">Étape 2/2 : Configuration de la course</h3>
+              <div className="text-sm text-gray-500">
+                {boatMappings.filter((m) => m.selectedCrewId).length} équipage(s) à importer
+              </div>
+            </div>
+
+            {/* Affichage des catégories détectées */}
+            {detectedCategoriesList.length > 0 && (
+              <Alert>
+                <CheckCircle2 className="h-4 w-4" />
+                <AlertDescription>
+                  <div className="space-y-2">
+                    <div>
+                      <strong>Catégories détectées depuis les équipages matchés :</strong>
+                    </div>
+                    <div className="flex flex-wrap gap-2 mt-2">
+                      {detectedCategoriesList.map((cat) => (
+                        <div
+                          key={cat.id}
+                          className={`px-3 py-1 rounded-full text-sm font-medium ${
+                            cat.id === selectedCategoryId
+                              ? "bg-blue-100 text-blue-700 border-2 border-blue-300"
+                              : "bg-gray-100 text-gray-700 border border-gray-300"
+                          }`}
+                        >
+                          {cat.label} ({cat.code}) - {cat.count} équipage{cat.count > 1 ? "s" : ""}
+                          {cat.id === selectedCategoryId && " ✓"}
+                        </div>
+                      ))}
+                    </div>
+                    {detectedCategoriesList.length > 1 && (
+                      <p className="text-xs text-gray-600 mt-2">
+                        Plusieurs catégories détectées. Sélectionnez la catégorie principale pour cette course.
+                      </p>
+                    )}
+                  </div>
+                </AlertDescription>
+              </Alert>
+            )}
+
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <Label htmlFor="race-name">Nom de la course *</Label>
@@ -948,19 +989,39 @@ export default function ImportErgRaceRaceDialog({
               </div>
 
               <div>
-                <Label htmlFor="category">Catégorie *</Label>
+                <Label htmlFor="category">Catégorie principale *</Label>
                 <Select value={selectedCategoryId} onValueChange={setSelectedCategoryId}>
                   <SelectTrigger id="category">
                     <SelectValue placeholder="Sélectionner une catégorie" />
                   </SelectTrigger>
                   <SelectContent>
-                    {categories.map((category) => (
-                      <SelectItem key={category.id} value={category.id}>
-                        {category.label} ({category.code})
-                      </SelectItem>
-                    ))}
+                    {/* Afficher d'abord les catégories détectées */}
+                    {detectedCategoriesList.length > 0 && (
+                      <>
+                        {detectedCategoriesList.map((cat) => (
+                          <SelectItem key={cat.id} value={cat.id} className="font-medium">
+                            {cat.label} ({cat.code}) - {cat.count} équipage{cat.count > 1 ? "s" : ""} ⭐
+                          </SelectItem>
+                        ))}
+                        <div className="px-2 py-1 text-xs text-gray-500 border-t my-1">
+                          Autres catégories disponibles
+                        </div>
+                      </>
+                    )}
+                    {categories
+                      .filter((cat) => !detectedCategoriesList.some((dc) => dc.id === cat.id))
+                      .map((category) => (
+                        <SelectItem key={category.id} value={category.id}>
+                          {category.label} ({category.code})
+                        </SelectItem>
+                      ))}
                   </SelectContent>
                 </Select>
+                {detectedCategoriesList.length > 1 && (
+                  <p className="text-xs text-gray-500 mt-1">
+                    Note : Plusieurs catégories détectées. La catégorie sélectionnée sera utilisée comme catégorie principale.
+                  </p>
+                )}
               </div>
             </div>
 
@@ -981,17 +1042,35 @@ export default function ImportErgRaceRaceDialog({
               </AlertDescription>
             </Alert>
 
-            <div className="flex justify-end gap-2">
-              <Button variant="outline" onClick={handleBack}>
+            <div className="flex justify-end gap-2 pt-4 border-t">
+              <Button variant="outline" onClick={handleBack} disabled={importing}>
                 Retour
               </Button>
-              <Button onClick={handleNext}>Suivant</Button>
+              <Button onClick={handleImport} disabled={importing}>
+                {importing ? (
+                  <>
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    Import en cours...
+                  </>
+                ) : (
+                  "Importer la course"
+                )}
+              </Button>
             </div>
           </div>
         )}
+        
+        </div>
 
         {step === "map-crews" && rac2Data && (
-          <div className="space-y-4">
+          <div className="space-y-6">
+            <div className="flex items-center justify-between">
+              <h3 className="text-xl font-semibold">Étape 1/2 : Mapping des équipages</h3>
+              <div className="text-sm text-gray-500">
+                {boatMappings.filter((m) => m.selectedCrewId).length} / {boatMappings.length} équipage(s) mappé(s)
+              </div>
+            </div>
+
             {boatMappings.some((m) => m.matchScore !== undefined && m.matchScore >= 30) && (
               <Alert>
                 <CheckCircle2 className="h-4 w-4" />
@@ -1003,6 +1082,7 @@ export default function ImportErgRaceRaceDialog({
                 </AlertDescription>
               </Alert>
             )}
+            
             <div>
               <Label htmlFor="search-crews">Rechercher un équipage</Label>
               <Input
@@ -1010,10 +1090,11 @@ export default function ImportErgRaceRaceDialog({
                 placeholder="Nom, club, catégorie..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
+                className="max-w-md"
               />
             </div>
 
-            <ScrollArea className="h-[400px] border rounded-lg p-4">
+            <ScrollArea className="h-[calc(95vh-350px)] border rounded-lg p-4">
               <div className="space-y-4">
                 {boatMappings.map((mapping, index) => (
                   <Card key={index} className={mapping.selectedCrewId ? "border-green-200 bg-green-50/30" : ""}>
@@ -1162,19 +1243,12 @@ export default function ImportErgRaceRaceDialog({
               </AlertDescription>
             </Alert>
 
-            <div className="flex justify-end gap-2">
+            <div className="flex justify-end gap-2 pt-4 border-t">
               <Button variant="outline" onClick={handleBack} disabled={importing}>
                 Retour
               </Button>
-              <Button onClick={handleImport} disabled={importing}>
-                {importing ? (
-                  <>
-                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                    Import en cours...
-                  </>
-                ) : (
-                  "Importer la course"
-                )}
+              <Button onClick={handleNext} disabled={importing || boatMappings.filter((m) => m.selectedCrewId).length === 0}>
+                Suivant → Configuration
               </Button>
             </div>
           </div>
