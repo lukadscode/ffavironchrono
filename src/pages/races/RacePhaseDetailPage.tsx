@@ -854,11 +854,8 @@ export default function RacePhaseDetailPage() {
     );
   }
 
-  // Détecter s'il y a des relais dans les courses
-  const hasRelays = useMemo(() => {
-    if (!races || races.length === 0) return false;
-    return races.some(race => race?.distance?.is_relay === true);
-  }, [races]);
+  // Détecter s'il y a des relais dans les courses (calcul simple sans useMemo pour éviter les erreurs)
+  const hasRelays = Array.isArray(races) && races.length > 0 && races.some((race) => race?.distance?.is_relay === true);
 
   // Ajuster la largeur de la colonne de gauche selon le type de courses
   const leftColumnWidth = hasRelays ? "w-full md:w-64" : "w-full md:w-1/3";
