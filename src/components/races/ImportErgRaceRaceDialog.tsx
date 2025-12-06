@@ -402,53 +402,110 @@ export default function ImportErgRaceRaceDialog({
         let score = 0;
         let criteriaMatched = 0;
         let totalCriteria = 0;
+        let perfectMatch = false;
 
-        // Critère 1: Nom du boat vs nom(s) des participants
+        // PRIORITÉ 1: Nom du boat vs nom(s) des participants (le plus important)
         if (boat.name && boat.name.trim()) {
           totalCriteria++;
           const boatName = normalizeName(boat.name);
           
-          // Pour les courses individuelles, comparer avec le nom de famille du participant
+          // Vérifier dans tous les participants
           if (crew.crew_participants && crew.crew_participants.length > 0) {
-            const crewParticipant = crew.crew_participants[0]; // Premier participant pour course individuelle
-            const crewLastName = normalizeName(crewParticipant.participant.last_name);
-            
-            if (boatName === crewLastName) {
-              score += 50;
-              criteriaMatched++;
-            } else if (crewLastName.includes(boatName) || boatName.includes(crewLastName)) {
-              score += 30;
-            }
-          }
-          
-          // Vérifier aussi dans tous les participants pour les équipages
-          if (crew.crew_participants && crew.crew_participants.length > 1) {
-            const hasMatch = crew.crew_participants.some((cp) => {
-              const lastName = normalizeName(cp.participant.last_name);
-              return lastName === boatName || lastName.includes(boatName) || boatName.includes(lastName);
-            });
-            if (hasMatch) {
-              score = Math.max(score, 40);
+            for (const cp of crew.crew_participants) {
+              const crewLastName = normalizeName(cp.participant.last_name);
+              const crewFirstName = normalizeName(cp.participant.first_name);
+              
+              // Correspondance exacte du nom de famille
+              if (boatName === crewLastName) {
+                score += 60; // Priorité haute : correspondance exacte nom de famille
+                criteriaMatched++;
+                perfectMatch = true;
+              }
+              // Correspondance partielle nom de famille (contient)
+              else if (crewLastName.includes(boatName) || boatName.includes(crewLastName)) {
+                score = Math.max(score, 40);
+              }
+              // Vérifier aussi avec prénom + nom
+              else {
+                const fullName = `${crewFirstName} ${crewLastName}`;
+                const reversedFullName = `${crewLastName} ${crewFirstName}`;
+                if (normalizeName(fullName).includes(boatName) || normalizeName(reversedFullName).includes(boatName)) {
+                  score = Math.max(score, 35);
+                }
+              }
             }
           }
         }
 
-        // Critère 2: Affiliation (code club) vs code club du crew
-        if (boat.affiliation && boat.affiliation.trim()) {
+        // PRIORITÉ 2: Participants du fichier ErgRace (si disponibles)
+        if (boat.participants && boat.participants.length > 0 && boat.participants.some((p: any) => p.name && p.name.trim())) {
+          totalCriteria++;
+          if (!crew.crew_participants || crew.crew_participants.length === 0) {
+            return score; // Continuer avec le score actuel si pas de participants dans le crew
+          }
+
+          // Comparer chaque participant
+          const boatParticipants = boat.participants
+            .filter((p: any) => p.name && p.name.trim())
+            .map((p: any) => parseErgRaceName(p.name));
+          
+          if (boatParticipants.length > 0) {
+            const crewParticipants = crew.crew_participants
+              .sort((a, b) => a.seat_position - b.seat_position)
+              .map((cp) => ({
+                lastName: cp.participant.last_name,
+                firstName: cp.participant.first_name,
+              }));
+
+            // Si même nombre de participants, c'est très prometteur
+            if (boatParticipants.length === crewParticipants.length) {
+              const participantScores: number[] = [];
+              
+              for (const boatPart of boatParticipants) {
+                let bestMatch = 0;
+                for (const crewPart of crewParticipants) {
+                  const boatFullName = `${boatPart.lastName}, ${boatPart.firstName}`;
+                  const matchScore = compareParticipants(
+                    boatFullName,
+                    crewPart.lastName,
+                    crewPart.firstName
+                  );
+                  bestMatch = Math.max(bestMatch, matchScore);
+                }
+                participantScores.push(bestMatch);
+              }
+
+              if (participantScores.length > 0) {
+                const avgParticipantScore = participantScores.reduce((sum, s) => sum + s, 0) / participantScores.length;
+                // Si tous les participants matchent bien, c'est un match parfait
+                if (avgParticipantScore >= 80 && participantScores.every(s => s >= 70)) {
+                  score = Math.max(score, 90);
+                  perfectMatch = true;
+                  criteriaMatched++;
+                } else if (avgParticipantScore >= 60) {
+                  score += Math.max(0, (avgParticipantScore - 60) * 0.3); // Bonus progressif
+                }
+              }
+            }
+          }
+        }
+
+        // PRIORITÉ 3: Affiliation (code club) - bonus si le nom matche déjà
+        if (boat.affiliation && boat.affiliation.trim() && (perfectMatch || score >= 40)) {
           totalCriteria++;
           const boatAffiliation = normalizeName(boat.affiliation);
           const crewClubCode = normalizeName(crew.club_code || "");
           
           if (boatAffiliation === crewClubCode) {
-            score += 30;
+            score += 20; // Bonus si club correspond
             criteriaMatched++;
           } else if (crewClubCode && (crewClubCode.includes(boatAffiliation) || boatAffiliation.includes(crewClubCode))) {
-            score += 15;
+            score += 10;
           }
         }
 
-        // Critère 3: Class name (catégorie) vs catégorie du crew
-        if (boat.class_name && boat.class_name.trim()) {
+        // PRIORITÉ 4: Class name (catégorie) - bonus si le nom matche déjà
+        if (boat.class_name && boat.class_name.trim() && (perfectMatch || score >= 40)) {
           totalCriteria++;
           const boatCategory = normalizeName(boat.class_name);
           const crewCategoryLabel = normalizeName(crew.category?.label || "");
@@ -460,69 +517,19 @@ export default function ImportErgRaceRaceDialog({
             (crewCategoryLabel && crewCategoryLabel.includes(boatCategory)) ||
             (crewCategoryCode && crewCategoryCode.includes(boatCategory))
           ) {
-            score += 20;
+            score += 15; // Bonus si catégorie correspond
             criteriaMatched++;
           }
         }
 
-        // Critère 4: Participants (si disponibles)
-        if (boat.participants && boat.participants.length > 0 && boat.participants.some((p: any) => p.name && p.name.trim())) {
-          totalCriteria++;
-          if (!crew.crew_participants || crew.crew_participants.length === 0) {
-            return 0; // Pas de participants dans le crew, score faible
-          }
-
-          // Si le nombre de participants ne correspond pas, score faible
-          if (boat.participants.length !== crew.crew_participants.length) {
-            return Math.min(score, 40); // Score réduit si nombre différent
-          }
-
-          // Comparer chaque participant
-          const boatParticipants = boat.participants
-            .filter((p: any) => p.name && p.name.trim())
-            .map((p: any) => parseErgRaceName(p.name));
-          
-          if (boatParticipants.length === 0) {
-            return score; // Pas de noms dans les participants, utiliser les autres critères
-          }
-
-          const crewParticipants = crew.crew_participants
-            .sort((a, b) => a.seat_position - b.seat_position)
-            .map((cp) => ({
-              lastName: cp.participant.last_name,
-              firstName: cp.participant.first_name,
-            }));
-
-          const scores: number[] = [];
-          for (let i = 0; i < boatParticipants.length; i++) {
-            let bestParticipantScore = 0;
-            for (const crewPart of crewParticipants) {
-              const ergraceFullName = `${boatParticipants[i].lastName}, ${boatParticipants[i].firstName}`;
-              const participantScore = compareParticipants(
-                ergraceFullName,
-                crewPart.lastName,
-                crewPart.firstName
-              );
-              bestParticipantScore = Math.max(bestParticipantScore, participantScore);
-            }
-            scores.push(bestParticipantScore);
-          }
-
-          if (scores.length > 0) {
-            const avgParticipantScore = scores.reduce((sum, s) => sum + s, 0) / scores.length;
-            score += (avgParticipantScore * 0.5); // Poids de 50% pour les participants
-            if (avgParticipantScore >= 80) {
-              criteriaMatched++;
-            }
-          }
+        // Bonus si correspondance parfaite (nom exact)
+        if (perfectMatch) {
+          score += 10;
         }
 
         // Bonus si plusieurs critères correspondent
-        if (criteriaMatched >= 2) {
-          score += 10;
-        }
-        if (criteriaMatched === totalCriteria && totalCriteria > 0) {
-          score += 20; // Bonus parfait match
+        if (criteriaMatched >= 2 && score >= 40) {
+          score += 5;
         }
 
         return Math.min(Math.round(score), 100);
@@ -577,9 +584,17 @@ export default function ImportErgRaceRaceDialog({
         // Trier par score décroissant
         crewScores.sort((a, b) => b.score - a.score);
 
-        // Prendre le meilleur match si le score est >= 50 (seuil abaissé car on a plus de critères)
+        // Prendre le meilleur match si le score est >= 30 (seuil bas pour affectation intelligente)
+        // L'utilisateur invalidera si ce n'est pas bon
         const bestMatch = crewScores[0];
-        if (bestMatch && bestMatch.score >= 50) {
+        const secondBest = crewScores[1];
+        
+        // Si le meilleur match est significativement meilleur que le second (écart >= 20 points)
+        // ou si le score est >= 40, on l'affecte automatiquement
+        if (bestMatch && (
+          bestMatch.score >= 40 || 
+          (bestMatch.score >= 30 && (!secondBest || bestMatch.score - secondBest.score >= 20))
+        )) {
           mapping.selectedCrewId = bestMatch.crew.id;
           mapping.crew = bestMatch.crew;
           mapping.matchScore = bestMatch.score;
@@ -959,14 +974,14 @@ export default function ImportErgRaceRaceDialog({
 
         {step === "map-crews" && rac2Data && (
           <div className="space-y-4">
-            {boatMappings.some((m) => m.matchScore !== undefined && m.matchScore >= 50) && (
+            {boatMappings.some((m) => m.matchScore !== undefined && m.matchScore >= 30) && (
               <Alert>
                 <CheckCircle2 className="h-4 w-4" />
                 <AlertDescription>
-                  <strong>Détection automatique activée :</strong> Certains équipages ont été automatiquement
-                  détectés en comparant le nom du boat, le code club (affiliation), la catégorie et les noms des participants.
-                  Vous pouvez supprimer une suggestion en cliquant sur "Supprimer la suggestion" ou supprimer une ligne complète avec l'icône X.
-                  Vérifiez que les correspondances sont correctes avant de valider l'import.
+                  <strong>Affectation intelligente activée :</strong> Les équipages ont été automatiquement
+                  affectés en comparant les noms du fichier ErgRace avec les noms des participants dans le système.
+                  <strong> Vérifiez chaque suggestion et invalidez-la si ce n'est pas correct</strong> en cliquant sur "Supprimer la suggestion".
+                  Vous pouvez aussi supprimer une ligne complète avec l'icône X.
                 </AlertDescription>
               </Alert>
             )}
@@ -997,11 +1012,18 @@ export default function ImportErgRaceRaceDialog({
                           )}
                         </div>
                         <div className="flex items-center gap-2">
-                          {mapping.matchScore !== undefined && mapping.matchScore >= 50 && (
-                            <span className="text-xs px-2 py-1 rounded-full bg-green-100 text-green-700 font-medium">
-                              Auto-détecté ({mapping.matchScore}%)
-                            </span>
-                          )}
+                        {mapping.matchScore !== undefined && mapping.matchScore >= 30 && (
+                          <span className={`text-xs px-2 py-1 rounded-full font-medium ${
+                            mapping.matchScore >= 70 
+                              ? "bg-green-100 text-green-700" 
+                              : mapping.matchScore >= 50
+                              ? "bg-yellow-100 text-yellow-700"
+                              : "bg-orange-100 text-orange-700"
+                          }`}>
+                            Auto-affecté ({mapping.matchScore}%)
+                            {mapping.matchScore >= 70 ? " ✓" : mapping.matchScore < 50 ? " ⚠️" : ""}
+                          </span>
+                        )}
                           <Button
                             variant="ghost"
                             size="sm"
