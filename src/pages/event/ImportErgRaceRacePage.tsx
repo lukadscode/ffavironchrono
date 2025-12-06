@@ -988,21 +988,67 @@ export default function ImportErgRaceRacePage() {
                           </SelectContent>
                         </Select>
                         {mapping.crew && (
-                          <div className="mt-2 space-y-1">
-                            <div className="text-xs text-green-600 font-medium">
-                              ✓ Équipage sélectionné : {getCrewDisplayName(mapping.crew)}
+                          <div className="mt-3 p-3 bg-green-50 border border-green-200 rounded-md space-y-2">
+                            <div className="flex items-center gap-2">
+                              <CheckCircle2 className="w-4 h-4 text-green-600" />
+                              <span className="text-sm font-semibold text-green-800">Équipage sélectionné</span>
                             </div>
+                            
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-xs">
+                              {/* Club */}
+                              <div>
+                                <span className="font-medium text-gray-700">Club:</span>
+                                <div className="mt-0.5">
+                                  <span className="text-gray-800">{mapping.crew.club_name || "Non renseigné"}</span>
+                                  {mapping.crew.club_code && (
+                                    <span className="ml-1 text-gray-500">({mapping.crew.club_code})</span>
+                                  )}
+                                </div>
+                              </div>
+
+                              {/* Catégorie */}
+                              {mapping.crew.category && (
+                                <div>
+                                  <span className="font-medium text-gray-700">Catégorie:</span>
+                                  <div className="mt-0.5">
+                                    <span className="inline-block px-2 py-0.5 bg-blue-100 text-blue-700 rounded text-xs font-medium">
+                                      {mapping.crew.category.label} ({mapping.crew.category.code})
+                                    </span>
+                                  </div>
+                                </div>
+                              )}
+
+                              {/* Nombre de participants */}
+                              <div>
+                                <span className="font-medium text-gray-700">Nombre de participants:</span>
+                                <div className="mt-0.5 text-gray-800">
+                                  {mapping.crew.crew_participants?.length || 0} participant{mapping.crew.crew_participants?.length !== 1 ? "s" : ""}
+                                </div>
+                              </div>
+
+                              {/* Couloir assigné */}
+                              <div>
+                                <span className="font-medium text-gray-700">Couloir ErgRace:</span>
+                                <div className="mt-0.5 text-gray-800 font-semibold">
+                                  {mapping.ergraceBoat.lane_number}
+                                </div>
+                              </div>
+                            </div>
+
+                            {/* Participants détaillés */}
                             {mapping.crew.crew_participants && mapping.crew.crew_participants.length > 0 && (
-                              <div className="text-xs text-gray-600">
-                                <span className="font-medium">Participants système:</span>
-                                <div className="mt-0.5 space-y-0.5">
+                              <div className="mt-2 pt-2 border-t border-green-200">
+                                <span className="text-xs font-medium text-gray-700 mb-1.5 block">Participants:</span>
+                                <div className="space-y-1">
                                   {mapping.crew.crew_participants
                                     .sort((a, b) => a.seat_position - b.seat_position)
                                     .map((cp, cpIndex) => (
-                                      <div key={cpIndex} className="flex items-center gap-2">
-                                        <span className="w-2 h-2 rounded-full bg-green-400"></span>
-                                        <span>
-                                          {cp.participant.last_name}, {cp.participant.first_name}
+                                      <div key={cpIndex} className="flex items-center gap-2 text-xs">
+                                        <div className="flex items-center justify-center w-5 h-5 rounded-full bg-green-200 text-green-700 font-semibold text-xs">
+                                          {cp.seat_position}
+                                        </div>
+                                        <span className="text-gray-700">
+                                          <span className="font-medium">{cp.participant.last_name}</span>, {cp.participant.first_name}
                                         </span>
                                       </div>
                                     ))}
