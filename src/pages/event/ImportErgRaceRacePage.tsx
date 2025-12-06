@@ -643,7 +643,7 @@ export default function ImportErgRaceRacePage() {
             const crew = mapping?.crew || availableCrews.find((c) => c.id === crew_id);
             const errorMessage = error?.response?.data?.message || error?.message || "Erreur inconnue";
             
-            return { crew, mapping, lane, errorMessage };
+            return { crew, mapping, lane, errorMessage, crew_id };
           });
 
           toast({
@@ -652,7 +652,7 @@ export default function ImportErgRaceRacePage() {
               <div className="space-y-3 mt-2">
                 <p className="font-semibold text-sm">Équipage(s) déjà assigné(s) :</p>
                 <div className="space-y-2 text-xs">
-                  {errorDetails.map(({ crew, mapping, lane, errorMessage }, idx) => (
+                  {errorDetails.map(({ crew, mapping, lane, errorMessage, crew_id }, idx) => (
                     <div key={idx} className="p-3 bg-red-50 border border-red-200 rounded-md">
                       {crew ? (
                         <>
