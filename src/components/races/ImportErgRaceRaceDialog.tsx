@@ -541,37 +541,7 @@ export default function ImportErgRaceRaceDialog({
         selectedCrewId: null,
       }));
 
-      // Détecter les catégories depuis les boats pour proposer une catégorie pour la course
-      const detectedCategories = new Map<string, number>();
-      if (parsed.race_definition.boats) {
-        parsed.race_definition.boats.forEach((boat: any) => {
-          if (boat.class_name && boat.class_name.trim()) {
-            const catName = boat.class_name.trim();
-            detectedCategories.set(catName, (detectedCategories.get(catName) || 0) + 1);
-          }
-        });
-      }
-      
-      // Si une seule catégorie est majoritaire, la proposer
-      if (detectedCategories.size > 0) {
-        const sortedCategories = Array.from(detectedCategories.entries()).sort((a, b) => b[1] - a[1]);
-        const mostCommonCategory = sortedCategories[0];
-        if (mostCommonCategory[1] >= parsed.race_definition.boats.length * 0.5) {
-          // Chercher une catégorie correspondante
-          const matchingCategory = categories.find(
-            (c) => 
-              normalizeName(c.label) === normalizeName(mostCommonCategory[0]) ||
-              normalizeName(c.code) === normalizeName(mostCommonCategory[0]) ||
-              normalizeName(c.label).includes(normalizeName(mostCommonCategory[0])) ||
-              normalizeName(mostCommonCategory[0]).includes(normalizeName(c.label))
-          );
-          if (matchingCategory && !selectedCategoryId) {
-            setSelectedCategoryId(matchingCategory.id);
-          }
-        }
-      }
-
-      // Essayer de faire un auto-matching amélioré
+      // ÉTAPE 1: Faire le matching des participants d'abord
       initialMappings.forEach((mapping) => {
         const boat = mapping.ergraceBoat;
 
@@ -600,6 +570,62 @@ export default function ImportErgRaceRaceDialog({
           mapping.matchScore = bestMatch.score;
         }
       });
+
+      // ÉTAPE 2: Déterminer les catégories à partir des équipages trouvés
+      const detectedCategoryIds = new Set<string>();
+      const detectedCategoryCounts = new Map<string, number>();
+      
+      // Compter les catégories des équipages qui ont été matchés
+      initialMappings.forEach((mapping) => {
+        if (mapping.crew && mapping.crew.category) {
+          const catId = mapping.crew.category.id;
+          detectedCategoryIds.add(catId);
+          detectedCategoryCounts.set(catId, (detectedCategoryCounts.get(catId) || 0) + 1);
+        }
+      });
+
+      // Si on a trouvé des catégories, proposer la plus fréquente
+      if (detectedCategoryIds.size > 0) {
+        const sortedCategories = Array.from(detectedCategoryCounts.entries()).sort((a, b) => b[1] - a[1]);
+        const mostCommonCategoryId = sortedCategories[0][0];
+        
+        // Si une catégorie représente au moins 50% des équipages matchés, la proposer
+        const totalMatched = initialMappings.filter(m => m.selectedCrewId).length;
+        if (totalMatched > 0 && sortedCategories[0][1] >= totalMatched * 0.5) {
+          if (!selectedCategoryId) {
+            setSelectedCategoryId(mostCommonCategoryId);
+          }
+        }
+      } else {
+        // Fallback: utiliser les catégories depuis class_name des boats
+        const detectedCategories = new Map<string, number>();
+        if (parsed.race_definition.boats) {
+          parsed.race_definition.boats.forEach((boat: any) => {
+            if (boat.class_name && boat.class_name.trim()) {
+              const catName = boat.class_name.trim();
+              detectedCategories.set(catName, (detectedCategories.get(catName) || 0) + 1);
+            }
+          });
+        }
+        
+        if (detectedCategories.size > 0) {
+          const sortedCategories = Array.from(detectedCategories.entries()).sort((a, b) => b[1] - a[1]);
+          const mostCommonCategory = sortedCategories[0];
+          if (mostCommonCategory[1] >= parsed.race_definition.boats.length * 0.5) {
+            // Chercher une catégorie correspondante
+            const matchingCategory = categories.find(
+              (c) => 
+                normalizeName(c.label) === normalizeName(mostCommonCategory[0]) ||
+                normalizeName(c.code) === normalizeName(mostCommonCategory[0]) ||
+                normalizeName(c.label).includes(normalizeName(mostCommonCategory[0])) ||
+                normalizeName(mostCommonCategory[0]).includes(normalizeName(c.label))
+            );
+            if (matchingCategory && !selectedCategoryId) {
+              setSelectedCategoryId(matchingCategory.id);
+            }
+          }
+        }
+      }
 
       setBoatMappings(initialMappings);
       setStep("configure");
