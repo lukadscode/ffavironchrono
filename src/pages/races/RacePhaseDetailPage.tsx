@@ -862,9 +862,9 @@ export default function RacePhaseDetailPage() {
 
   return (
     <DndContext onDragStart={onDragStart} onDragEnd={onDragEnd}>
-      <div className="p-4 flex flex-col md:flex-row gap-4 md:gap-6">
+      <div className="p-2 sm:p-3 md:p-4 flex flex-col md:flex-row gap-2 md:gap-3 lg:gap-4 h-[calc(100vh-2rem)] md:h-[calc(100vh-4rem)] overflow-hidden">
         {/* Colonne gauche */}
-        <div className={`${leftColumnWidth} space-y-4 min-w-0 flex-shrink-0`}>
+        <div className={`${leftColumnWidth} space-y-2 md:space-y-3 min-w-0 flex-shrink-0 overflow-y-auto`}>
           {previousPhase && (
             <PhaseResultsPanel
               phaseId={previousPhase.id}
@@ -903,11 +903,11 @@ export default function RacePhaseDetailPage() {
         </div>
 
         {/* Colonne droite */}
-        <Card className={`${hasRelays ? "flex-1" : "flex-1"} min-w-0`}>
-          <CardHeader className="flex flex-col gap-4">
-            <div className="flex justify-between items-center gap-3">
-              <CardTitle>Courses de la phase</CardTitle>
-              <div className="flex gap-2">
+        <Card className="flex-1 min-w-0 flex flex-col overflow-hidden">
+          <CardHeader className="flex flex-col gap-2 md:gap-3 flex-shrink-0 pb-2 md:pb-3">
+            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 sm:gap-3">
+              <CardTitle className="text-base md:text-lg">Courses de la phase</CardTitle>
+              <div className="flex flex-wrap gap-1.5 md:gap-2">
                 <button
                   onClick={() => {
                     setShowAllCrews(!showAllCrews);
@@ -1081,19 +1081,19 @@ export default function RacePhaseDetailPage() {
               </div>
             </div>
 
-            <div className="space-y-3 p-4 bg-gradient-to-r from-blue-50 to-indigo-50 rounded-lg border border-blue-200">
-              <div className="flex items-center justify-between">
-                <h3 className="text-sm font-semibold text-gray-700">Configuration des horaires</h3>
+            <div className="space-y-2 md:space-y-3 p-2 md:p-3 lg:p-4 bg-gradient-to-r from-blue-50 to-indigo-50 rounded-lg border border-blue-200">
+              <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2">
+                <h3 className="text-xs md:text-sm font-semibold text-gray-700">Configuration des horaires</h3>
                 <button
-                  className="px-4 py-2 text-sm font-medium rounded-md bg-blue-600 text-white hover:bg-blue-700 transition-colors shadow-sm"
+                  className="px-3 py-1.5 text-xs md:text-sm font-medium rounded-md bg-blue-600 text-white hover:bg-blue-700 transition-colors shadow-sm"
                   onClick={applySchedule}
                   title="Enregistrer les horaires recalculés"
                 >
                   Enregistrer les horaires
                 </button>
               </div>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                <label className="flex flex-col gap-1.5 text-sm">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 md:gap-3">
+                <label className="flex flex-col gap-1 text-xs md:text-sm">
                   <span className="text-gray-700 font-medium">Heure de la 1ʳᵉ course</span>
                   <input
                     type="datetime-local"
@@ -1107,10 +1107,10 @@ export default function RacePhaseDetailPage() {
                       const next = recomputeTimesFrom(races, 0, parseLocalInput(e.target.value));
                       setRaces(next);
                     }}
-                    className="px-3 py-2 border border-gray-300 rounded-md bg-white shadow-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    className="px-2 md:px-3 py-1.5 md:py-2 text-xs md:text-sm border border-gray-300 rounded-md bg-white shadow-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                   />
                 </label>
-                <label className="flex flex-col gap-1.5 text-sm">
+                <label className="flex flex-col gap-1 text-xs md:text-sm">
                   <span className="text-gray-700 font-medium">Intervalle par défaut (minutes)</span>
                   <input
                     type="number"
@@ -1129,7 +1129,7 @@ export default function RacePhaseDetailPage() {
                       const next = recomputeTimesFrom(races, 0, parseLocalInput(firstStartLocal));
                       setRaces(next);
                     }}
-                    className="px-3 py-2 border border-gray-300 rounded-md bg-white shadow-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    className="px-2 md:px-3 py-1.5 md:py-2 text-xs md:text-sm border border-gray-300 rounded-md bg-white shadow-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                   />
                 </label>
               </div>
@@ -1137,11 +1137,11 @@ export default function RacePhaseDetailPage() {
           </CardHeader>
 
           {/* Timeline verticale + drag and drop par séries */}
-          <CardContent className="space-y-4 md:max-h-[80vh] overflow-y-auto min-w-0">
+          <CardContent className="flex-1 overflow-y-auto min-w-0 p-2 md:p-4">
             <SortableContext items={races.map((r) => r.id)} strategy={verticalListSortingStrategy}>
-              <div className="relative pl-6">
+              <div className="relative pl-4 md:pl-6">
                 {/* Axe vertical */}
-                <div className="absolute left-2 top-0 bottom-0 w-px bg-gray-300" />
+                <div className="absolute left-1 md:left-2 top-0 bottom-0 w-px bg-gray-300" />
 
                 {races.map((race, idx) => {
                   const laneCount = race.lane_count || 6;
@@ -1154,7 +1154,7 @@ export default function RacePhaseDetailPage() {
                   const shouldShowCrews = showAllCrews && isExpanded;
 
                   return (
-                    <div key={race.id} className="mb-4">
+                    <div key={race.id} className="mb-2 md:mb-3">
                       <TimelineRace
                         race={race}
                         timeLabel={timeLabel}
@@ -1330,18 +1330,18 @@ function DroppableLane({ lane, raceId, entry }: { lane: number; raceId: string; 
       {...(entry ? attributes : {})}
       {...(entry ? listeners : {})}
       className={clsx(
-        "px-3 py-1 rounded-md text-xs transition-colors select-none",
+        "px-2 md:px-3 py-0.5 md:py-1 rounded-md text-xs transition-colors select-none",
         isOver ? "ring-2 ring-gray-400" : "",
         entry ? "bg-gray-200 text-gray-900" : "bg-gray-100 italic text-gray-500",
         isDragging ? "opacity-70" : ""
       )}
       title={entry ? entry.crew?.club_name : undefined}
     >
-      <div className="flex justify-between items-start gap-2">
-        <span className="font-semibold">L{lane}</span>
+      <div className="flex justify-between items-start gap-1.5 md:gap-2">
+        <span className="font-semibold text-xs">L{lane}</span>
         <div className="flex-1 text-right min-w-0">
           {entry ? (
-            <div className="space-y-0.5">
+            <div className="space-y-0">
               <div className="font-medium truncate">{entry.crew?.club_name}</div>
               {entry.crew?.temps_pronostique && (
                 <div className="text-[10px] text-blue-600 font-semibold flex items-center gap-0.5">
@@ -1554,20 +1554,20 @@ function TimelineRace({
       </div>
 
       {gapMinutes !== undefined && (
-        <div className="flex items-center gap-2 text-xs bg-gray-50 px-3 py-2 rounded-md">
+        <div className="flex items-center gap-1.5 md:gap-2 text-xs bg-gray-50 px-2 md:px-3 py-1.5 md:py-2 rounded-md">
           <span className="text-gray-600">Intervalle :</span>
           <input
             type="number"
             min={1}
             value={gapMinutes}
             onChange={(e) => onGapChange(Math.max(1, Number(e.target.value) || 1))}
-            className="w-16 px-2 py-1 border border-gray-300 rounded bg-white text-center font-mono focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+            className="w-14 md:w-16 px-1.5 md:px-2 py-0.5 md:py-1 border border-gray-300 rounded bg-white text-center font-mono text-xs focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
           />
           <span className="text-gray-600">min</span>
         </div>
       )}
 
-      <div className="space-y-1">
+      <div className="space-y-0.5 md:space-y-1">
         {children}
       </div>
     </div>
