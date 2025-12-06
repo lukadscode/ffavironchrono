@@ -78,6 +78,7 @@ export default function ExportPage() {
   const [loading, setLoading] = useState(false);
   const [exportingGlobal, setExportingGlobal] = useState(false);
   const [exportingStartlist, setExportingStartlist] = useState(false);
+  const [exportingResults, setExportingResults] = useState<{ byRace?: boolean; byCategory?: boolean; format?: "excel" | "csv" | "pdf" }>({});
   const [event, setEvent] = useState<Event | null>(null);
 
   useEffect(() => {
@@ -1119,6 +1120,507 @@ export default function ExportPage() {
     }
   };
 
+  // Export des résultats par séries ou par catégories
+  const exportResults = async (groupBy: "race" | "category", format: "excel" | "csv" | "pdf") => {
+    if (!eventId) return;
+
+    const key = groupBy === "race" ? "byRace" : "byCategory";
+    setExportingResults({ [key]: true, format });
+
+    try {
+      // Vérifier le type d'événement
+      let isIndoorEvent = false;
+      try {
+        const eventRes = await api.get(`/events/${eventId}`);
+        const eventData = eventRes.data.data || eventRes.data;
+        const raceType = eventData.race_type?.toLowerCase() || "";
+        isIndoorEvent = raceType.includes("indoor");
+      } catch (err) {
+        console.error("Erreur vérification type événement", err);
+      }
+
+      // Récupérer toutes les courses
+      const racesRes = await api.get(`/races/event/${eventId}`);
+      let races: Race[] = (racesRes.data.data || []).sort((a: Race, b: Race) => 
+        (a.race_number || 0) - (b.race_number || 0)
+      );
+
+      // Récupérer les catégories
+      const categoriesRes = await api.get(`/categories/event/${eventId}/with-crews`);
+      const categories = categoriesRes.data.data || [];
+      const categoryMap = new Map(categories.map((c: any) => [c.id, c]));
+
+      // Enrichir les courses avec leurs équipages et résultats
+      const racesWithResults = await Promise.all(
+        races.map(async (race) => {
+          // Récupérer les race-crews
+          if (!race.race_crews || race.race_crews.length === 0) {
+            try {
+              const raceCrewsRes = await api.get(`/race-crews/${race.id}`);
+              race.race_crews = raceCrewsRes.data.data || [];
+            } catch (err) {
+              race.race_crews = [];
+            }
+          }
+
+          const results: any[] = [];
+
+          if (isIndoorEvent) {
+            // Récupérer les résultats indoor
+            try {
+              const indoorRes = await api.get(`/indoor-results/race/${race.id}`).catch(() => ({ data: { data: null } }));
+              const indoorData = indoorRes.data.data;
+              
+              if (indoorData && indoorData.participants && indoorData.participants.length > 0) {
+                indoorData.participants.forEach((participant: any) => {
+                  const raceCrew = race.race_crews?.find((rc: any) => rc.crew_id === participant.crew_id);
+                  if (raceCrew) {
+                    results.push({
+                      crew_id: participant.crew_id,
+                      lane: raceCrew.lane,
+                      club_name: raceCrew.crew?.club_name || "",
+                      club_code: raceCrew.crew?.club_code || "",
+                      category_id: raceCrew.crew?.category_id || "",
+                      category_label: raceCrew.crew?.category?.label || "",
+                      category_code: raceCrew.crew?.category?.code || "",
+                      place: participant.place || null,
+                      time_display: participant.time_display || "",
+                      time_ms: participant.time_ms || null,
+                      distance: participant.distance || "",
+                      avg_pace: participant.avg_pace || "",
+                      spm: participant.spm || "",
+                      calories: participant.calories || "",
+                    });
+                  }
+                });
+              }
+            } catch (err) {
+              console.error(`Erreur récupération résultats indoor pour course ${race.id}:`, err);
+            }
+          } else {
+            // Récupérer les timings
+            try {
+              const timingsRes = await api.get(`/timings/race/${race.id}`).catch(() => ({ data: { data: [] } }));
+              const allTimings = timingsRes.data.data || [];
+
+              // Récupérer les timing points
+              const timingPointsRes = await api.get(`/timing-points/race/${race.id}`).catch(() => ({ data: { data: [] } }));
+              const timingPoints = timingPointsRes.data.data || [];
+              const lastTimingPoint = timingPoints.length > 0 
+                ? timingPoints.reduce((last: any, current: any) => 
+                    (current.order_index > last.order_index ? current : last), timingPoints[0])
+                : null;
+
+              if (lastTimingPoint) {
+                // Récupérer les assignments
+                const assignmentsRes = await api.get(`/timing-assignments/race/${race.id}`).catch(() => ({ data: { data: [] } }));
+                const assignments = assignmentsRes.data.data || [];
+                const timingToCrew = new Map<string, string>();
+                assignments.forEach((a: any) => {
+                  if (a.timing_id && a.crew_id) {
+                    timingToCrew.set(a.timing_id, a.crew_id);
+                  }
+                });
+
+                // Grouper les timings par crew_id
+                const timingsByCrew = new Map<string, any[]>();
+                allTimings.forEach((timing: any) => {
+                  const crewId = timing.crew_id || timingToCrew.get(timing.id);
+                  if (crewId && timing.relative_time_ms !== null && timing.timing_point_id === lastTimingPoint.id) {
+                    if (!timingsByCrew.has(crewId)) {
+                      timingsByCrew.set(crewId, []);
+                    }
+                    timingsByCrew.get(crewId)!.push(timing);
+                  }
+                });
+
+                // Calculer les positions
+                const allCrewTimings = Array.from(timingsByCrew.entries())
+                  .map(([cid, timings]) => {
+                    const finish = timings.find((t: any) => t.timing_point_id === lastTimingPoint.id);
+                    return { crew_id: cid, time: finish?.relative_time_ms || null };
+                  })
+                  .filter((r) => r.time !== null)
+                  .sort((a, b) => (a.time || 0) - (b.time || 0));
+
+                // Créer les résultats
+                race.race_crews?.forEach((rc) => {
+                  const crewTimings = timingsByCrew.get(rc.crew_id) || [];
+                  const finishTiming = crewTimings.find((t: any) => t.timing_point_id === lastTimingPoint.id);
+                  const position = finishTiming?.relative_time_ms !== null && finishTiming?.relative_time_ms !== undefined
+                    ? allCrewTimings.findIndex((r) => r.crew_id === rc.crew_id) + 1
+                    : null;
+
+                  results.push({
+                    crew_id: rc.crew_id,
+                    lane: rc.lane,
+                    club_name: rc.crew?.club_name || "",
+                    club_code: rc.crew?.club_code || "",
+                    category_id: rc.crew?.category_id || "",
+                    category_label: rc.crew?.category?.label || "",
+                    category_code: rc.crew?.category?.code || "",
+                    place: position,
+                    time_display: finishTiming?.relative_time_ms ? formatTime(finishTiming.relative_time_ms) : "",
+                    time_ms: finishTiming?.relative_time_ms || null,
+                    distance: "",
+                    avg_pace: "",
+                    spm: "",
+                    calories: "",
+                  });
+                });
+              }
+            } catch (err) {
+              console.error(`Erreur récupération timings pour course ${race.id}:`, err);
+            }
+          }
+
+          // Trier les résultats par place/position
+          results.sort((a, b) => {
+            if (a.place === null && b.place === null) return 0;
+            if (a.place === null) return 1;
+            if (b.place === null) return -1;
+            return a.place - b.place;
+          });
+
+          return {
+            ...race,
+            results,
+          };
+        })
+      );
+
+      // Filtrer uniquement les courses avec résultats
+      const racesWithValidResults = racesWithResults.filter((r: any) => r.results && r.results.length > 0);
+
+      if (format === "pdf") {
+        // Générer PDF
+        const doc = new jsPDF({
+          orientation: "portrait",
+          unit: "mm",
+          format: "a4",
+        });
+
+        // Fonction pour ajouter l'en-tête
+        const addHeader = () => {
+          doc.setFontSize(15);
+          doc.setFont("helvetica", "bold");
+          doc.text("RÉSULTATS", 105, 15, { align: "center" });
+          
+          if (event) {
+            doc.setFontSize(10);
+            doc.setFont("helvetica", "normal");
+            doc.text(event.name, 105, 20, { align: "center" });
+          }
+
+          doc.setDrawColor(200, 200, 200);
+          doc.setLineWidth(0.3);
+          doc.line(10, 25, 200, 25);
+        };
+
+        addHeader();
+        let yPosition = 30;
+
+        if (groupBy === "race") {
+          // Grouper par séries (races)
+          for (const race of racesWithValidResults) {
+            const totalHeight = 8 + (race.results.length * 5);
+            if (yPosition + totalHeight > 275) {
+              doc.addPage();
+              addHeader();
+              yPosition = 30;
+            }
+
+            // En-tête de course
+            doc.setFontSize(12);
+            doc.setFont("helvetica", "bold");
+            doc.text(`Course ${race.race_number}: ${race.name}`, 10, yPosition);
+            yPosition += 5;
+
+            if (race.start_time) {
+              doc.setFontSize(9);
+              doc.setFont("helvetica", "normal");
+              doc.text(`Départ: ${dayjs(race.start_time).format("DD/MM/YYYY HH:mm")}`, 10, yPosition);
+              yPosition += 4;
+            }
+
+            // Tableau des résultats
+            const tableData = race.results.map((r: any) => [
+              r.place?.toString() || "-",
+              r.lane.toString(),
+              r.club_name || "",
+              r.club_code || "",
+              r.category_label || "",
+              r.time_display || "-",
+            ]);
+
+            autoTable(doc, {
+              startY: yPosition,
+              head: [["Place", "C", "Club", "Code", "Catégorie", "Temps"]],
+              body: tableData,
+              styles: { fontSize: 8, cellPadding: 1.5 },
+              headStyles: { fillColor: [66, 139, 202], textColor: 255, fontStyle: "bold" },
+              margin: { left: 10, right: 10, top: 30 },
+            });
+
+            yPosition = (doc as any).lastAutoTable?.finalY || yPosition + (race.results.length * 5) + 5;
+            yPosition += 3;
+          }
+        } else {
+          // Grouper par catégories
+          const resultsByCategory = new Map<string, any[]>();
+          
+          racesWithValidResults.forEach((race: any) => {
+            race.results.forEach((result: any) => {
+              const catId = result.category_id || "unknown";
+              if (!resultsByCategory.has(catId)) {
+                resultsByCategory.set(catId, []);
+              }
+              resultsByCategory.get(catId)!.push({
+                ...result,
+                race_number: race.race_number,
+                race_name: race.name,
+                race_start_time: race.start_time,
+              });
+            });
+          });
+
+          // Trier les catégories
+          const sortedCategories = Array.from(resultsByCategory.entries())
+            .sort(([aId], [bId]) => {
+              const catA = categoryMap.get(aId);
+              const catB = categoryMap.get(bId);
+              return (catA?.code || "").localeCompare(catB?.code || "");
+            });
+
+          for (const [catId, results] of sortedCategories) {
+            const category = categoryMap.get(catId);
+            const totalHeight = 8 + (results.length * 5);
+            if (yPosition + totalHeight > 275) {
+              doc.addPage();
+              addHeader();
+              yPosition = 30;
+            }
+
+            // En-tête de catégorie
+            doc.setFontSize(12);
+            doc.setFont("helvetica", "bold");
+            doc.text(category?.label || `Catégorie ${catId}`, 10, yPosition);
+            yPosition += 5;
+
+            // Tableau des résultats
+            const tableData = results.map((r: any) => [
+              r.race_number?.toString() || "-",
+              r.race_name || "",
+              r.place?.toString() || "-",
+              r.lane.toString(),
+              r.club_name || "",
+              r.club_code || "",
+              r.time_display || "-",
+            ]);
+
+            autoTable(doc, {
+              startY: yPosition,
+              head: [["Course", "Nom Course", "Place", "C", "Club", "Code", "Temps"]],
+              body: tableData,
+              styles: { fontSize: 7, cellPadding: 1 },
+              headStyles: { fillColor: [66, 139, 202], textColor: 255, fontStyle: "bold" },
+              margin: { left: 10, right: 10, top: 30 },
+            });
+
+            yPosition = (doc as any).lastAutoTable?.finalY || yPosition + (results.length * 5) + 5;
+            yPosition += 3;
+          }
+        }
+
+        // Pied de page
+        const pageCount = doc.getNumberOfPages();
+        for (let i = 1; i <= pageCount; i++) {
+          doc.setPage(i);
+          doc.setFontSize(7);
+          doc.setFont("helvetica", "italic");
+          doc.setTextColor(120, 120, 120);
+          doc.text(
+            `Page ${i} / ${pageCount} - Généré le ${dayjs().format("DD/MM/YYYY à HH:mm")}`,
+            105,
+            287,
+            { align: "center" }
+          );
+        }
+
+        const fileName = `Resultats_${groupBy === "race" ? "Series" : "Categories"}_${event?.name?.replace(/\s+/g, "_") || "Event"}_${dayjs().format("YYYY-MM-DD")}.pdf`;
+        doc.save(fileName);
+
+        toast({
+          title: "Export PDF réussi",
+          description: "Fichier PDF généré et téléchargé",
+        });
+      } else {
+        // Générer Excel ou CSV
+        const allRows: any[] = [];
+
+        if (groupBy === "race") {
+          // Grouper par séries
+          racesWithValidResults.forEach((race) => {
+            allRows.push({
+              "COURSE": `Course ${race.race_number}: ${race.name}`,
+              "NUMÉRO": race.race_number,
+              "HEURE DÉPART": race.start_time ? dayjs(race.start_time).format("DD/MM/YYYY HH:mm") : "",
+              "PHASE": race.race_phase?.name || "",
+              "DISTANCE": race.distance?.label || "",
+              "PLACE": "",
+              "COULOIR": "",
+              "CLUB": "",
+              "CODE CLUB": "",
+              "CATÉGORIE": "",
+              "CODE CATÉGORIE": "",
+              "TEMPS": "",
+              "DISTANCE (Indoor)": "",
+              "ALLURE (Indoor)": "",
+              "SPM (Indoor)": "",
+              "CALORIES (Indoor)": "",
+            });
+
+            race.results.forEach((r: any) => {
+              allRows.push({
+                "COURSE": "",
+                "NUMÉRO": "",
+                "HEURE DÉPART": "",
+                "PHASE": "",
+                "DISTANCE": "",
+                "PLACE": r.place || "",
+                "COULOIR": r.lane,
+                "CLUB": r.club_name,
+                "CODE CLUB": r.club_code,
+                "CATÉGORIE": r.category_label,
+                "CODE CATÉGORIE": r.category_code,
+                "TEMPS": r.time_display,
+                "DISTANCE (Indoor)": r.distance || "",
+                "ALLURE (Indoor)": r.avg_pace || "",
+                "SPM (Indoor)": r.spm || "",
+                "CALORIES (Indoor)": r.calories || "",
+              });
+            });
+
+            allRows.push({}); // Ligne vide entre les courses
+          });
+        } else {
+          // Grouper par catégories
+          const resultsByCategory = new Map<string, any[]>();
+          
+          racesWithValidResults.forEach((race: any) => {
+            race.results.forEach((result: any) => {
+              const catId = result.category_id || "unknown";
+              if (!resultsByCategory.has(catId)) {
+                resultsByCategory.set(catId, []);
+              }
+              resultsByCategory.get(catId)!.push({
+                ...result,
+                race_number: race.race_number,
+                race_name: race.name,
+                race_start_time: race.start_time,
+                phase: race.race_phase?.name || "",
+                distance: race.distance?.label || "",
+              });
+            });
+          });
+
+          const sortedCategories = Array.from(resultsByCategory.entries())
+            .sort(([aId], [bId]) => {
+              const catA = categoryMap.get(aId);
+              const catB = categoryMap.get(bId);
+              return (catA?.code || "").localeCompare(catB?.code || "");
+            });
+
+          sortedCategories.forEach(([catId, results]) => {
+            const category = categoryMap.get(catId);
+            allRows.push({
+              "CATÉGORIE": category?.label || `Catégorie ${catId}`,
+              "CODE CATÉGORIE": category?.code || "",
+              "COURSE": "",
+              "NUMÉRO": "",
+              "HEURE DÉPART": "",
+              "PHASE": "",
+              "DISTANCE": "",
+              "PLACE": "",
+              "COULOIR": "",
+              "CLUB": "",
+              "CODE CLUB": "",
+              "TEMPS": "",
+              "DISTANCE (Indoor)": "",
+              "ALLURE (Indoor)": "",
+              "SPM (Indoor)": "",
+              "CALORIES (Indoor)": "",
+            });
+
+            results.forEach((r: any) => {
+              allRows.push({
+                "CATÉGORIE": "",
+                "CODE CATÉGORIE": "",
+                "COURSE": r.race_name,
+                "NUMÉRO": r.race_number,
+                "HEURE DÉPART": r.race_start_time ? dayjs(r.race_start_time).format("DD/MM/YYYY HH:mm") : "",
+                "PHASE": r.phase,
+                "DISTANCE": r.distance,
+                "PLACE": r.place || "",
+                "COULOIR": r.lane,
+                "CLUB": r.club_name,
+                "CODE CLUB": r.club_code,
+                "TEMPS": r.time_display,
+                "DISTANCE (Indoor)": r.distance || "",
+                "ALLURE (Indoor)": r.avg_pace || "",
+                "SPM (Indoor)": r.spm || "",
+                "CALORIES (Indoor)": r.calories || "",
+              });
+            });
+
+            allRows.push({}); // Ligne vide entre les catégories
+          });
+        }
+
+        if (format === "excel") {
+          const ws = XLSX.utils.json_to_sheet(allRows);
+          const wb = XLSX.utils.book_new();
+          XLSX.utils.book_append_sheet(wb, ws, groupBy === "race" ? "Par Séries" : "Par Catégories");
+
+          const fileName = `Resultats_${groupBy === "race" ? "Series" : "Categories"}_${event?.name?.replace(/\s+/g, "_") || "Event"}_${dayjs().format("YYYY-MM-DD")}.xlsx`;
+          XLSX.writeFile(wb, fileName);
+
+          toast({
+            title: "Export Excel réussi",
+            description: "Fichier Excel téléchargé",
+          });
+        } else if (format === "csv") {
+          const ws = XLSX.utils.json_to_sheet(allRows);
+          const csv = XLSX.utils.sheet_to_csv(ws);
+
+          const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+          const url = URL.createObjectURL(blob);
+          const link = document.createElement("a");
+          link.href = url;
+          link.download = `Resultats_${groupBy === "race" ? "Series" : "Categories"}_${event?.name?.replace(/\s+/g, "_") || "Event"}_${dayjs().format("YYYY-MM-DD")}.csv`;
+          document.body.appendChild(link);
+          link.click();
+          document.body.removeChild(link);
+          URL.revokeObjectURL(url);
+
+          toast({
+            title: "Export CSV réussi",
+            description: "Fichier CSV téléchargé",
+          });
+        }
+      }
+    } catch (err: any) {
+      console.error("Erreur export résultats:", err);
+      toast({
+        title: "Erreur",
+        description: err?.response?.data?.message || "Impossible de générer l'export",
+        variant: "destructive",
+      });
+    } finally {
+      setExportingResults({});
+    }
+  };
+
   if (loading) {
     return (
       <div className="flex items-center justify-center py-20">
@@ -1219,6 +1721,142 @@ export default function ExportPage() {
               >
                 <FileText className="w-4 h-4 mr-2" />
                 {exportingStartlist ? "Génération..." : "PDF (.pdf)"}
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Export Résultats par Séries */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Flag className="w-5 h-5" />
+              Export Résultats par Séries
+            </CardTitle>
+            <CardDescription>
+              Résultats classés par course (série) avec classement, temps et détails
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <p className="text-sm text-muted-foreground">
+              Formats disponibles :
+            </p>
+            <div className="space-y-2">
+              <Button
+                onClick={() => exportResults("race", "excel")}
+                disabled={exportingResults.byRace && exportingResults.format === "excel"}
+                variant="outline"
+                className="w-full justify-start"
+              >
+                <FileSpreadsheet className="w-4 h-4 mr-2" />
+                {exportingResults.byRace && exportingResults.format === "excel" ? (
+                  <>
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    Génération...
+                  </>
+                ) : (
+                  "Excel (.xlsx)"
+                )}
+              </Button>
+              <Button
+                onClick={() => exportResults("race", "csv")}
+                disabled={exportingResults.byRace && exportingResults.format === "csv"}
+                variant="outline"
+                className="w-full justify-start"
+              >
+                <FileText className="w-4 h-4 mr-2" />
+                {exportingResults.byRace && exportingResults.format === "csv" ? (
+                  <>
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    Génération...
+                  </>
+                ) : (
+                  "CSV (.csv)"
+                )}
+              </Button>
+              <Button
+                onClick={() => exportResults("race", "pdf")}
+                disabled={exportingResults.byRace && exportingResults.format === "pdf"}
+                variant="outline"
+                className="w-full justify-start"
+              >
+                <FileText className="w-4 h-4 mr-2" />
+                {exportingResults.byRace && exportingResults.format === "pdf" ? (
+                  <>
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    Génération...
+                  </>
+                ) : (
+                  "PDF (.pdf)"
+                )}
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Export Résultats par Catégories */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Users className="w-5 h-5" />
+              Export Résultats par Catégories
+            </CardTitle>
+            <CardDescription>
+              Résultats regroupés par catégorie avec toutes les courses de chaque catégorie
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <p className="text-sm text-muted-foreground">
+              Formats disponibles :
+            </p>
+            <div className="space-y-2">
+              <Button
+                onClick={() => exportResults("category", "excel")}
+                disabled={exportingResults.byCategory && exportingResults.format === "excel"}
+                variant="outline"
+                className="w-full justify-start"
+              >
+                <FileSpreadsheet className="w-4 h-4 mr-2" />
+                {exportingResults.byCategory && exportingResults.format === "excel" ? (
+                  <>
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    Génération...
+                  </>
+                ) : (
+                  "Excel (.xlsx)"
+                )}
+              </Button>
+              <Button
+                onClick={() => exportResults("category", "csv")}
+                disabled={exportingResults.byCategory && exportingResults.format === "csv"}
+                variant="outline"
+                className="w-full justify-start"
+              >
+                <FileText className="w-4 h-4 mr-2" />
+                {exportingResults.byCategory && exportingResults.format === "csv" ? (
+                  <>
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    Génération...
+                  </>
+                ) : (
+                  "CSV (.csv)"
+                )}
+              </Button>
+              <Button
+                onClick={() => exportResults("category", "pdf")}
+                disabled={exportingResults.byCategory && exportingResults.format === "pdf"}
+                variant="outline"
+                className="w-full justify-start"
+              >
+                <FileText className="w-4 h-4 mr-2" />
+                {exportingResults.byCategory && exportingResults.format === "pdf" ? (
+                  <>
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    Génération...
+                  </>
+                ) : (
+                  "PDF (.pdf)"
+                )}
               </Button>
             </div>
           </CardContent>
