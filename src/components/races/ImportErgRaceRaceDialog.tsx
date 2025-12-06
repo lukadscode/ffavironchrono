@@ -118,7 +118,6 @@ export default function ImportErgRaceRaceDialog({
   const [raceNumber, setRaceNumber] = useState(1);
   const [startTime, setStartTime] = useState("");
   const [selectedDistanceId, setSelectedDistanceId] = useState<string>("");
-  const [selectedCategoryId, setSelectedCategoryId] = useState<string>("");
   const [phaseId, setPhaseId] = useState<string>("");
 
   // Données disponibles
@@ -576,48 +575,8 @@ export default function ImportErgRaceRaceDialog({
         }
       });
 
-      // Si on a trouvé des catégories, proposer la plus fréquente
-      if (detectedCategoryIds.size > 0) {
-        const sortedCategories = Array.from(detectedCategoryCounts.entries()).sort((a, b) => b[1] - a[1]);
-        const mostCommonCategoryId = sortedCategories[0][0];
-        
-        // Si une catégorie représente au moins 50% des équipages matchés, la proposer
-        const totalMatched = initialMappings.filter(m => m.selectedCrewId).length;
-        if (totalMatched > 0 && sortedCategories[0][1] >= totalMatched * 0.5) {
-          if (!selectedCategoryId) {
-            setSelectedCategoryId(mostCommonCategoryId);
-          }
-        }
-      } else {
-        // Fallback: utiliser les catégories depuis class_name des boats
-        const detectedCategories = new Map<string, number>();
-        if (parsed.race_definition.boats) {
-          parsed.race_definition.boats.forEach((boat: any) => {
-            if (boat.class_name && boat.class_name.trim()) {
-              const catName = boat.class_name.trim();
-              detectedCategories.set(catName, (detectedCategories.get(catName) || 0) + 1);
-            }
-          });
-        }
-        
-        if (detectedCategories.size > 0) {
-          const sortedCategories = Array.from(detectedCategories.entries()).sort((a, b) => b[1] - a[1]);
-          const mostCommonCategory = sortedCategories[0];
-          if (mostCommonCategory[1] >= parsed.race_definition.boats.length * 0.5) {
-            // Chercher une catégorie correspondante
-            const matchingCategory = categories.find(
-              (c) => 
-                normalizeName(c.label) === normalizeName(mostCommonCategory[0]) ||
-                normalizeName(c.code) === normalizeName(mostCommonCategory[0]) ||
-                normalizeName(c.label).includes(normalizeName(mostCommonCategory[0])) ||
-                normalizeName(mostCommonCategory[0]).includes(normalizeName(c.label))
-            );
-            if (matchingCategory && !selectedCategoryId) {
-              setSelectedCategoryId(matchingCategory.id);
-            }
-          }
-        }
-      }
+      // Les catégories seront automatiquement déterminées par les équipages
+      // Pas besoin de définir une catégorie pour la course
 
       setBoatMappings(initialMappings);
       setStep("map-crews"); // Aller directement au mapping des équipages
@@ -756,11 +715,10 @@ export default function ImportErgRaceRaceDialog({
     setFile(null);
     setRac2Data(null);
     setRaceName("");
-    setRaceNumber(1);
-    setStartTime("");
-    setSelectedDistanceId("");
-    setSelectedCategoryId("");
-    setPhaseId("");
+      setRaceNumber(1);
+      setStartTime("");
+      setSelectedDistanceId("");
+      setPhaseId("");
     setBoatMappings([]);
     setSearchQuery("");
     onOpenChange(false);
@@ -890,7 +848,7 @@ export default function ImportErgRaceRaceDialog({
               </div>
             </div>
 
-            {/* Affichage des catégories détectées */}
+            {/* Affichage informatif des catégories détectées */}
             {detectedCategoriesList.length > 0 && (
               <Alert>
                 <CheckCircle2 className="h-4 w-4" />
@@ -903,22 +861,15 @@ export default function ImportErgRaceRaceDialog({
                       {detectedCategoriesList.map((cat) => (
                         <div
                           key={cat.id}
-                          className={`px-3 py-1 rounded-full text-sm font-medium ${
-                            cat.id === selectedCategoryId
-                              ? "bg-blue-100 text-blue-700 border-2 border-blue-300"
-                              : "bg-gray-100 text-gray-700 border border-gray-300"
-                          }`}
+                          className="px-3 py-1 rounded-full text-sm font-medium bg-blue-100 text-blue-700 border border-blue-300"
                         >
                           {cat.label} ({cat.code}) - {cat.count} équipage{cat.count > 1 ? "s" : ""}
-                          {cat.id === selectedCategoryId && " ✓"}
                         </div>
                       ))}
                     </div>
-                    {detectedCategoriesList.length > 1 && (
-                      <p className="text-xs text-gray-600 mt-2">
-                        Plusieurs catégories détectées. Sélectionnez la catégorie principale pour cette course.
-                      </p>
-                    )}
+                    <p className="text-xs text-gray-600 mt-2">
+                      Les catégories de la course seront automatiquement déterminées par les catégories des équipages participants.
+                    </p>
                   </div>
                 </AlertDescription>
               </Alert>
@@ -988,41 +939,6 @@ export default function ImportErgRaceRaceDialog({
                 </Select>
               </div>
 
-              <div>
-                <Label htmlFor="category">Catégorie principale *</Label>
-                <Select value={selectedCategoryId} onValueChange={setSelectedCategoryId}>
-                  <SelectTrigger id="category">
-                    <SelectValue placeholder="Sélectionner une catégorie" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {/* Afficher d'abord les catégories détectées */}
-                    {detectedCategoriesList.length > 0 && (
-                      <>
-                        {detectedCategoriesList.map((cat) => (
-                          <SelectItem key={cat.id} value={cat.id} className="font-medium">
-                            {cat.label} ({cat.code}) - {cat.count} équipage{cat.count > 1 ? "s" : ""} ⭐
-                          </SelectItem>
-                        ))}
-                        <div className="px-2 py-1 text-xs text-gray-500 border-t my-1">
-                          Autres catégories disponibles
-                        </div>
-                      </>
-                    )}
-                    {categories
-                      .filter((cat) => !detectedCategoriesList.some((dc) => dc.id === cat.id))
-                      .map((category) => (
-                        <SelectItem key={category.id} value={category.id}>
-                          {category.label} ({category.code})
-                        </SelectItem>
-                      ))}
-                  </SelectContent>
-                </Select>
-                {detectedCategoriesList.length > 1 && (
-                  <p className="text-xs text-gray-500 mt-1">
-                    Note : Plusieurs catégories détectées. La catégorie sélectionnée sera utilisée comme catégorie principale.
-                  </p>
-                )}
-              </div>
             </div>
 
             <Alert>
