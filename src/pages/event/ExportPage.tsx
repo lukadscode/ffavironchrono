@@ -1147,8 +1147,10 @@ export default function ExportPage() {
 
       // Récupérer les catégories
       const categoriesRes = await api.get(`/categories/event/${eventId}/with-crews`);
-      const categories = categoriesRes.data.data || [];
-      const categoryMap = new Map(categories.map((c: any) => [c.id, c]));
+      const categories: Array<{ id: string; code: string; label: string }> = categoriesRes.data.data || [];
+      const categoryMap = new Map<string, { id: string; code: string; label: string }>(
+        categories.map((c) => [c.id, c])
+      );
 
       // Enrichir les courses avec leurs équipages et résultats
       const racesWithResults = await Promise.all(
@@ -1180,7 +1182,7 @@ export default function ExportPage() {
                       lane: raceCrew.lane,
                       club_name: raceCrew.crew?.club_name || "",
                       club_code: raceCrew.crew?.club_code || "",
-                      category_id: raceCrew.crew?.category_id || "",
+                      category_id: raceCrew.crew?.category?.id || "",
                       category_label: raceCrew.crew?.category?.label || "",
                       category_code: raceCrew.crew?.category?.code || "",
                       place: participant.place || null,
@@ -1256,7 +1258,7 @@ export default function ExportPage() {
                     lane: rc.lane,
                     club_name: rc.crew?.club_name || "",
                     club_code: rc.crew?.club_code || "",
-                    category_id: rc.crew?.category_id || "",
+                    category_id: rc.crew?.category?.id || "",
                     category_label: rc.crew?.category?.label || "",
                     category_code: rc.crew?.category?.code || "",
                     place: position,
@@ -1389,7 +1391,9 @@ export default function ExportPage() {
             .sort(([aId], [bId]) => {
               const catA = categoryMap.get(aId);
               const catB = categoryMap.get(bId);
-              return (catA?.code || "").localeCompare(catB?.code || "");
+              const codeA = catA?.code || "";
+              const codeB = catB?.code || "";
+              return codeA.localeCompare(codeB);
             });
 
           for (const [catId, results] of sortedCategories) {
@@ -1404,7 +1408,8 @@ export default function ExportPage() {
             // En-tête de catégorie
             doc.setFontSize(12);
             doc.setFont("helvetica", "bold");
-            doc.text(category?.label || `Catégorie ${catId}`, 10, yPosition);
+            const categoryLabel = category?.label || `Catégorie ${catId}`;
+            doc.text(categoryLabel, 10, yPosition);
             yPosition += 5;
 
             // Tableau des résultats
@@ -1528,14 +1533,18 @@ export default function ExportPage() {
             .sort(([aId], [bId]) => {
               const catA = categoryMap.get(aId);
               const catB = categoryMap.get(bId);
-              return (catA?.code || "").localeCompare(catB?.code || "");
+              const codeA = catA?.code || "";
+              const codeB = catB?.code || "";
+              return codeA.localeCompare(codeB);
             });
 
           sortedCategories.forEach(([catId, results]) => {
             const category = categoryMap.get(catId);
+            const categoryLabel = category?.label || `Catégorie ${catId}`;
+            const categoryCode = category?.code || "";
             allRows.push({
-              "CATÉGORIE": category?.label || `Catégorie ${catId}`,
-              "CODE CATÉGORIE": category?.code || "",
+              "CATÉGORIE": categoryLabel,
+              "CODE CATÉGORIE": categoryCode,
               "COURSE": "",
               "NUMÉRO": "",
               "HEURE DÉPART": "",
