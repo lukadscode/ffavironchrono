@@ -8,7 +8,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Loader2, Upload, X, AlertCircle, CheckCircle2, ArrowLeft } from "lucide-react";
+import { Loader2, Upload, X, AlertCircle, CheckCircle2, ArrowLeft, Search } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { useAuth } from "@/context/AuthContext";
 
@@ -119,6 +119,8 @@ export default function ImportErgRaceRacePage() {
   // Mapping des équipages
   const [boatMappings, setBoatMappings] = useState<BoatMapping[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
+  const [crewSearchQueries, setCrewSearchQueries] = useState<Record<number, string>>({});
+  const [openSelects, setOpenSelects] = useState<Record<number, boolean>>({});
 
   useEffect(() => {
     if (eventId) {
@@ -907,17 +909,82 @@ export default function ImportErgRaceRacePage() {
                             updated[index].crew = availableCrews.find((c) => c.id === value);
                             updated[index].matchScore = undefined;
                             setBoatMappings(updated);
+                            // Fermer le select après sélection
+                            setOpenSelects(prev => ({ ...prev, [index]: false }));
+                            // Réinitialiser la recherche
+                            setCrewSearchQueries(prev => ({ ...prev, [index]: "" }));
+                          }}
+                          open={openSelects[index] || false}
+                          onOpenChange={(open) => {
+                            setOpenSelects(prev => ({ ...prev, [index]: open }));
+                            if (!open) {
+                              // Réinitialiser la recherche quand on ferme
+                              setCrewSearchQueries(prev => ({ ...prev, [index]: "" }));
+                            }
                           }}
                         >
                           <SelectTrigger>
                             <SelectValue placeholder="Sélectionner un équipage" />
                           </SelectTrigger>
-                          <SelectContent>
-                            {filteredCrews.map((crew) => (
-                              <SelectItem key={crew.id} value={crew.id}>
-                                {getCrewDisplayName(crew)}
-                              </SelectItem>
-                            ))}
+                          <SelectContent className="max-h-[500px] p-0">
+                            {/* Zone de recherche */}
+                            <div className="sticky top-0 z-10 bg-background border-b p-2">
+                              <div className="relative">
+                                <Search className="absolute left-2 top-1/2 transform -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                                <Input
+                                  placeholder="Rechercher un équipage..."
+                                  value={crewSearchQueries[index] || ""}
+                                  onChange={(e) => {
+                                    setCrewSearchQueries(prev => ({ ...prev, [index]: e.target.value }));
+                                    if (!openSelects[index]) {
+                                      setOpenSelects(prev => ({ ...prev, [index]: true }));
+                                    }
+                                  }}
+                                  className="pl-8"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setOpenSelects(prev => ({ ...prev, [index]: true }));
+                                  }}
+                                  onFocus={() => setOpenSelects(prev => ({ ...prev, [index]: true }))}
+                                />
+                              </div>
+                            </div>
+                            
+                            {/* Liste filtrée */}
+                            <ScrollArea className="max-h-[400px]">
+                              {availableCrews
+                                .filter((crew) => {
+                                  const query = (crewSearchQueries[index] || "").toLowerCase();
+                                  if (!query.trim()) return true;
+                                  const crewName = crew.crew_participants
+                                    .map((cp) => `${cp.participant.last_name} ${cp.participant.first_name}`)
+                                    .join(" ")
+                                    .toLowerCase();
+                                  const clubName = (crew.club_name || "").toLowerCase();
+                                  const categoryLabel = (crew.category?.label || "").toLowerCase();
+                                  return crewName.includes(query) || clubName.includes(query) || categoryLabel.includes(query);
+                                })
+                                .map((crew) => (
+                                  <SelectItem key={crew.id} value={crew.id}>
+                                    {getCrewDisplayName(crew)}
+                                  </SelectItem>
+                                ))}
+                              {availableCrews.filter((crew) => {
+                                const query = (crewSearchQueries[index] || "").toLowerCase();
+                                if (!query.trim()) return true;
+                                const crewName = crew.crew_participants
+                                  .map((cp) => `${cp.participant.last_name} ${cp.participant.first_name}`)
+                                  .join(" ")
+                                  .toLowerCase();
+                                const clubName = (crew.club_name || "").toLowerCase();
+                                const categoryLabel = (crew.category?.label || "").toLowerCase();
+                                return crewName.includes(query) || clubName.includes(query) || categoryLabel.includes(query);
+                              }).length === 0 && (
+                                <div className="px-2 py-6 text-center text-sm text-muted-foreground">
+                                  Aucun équipage trouvé
+                                </div>
+                              )}
+                            </ScrollArea>
                           </SelectContent>
                         </Select>
                         {mapping.crew && (
