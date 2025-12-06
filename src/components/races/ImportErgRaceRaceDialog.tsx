@@ -397,139 +397,131 @@ export default function ImportErgRaceRaceDialog({
         return 0;
       };
 
+      // Fonction pour extraire tous les noms possibles d'un boat ErgRace (name OU participants)
+      const extractBoatNames = (boat: any): string[] => {
+        const names: string[] = [];
+        
+        // Nom du boat
+        if (boat.name && boat.name.trim()) {
+          names.push(boat.name.trim());
+        }
+        
+        // Noms dans les participants
+        if (boat.participants && Array.isArray(boat.participants)) {
+          boat.participants.forEach((p: any) => {
+            if (p.name && p.name.trim()) {
+              names.push(p.name.trim());
+            }
+          });
+        }
+        
+        return names;
+      };
+
       // Fonction pour calculer le score de correspondance entre un boat ErgRace et un crew
       const calculateMatchScore = (boat: any, crew: Crew): number => {
         let score = 0;
         let criteriaMatched = 0;
-        let totalCriteria = 0;
         let perfectMatch = false;
 
-        // PRIORITÉ 1: Nom du boat vs nom(s) des participants (le plus important)
-        if (boat.name && boat.name.trim()) {
-          totalCriteria++;
-          const boatName = normalizeName(boat.name);
+        // PRIORITÉ 1: Recherche des noms (dans name OU dans participants)
+        const boatNames = extractBoatNames(boat);
+        
+        if (boatNames.length === 0) {
+          return 0; // Pas de nom à comparer
+        }
+
+        if (!crew.crew_participants || crew.crew_participants.length === 0) {
+          return 0; // Pas de participants dans le crew
+        }
+
+        // Pour chaque nom du boat, chercher une correspondance dans les participants
+        let bestNameMatch = 0;
+        let nameMatches = 0;
+        
+        for (const boatName of boatNames) {
+          const normalizedBoatName = normalizeName(boatName);
           
-          // Vérifier dans tous les participants
-          if (crew.crew_participants && crew.crew_participants.length > 0) {
-            for (const cp of crew.crew_participants) {
-              const crewLastName = normalizeName(cp.participant.last_name);
-              const crewFirstName = normalizeName(cp.participant.first_name);
-              
-              // Correspondance exacte du nom de famille
-              if (boatName === crewLastName) {
-                score += 60; // Priorité haute : correspondance exacte nom de famille
-                criteriaMatched++;
+          for (const cp of crew.crew_participants) {
+            const crewLastName = normalizeName(cp.participant.last_name);
+            const crewFirstName = normalizeName(cp.participant.first_name);
+            const crewFullName = normalizeName(`${cp.participant.first_name} ${cp.participant.last_name}`);
+            const crewReversedName = normalizeName(`${cp.participant.last_name} ${cp.participant.first_name}`);
+            
+            // Essayer de parser le nom ErgRace (peut être "NOM, Prénom" ou "NOM Prénom")
+            const parsedBoatName = parseErgRaceName(boatName);
+            const normalizedBoatLastName = normalizeName(parsedBoatName.lastName);
+            const normalizedBoatFirstName = normalizeName(parsedBoatName.firstName);
+            
+            // Correspondance exacte nom de famille
+            if (normalizedBoatLastName && normalizedBoatLastName === crewLastName) {
+              if (normalizedBoatFirstName && normalizedBoatFirstName === crewFirstName) {
+                // Correspondance exacte nom + prénom
+                bestNameMatch = Math.max(bestNameMatch, 100);
                 perfectMatch = true;
+                nameMatches++;
+              } else if (!normalizedBoatFirstName || normalizedBoatFirstName === "") {
+                // Seulement nom de famille (cas courant)
+                bestNameMatch = Math.max(bestNameMatch, 80);
+                perfectMatch = true;
+                nameMatches++;
+              } else {
+                // Nom de famille exact mais prénom différent
+                bestNameMatch = Math.max(bestNameMatch, 60);
+                nameMatches++;
               }
-              // Correspondance partielle nom de famille (contient)
-              else if (crewLastName.includes(boatName) || boatName.includes(crewLastName)) {
-                score = Math.max(score, 40);
-              }
-              // Vérifier aussi avec prénom + nom
-              else {
-                const fullName = `${crewFirstName} ${crewLastName}`;
-                const reversedFullName = `${crewLastName} ${crewFirstName}`;
-                if (normalizeName(fullName).includes(boatName) || normalizeName(reversedFullName).includes(boatName)) {
-                  score = Math.max(score, 35);
-                }
-              }
+            }
+            // Correspondance partielle nom de famille
+            else if (normalizedBoatLastName && (
+              crewLastName.includes(normalizedBoatLastName) || 
+              normalizedBoatLastName.includes(crewLastName)
+            )) {
+              bestNameMatch = Math.max(bestNameMatch, 50);
+            }
+            // Correspondance avec nom complet (sans parsing)
+            else if (
+              normalizedBoatName === crewLastName ||
+              normalizedBoatName === crewFullName ||
+              normalizedBoatName === crewReversedName ||
+              crewLastName.includes(normalizedBoatName) ||
+              normalizedBoatName.includes(crewLastName)
+            ) {
+              bestNameMatch = Math.max(bestNameMatch, 70);
+              perfectMatch = true;
+              nameMatches++;
             }
           }
         }
 
-        // PRIORITÉ 2: Participants du fichier ErgRace (si disponibles)
-        if (boat.participants && boat.participants.length > 0 && boat.participants.some((p: any) => p.name && p.name.trim())) {
-          totalCriteria++;
-          if (!crew.crew_participants || crew.crew_participants.length === 0) {
-            return score; // Continuer avec le score actuel si pas de participants dans le crew
-          }
+        if (bestNameMatch > 0) {
+          score = bestNameMatch;
+          criteriaMatched++;
+        } else {
+          return 0; // Pas de correspondance de nom, pas de match
+        }
 
-          // Comparer chaque participant
-          const boatParticipants = boat.participants
-            .filter((p: any) => p.name && p.name.trim())
-            .map((p: any) => parseErgRaceName(p.name));
-          
-          if (boatParticipants.length > 0) {
-            const crewParticipants = crew.crew_participants
-              .sort((a, b) => a.seat_position - b.seat_position)
-              .map((cp) => ({
-                lastName: cp.participant.last_name,
-                firstName: cp.participant.first_name,
-              }));
-
-            // Si même nombre de participants, c'est très prometteur
-            if (boatParticipants.length === crewParticipants.length) {
-              const participantScores: number[] = [];
-              
-              for (const boatPart of boatParticipants) {
-                let bestMatch = 0;
-                for (const crewPart of crewParticipants) {
-                  const boatFullName = `${boatPart.lastName}, ${boatPart.firstName}`;
-                  const matchScore = compareParticipants(
-                    boatFullName,
-                    crewPart.lastName,
-                    crewPart.firstName
-                  );
-                  bestMatch = Math.max(bestMatch, matchScore);
-                }
-                participantScores.push(bestMatch);
-              }
-
-              if (participantScores.length > 0) {
-                const avgParticipantScore = participantScores.reduce((sum, s) => sum + s, 0) / participantScores.length;
-                // Si tous les participants matchent bien, c'est un match parfait
-                if (avgParticipantScore >= 80 && participantScores.every(s => s >= 70)) {
-                  score = Math.max(score, 90);
-                  perfectMatch = true;
-                  criteriaMatched++;
-                } else if (avgParticipantScore >= 60) {
-                  score += Math.max(0, (avgParticipantScore - 60) * 0.3); // Bonus progressif
-                }
-              }
-            }
+        // PRIORITÉ 2: Vérifier le nombre de participants (si plusieurs noms dans le boat)
+        if (boatNames.length > 1 && crew.crew_participants.length > 1) {
+          // Si on a plusieurs noms et plusieurs participants, vérifier qu'on peut tous les matcher
+          if (nameMatches >= Math.min(boatNames.length, crew.crew_participants.length)) {
+            score += 10; // Bonus si tous les participants matchent
           }
         }
 
         // PRIORITÉ 3: Affiliation (code club) - bonus si le nom matche déjà
-        if (boat.affiliation && boat.affiliation.trim() && (perfectMatch || score >= 40)) {
-          totalCriteria++;
+        if (boat.affiliation && boat.affiliation.trim() && perfectMatch) {
           const boatAffiliation = normalizeName(boat.affiliation);
           const crewClubCode = normalizeName(crew.club_code || "");
           
           if (boatAffiliation === crewClubCode) {
-            score += 20; // Bonus si club correspond
-            criteriaMatched++;
-          } else if (crewClubCode && (crewClubCode.includes(boatAffiliation) || boatAffiliation.includes(crewClubCode))) {
-            score += 10;
-          }
-        }
-
-        // PRIORITÉ 4: Class name (catégorie) - bonus si le nom matche déjà
-        if (boat.class_name && boat.class_name.trim() && (perfectMatch || score >= 40)) {
-          totalCriteria++;
-          const boatCategory = normalizeName(boat.class_name);
-          const crewCategoryLabel = normalizeName(crew.category?.label || "");
-          const crewCategoryCode = normalizeName(crew.category?.code || "");
-          
-          if (
-            boatCategory === crewCategoryLabel ||
-            boatCategory === crewCategoryCode ||
-            (crewCategoryLabel && crewCategoryLabel.includes(boatCategory)) ||
-            (crewCategoryCode && crewCategoryCode.includes(boatCategory))
-          ) {
-            score += 15; // Bonus si catégorie correspond
+            score += 10; // Bonus si club correspond
             criteriaMatched++;
           }
         }
 
         // Bonus si correspondance parfaite (nom exact)
         if (perfectMatch) {
-          score += 10;
-        }
-
-        // Bonus si plusieurs critères correspondent
-        if (criteriaMatched >= 2 && score >= 40) {
-          score += 5;
+          score = Math.min(score + 5, 100);
         }
 
         return Math.min(Math.round(score), 100);
