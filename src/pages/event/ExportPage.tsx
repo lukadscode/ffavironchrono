@@ -1174,6 +1174,8 @@ export default function ExportPage() {
               const indoorData = indoorRes.data.data;
               
               if (indoorData && indoorData.participants && indoorData.participants.length > 0) {
+                // Les résultats indoor sont déjà triés par place globalement (pas par catégorie)
+                // participant.place est le classement global de la série
                 indoorData.participants.forEach((participant: any) => {
                   const raceCrew = race.race_crews?.find((rc: any) => rc.crew_id === participant.crew_id);
                   if (raceCrew) {
@@ -1185,7 +1187,7 @@ export default function ExportPage() {
                       category_id: raceCrew.crew?.category?.id || "",
                       category_label: raceCrew.crew?.category?.label || "",
                       category_code: raceCrew.crew?.category?.code || "",
-                      place: participant.place || null,
+                      place: participant.place || null, // Place globale de la série (pas par catégorie)
                       time_display: participant.time_display || "",
                       time_ms: participant.time_ms || null,
                       distance: participant.distance || "",
@@ -1236,19 +1238,21 @@ export default function ExportPage() {
                   }
                 });
 
-                // Calculer les positions
+                // Calculer les positions GLOBALES de la série (tous les équipages, pas par catégorie)
+                // Trier tous les équipages de la course par temps
                 const allCrewTimings = Array.from(timingsByCrew.entries())
                   .map(([cid, timings]) => {
                     const finish = timings.find((t: any) => t.timing_point_id === lastTimingPoint.id);
                     return { crew_id: cid, time: finish?.relative_time_ms || null };
                   })
                   .filter((r) => r.time !== null)
-                  .sort((a, b) => (a.time || 0) - (b.time || 0));
+                  .sort((a, b) => (a.time || 0) - (b.time || 0)); // Tri global par temps
 
-                // Créer les résultats
+                // Créer les résultats avec classement global
                 race.race_crews?.forEach((rc) => {
                   const crewTimings = timingsByCrew.get(rc.crew_id) || [];
                   const finishTiming = crewTimings.find((t: any) => t.timing_point_id === lastTimingPoint.id);
+                  // Position globale dans la série (pas par catégorie)
                   const position = finishTiming?.relative_time_ms !== null && finishTiming?.relative_time_ms !== undefined
                     ? allCrewTimings.findIndex((r) => r.crew_id === rc.crew_id) + 1
                     : null;
@@ -1412,10 +1416,8 @@ export default function ExportPage() {
             doc.text(categoryLabel, 10, yPosition);
             yPosition += 5;
 
-            // Tableau des résultats
+            // Tableau des résultats (Place en premier, sans Course et Nom Course)
             const tableData = results.map((r: any) => [
-              r.race_number?.toString() || "-",
-              r.race_name || "",
               r.place?.toString() || "-",
               r.lane.toString(),
               r.club_name || "",
@@ -1425,7 +1427,7 @@ export default function ExportPage() {
 
             autoTable(doc, {
               startY: yPosition,
-              head: [["Course", "Nom Course", "Place", "C", "Club", "Code", "Temps"]],
+              head: [["Place", "C", "Club", "Code", "Temps"]],
               body: tableData,
               styles: { fontSize: 7, cellPadding: 1 },
               headStyles: { fillColor: [66, 139, 202], textColor: 255, fontStyle: "bold" },
