@@ -854,11 +854,19 @@ export default function RacePhaseDetailPage() {
     );
   }
 
+  // Détecter s'il y a des relais dans les courses
+  const hasRelays = useMemo(() => {
+    return races.some(race => race.distance?.is_relay === true);
+  }, [races]);
+
+  // Ajuster la largeur de la colonne de gauche selon le type de courses
+  const leftColumnWidth = hasRelays ? "w-full md:w-64" : "w-full md:w-1/3";
+
   return (
     <DndContext onDragStart={onDragStart} onDragEnd={onDragEnd}>
       <div className="p-4 flex flex-col md:flex-row gap-4 md:gap-6">
         {/* Colonne gauche */}
-        <div className="w-full md:w-1/3 space-y-4 min-w-0">
+        <div className={`${leftColumnWidth} space-y-4 min-w-0 flex-shrink-0`}>
           {previousPhase && (
             <PhaseResultsPanel
               phaseId={previousPhase.id}
@@ -897,7 +905,7 @@ export default function RacePhaseDetailPage() {
         </div>
 
         {/* Colonne droite */}
-        <Card className="flex-1 min-w-0">
+        <Card className={`${hasRelays ? "flex-1" : "flex-1"} min-w-0`}>
           <CardHeader className="flex flex-col gap-4">
             <div className="flex justify-between items-center gap-3">
               <CardTitle>Courses de la phase</CardTitle>
