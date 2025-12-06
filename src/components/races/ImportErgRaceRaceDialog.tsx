@@ -399,53 +399,133 @@ export default function ImportErgRaceRaceDialog({
 
       // Fonction pour calculer le score de correspondance entre un boat ErgRace et un crew
       const calculateMatchScore = (boat: any, crew: Crew): number => {
-        if (!boat.participants || boat.participants.length === 0) {
-          return 0;
-        }
+        let score = 0;
+        let criteriaMatched = 0;
+        let totalCriteria = 0;
 
-        if (!crew.crew_participants || crew.crew_participants.length === 0) {
-          return 0;
-        }
-
-        // Si le nombre de participants ne correspond pas, score faible
-        if (boat.participants.length !== crew.crew_participants.length) {
-          return 0;
-        }
-
-        // Comparer chaque participant
-        const boatParticipants = boat.participants.map((p: any) => parseErgRaceName(p.name));
-        const crewParticipants = crew.crew_participants
-          .sort((a, b) => a.seat_position - b.seat_position)
-          .map((cp) => ({
-            lastName: cp.participant.last_name,
-            firstName: cp.participant.first_name,
-          }));
-
-        // Essayer toutes les combinaisons possibles (car l'ordre peut être différent)
-        let bestScore = 0;
-
-        // Si même nombre, essayer de matcher chaque participant
-        const scores: number[] = [];
-        for (let i = 0; i < boatParticipants.length; i++) {
-          let bestParticipantScore = 0;
-          for (const crewPart of crewParticipants) {
-            const ergraceFullName = `${boatParticipants[i].lastName}, ${boatParticipants[i].firstName}`;
-            const score = compareParticipants(
-              ergraceFullName,
-              crewPart.lastName,
-              crewPart.firstName
-            );
-            bestParticipantScore = Math.max(bestParticipantScore, score);
+        // Critère 1: Nom du boat vs nom(s) des participants
+        if (boat.name && boat.name.trim()) {
+          totalCriteria++;
+          const boatName = normalizeName(boat.name);
+          
+          // Pour les courses individuelles, comparer avec le nom de famille du participant
+          if (crew.crew_participants && crew.crew_participants.length > 0) {
+            const crewParticipant = crew.crew_participants[0]; // Premier participant pour course individuelle
+            const crewLastName = normalizeName(crewParticipant.participant.last_name);
+            
+            if (boatName === crewLastName) {
+              score += 50;
+              criteriaMatched++;
+            } else if (crewLastName.includes(boatName) || boatName.includes(crewLastName)) {
+              score += 30;
+            }
           }
-          scores.push(bestParticipantScore);
+          
+          // Vérifier aussi dans tous les participants pour les équipages
+          if (crew.crew_participants && crew.crew_participants.length > 1) {
+            const hasMatch = crew.crew_participants.some((cp) => {
+              const lastName = normalizeName(cp.participant.last_name);
+              return lastName === boatName || lastName.includes(boatName) || boatName.includes(lastName);
+            });
+            if (hasMatch) {
+              score = Math.max(score, 40);
+            }
+          }
         }
 
-        // Calculer la moyenne des scores
-        if (scores.length > 0) {
-          bestScore = scores.reduce((sum, score) => sum + score, 0) / scores.length;
+        // Critère 2: Affiliation (code club) vs code club du crew
+        if (boat.affiliation && boat.affiliation.trim()) {
+          totalCriteria++;
+          const boatAffiliation = normalizeName(boat.affiliation);
+          const crewClubCode = normalizeName(crew.club_code || "");
+          
+          if (boatAffiliation === crewClubCode) {
+            score += 30;
+            criteriaMatched++;
+          } else if (crewClubCode && (crewClubCode.includes(boatAffiliation) || boatAffiliation.includes(crewClubCode))) {
+            score += 15;
+          }
         }
 
-        return Math.round(bestScore);
+        // Critère 3: Class name (catégorie) vs catégorie du crew
+        if (boat.class_name && boat.class_name.trim()) {
+          totalCriteria++;
+          const boatCategory = normalizeName(boat.class_name);
+          const crewCategoryLabel = normalizeName(crew.category?.label || "");
+          const crewCategoryCode = normalizeName(crew.category?.code || "");
+          
+          if (
+            boatCategory === crewCategoryLabel ||
+            boatCategory === crewCategoryCode ||
+            (crewCategoryLabel && crewCategoryLabel.includes(boatCategory)) ||
+            (crewCategoryCode && crewCategoryCode.includes(boatCategory))
+          ) {
+            score += 20;
+            criteriaMatched++;
+          }
+        }
+
+        // Critère 4: Participants (si disponibles)
+        if (boat.participants && boat.participants.length > 0 && boat.participants.some((p: any) => p.name && p.name.trim())) {
+          totalCriteria++;
+          if (!crew.crew_participants || crew.crew_participants.length === 0) {
+            return 0; // Pas de participants dans le crew, score faible
+          }
+
+          // Si le nombre de participants ne correspond pas, score faible
+          if (boat.participants.length !== crew.crew_participants.length) {
+            return Math.min(score, 40); // Score réduit si nombre différent
+          }
+
+          // Comparer chaque participant
+          const boatParticipants = boat.participants
+            .filter((p: any) => p.name && p.name.trim())
+            .map((p: any) => parseErgRaceName(p.name));
+          
+          if (boatParticipants.length === 0) {
+            return score; // Pas de noms dans les participants, utiliser les autres critères
+          }
+
+          const crewParticipants = crew.crew_participants
+            .sort((a, b) => a.seat_position - b.seat_position)
+            .map((cp) => ({
+              lastName: cp.participant.last_name,
+              firstName: cp.participant.first_name,
+            }));
+
+          const scores: number[] = [];
+          for (let i = 0; i < boatParticipants.length; i++) {
+            let bestParticipantScore = 0;
+            for (const crewPart of crewParticipants) {
+              const ergraceFullName = `${boatParticipants[i].lastName}, ${boatParticipants[i].firstName}`;
+              const participantScore = compareParticipants(
+                ergraceFullName,
+                crewPart.lastName,
+                crewPart.firstName
+              );
+              bestParticipantScore = Math.max(bestParticipantScore, participantScore);
+            }
+            scores.push(bestParticipantScore);
+          }
+
+          if (scores.length > 0) {
+            const avgParticipantScore = scores.reduce((sum, s) => sum + s, 0) / scores.length;
+            score += (avgParticipantScore * 0.5); // Poids de 50% pour les participants
+            if (avgParticipantScore >= 80) {
+              criteriaMatched++;
+            }
+          }
+        }
+
+        // Bonus si plusieurs critères correspondent
+        if (criteriaMatched >= 2) {
+          score += 10;
+        }
+        if (criteriaMatched === totalCriteria && totalCriteria > 0) {
+          score += 20; // Bonus parfait match
+        }
+
+        return Math.min(Math.round(score), 100);
       };
 
       // Initialiser les mappings des équipages
@@ -454,27 +534,55 @@ export default function ImportErgRaceRaceDialog({
         selectedCrewId: null,
       }));
 
+      // Détecter les catégories depuis les boats pour proposer une catégorie pour la course
+      const detectedCategories = new Map<string, number>();
+      if (parsed.race_definition.boats) {
+        parsed.race_definition.boats.forEach((boat: any) => {
+          if (boat.class_name && boat.class_name.trim()) {
+            const catName = boat.class_name.trim();
+            detectedCategories.set(catName, (detectedCategories.get(catName) || 0) + 1);
+          }
+        });
+      }
+      
+      // Si une seule catégorie est majoritaire, la proposer
+      if (detectedCategories.size > 0) {
+        const sortedCategories = Array.from(detectedCategories.entries()).sort((a, b) => b[1] - a[1]);
+        const mostCommonCategory = sortedCategories[0];
+        if (mostCommonCategory[1] >= parsed.race_definition.boats.length * 0.5) {
+          // Chercher une catégorie correspondante
+          const matchingCategory = categories.find(
+            (c) => 
+              normalizeName(c.label) === normalizeName(mostCommonCategory[0]) ||
+              normalizeName(c.code) === normalizeName(mostCommonCategory[0]) ||
+              normalizeName(c.label).includes(normalizeName(mostCommonCategory[0])) ||
+              normalizeName(mostCommonCategory[0]).includes(normalizeName(c.label))
+          );
+          if (matchingCategory && !selectedCategoryId) {
+            setSelectedCategoryId(matchingCategory.id);
+          }
+        }
+      }
+
       // Essayer de faire un auto-matching amélioré
       initialMappings.forEach((mapping) => {
         const boat = mapping.ergraceBoat;
 
-        if (boat.participants && boat.participants.length > 0) {
-          // Calculer le score pour chaque équipage disponible
-          const crewScores = crewsToUse.map((crew) => ({
-            crew,
-            score: calculateMatchScore(boat, crew),
-          }));
+        // Calculer le score pour chaque équipage disponible
+        const crewScores = crewsToUse.map((crew) => ({
+          crew,
+          score: calculateMatchScore(boat, crew),
+        }));
 
-          // Trier par score décroissant
-          crewScores.sort((a, b) => b.score - a.score);
+        // Trier par score décroissant
+        crewScores.sort((a, b) => b.score - a.score);
 
-          // Prendre le meilleur match si le score est >= 70
-          const bestMatch = crewScores[0];
-          if (bestMatch && bestMatch.score >= 70) {
-            mapping.selectedCrewId = bestMatch.crew.id;
-            mapping.crew = bestMatch.crew;
-            mapping.matchScore = bestMatch.score;
-          }
+        // Prendre le meilleur match si le score est >= 50 (seuil abaissé car on a plus de critères)
+        const bestMatch = crewScores[0];
+        if (bestMatch && bestMatch.score >= 50) {
+          mapping.selectedCrewId = bestMatch.crew.id;
+          mapping.crew = bestMatch.crew;
+          mapping.matchScore = bestMatch.score;
         }
       });
 
@@ -851,13 +959,14 @@ export default function ImportErgRaceRaceDialog({
 
         {step === "map-crews" && rac2Data && (
           <div className="space-y-4">
-            {boatMappings.some((m) => m.matchScore !== undefined && m.matchScore >= 70) && (
+            {boatMappings.some((m) => m.matchScore !== undefined && m.matchScore >= 50) && (
               <Alert>
                 <CheckCircle2 className="h-4 w-4" />
                 <AlertDescription>
                   <strong>Détection automatique activée :</strong> Certains équipages ont été automatiquement
-                  détectés en comparant les noms des participants. Vérifiez que les correspondances sont
-                  correctes avant de valider l'import.
+                  détectés en comparant le nom du boat, le code club (affiliation), la catégorie et les noms des participants.
+                  Vous pouvez supprimer une suggestion en cliquant sur "Supprimer la suggestion" ou supprimer une ligne complète avec l'icône X.
+                  Vérifiez que les correspondances sont correctes avant de valider l'import.
                 </AlertDescription>
               </Alert>
             )}
@@ -877,36 +986,83 @@ export default function ImportErgRaceRaceDialog({
                   <Card key={index} className={mapping.selectedCrewId ? "border-green-200 bg-green-50/30" : ""}>
                     <CardHeader>
                       <div className="flex items-center justify-between">
-                        <CardTitle className="text-sm">
-                          Couloir {mapping.ergraceBoat.lane_number} - {mapping.ergraceBoat.name}
-                        </CardTitle>
-                        {mapping.matchScore !== undefined && mapping.matchScore >= 70 && (
-                          <span className="text-xs px-2 py-1 rounded-full bg-green-100 text-green-700 font-medium">
-                            Auto-détecté ({mapping.matchScore}%)
-                          </span>
-                        )}
+                        <div className="flex items-center gap-2">
+                          <CardTitle className="text-sm">
+                            Couloir {mapping.ergraceBoat.lane_number} - {mapping.ergraceBoat.name || "Sans nom"}
+                          </CardTitle>
+                          {mapping.ergraceBoat.affiliation && (
+                            <span className="text-xs px-2 py-1 rounded bg-blue-100 text-blue-700 font-medium">
+                              {mapping.ergraceBoat.affiliation}
+                            </span>
+                          )}
+                        </div>
+                        <div className="flex items-center gap-2">
+                          {mapping.matchScore !== undefined && mapping.matchScore >= 50 && (
+                            <span className="text-xs px-2 py-1 rounded-full bg-green-100 text-green-700 font-medium">
+                              Auto-détecté ({mapping.matchScore}%)
+                            </span>
+                          )}
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => {
+                              const updated = [...boatMappings];
+                              updated.splice(index, 1);
+                              setBoatMappings(updated);
+                            }}
+                            className="h-7 w-7 p-0 text-red-600 hover:text-red-700 hover:bg-red-50"
+                          >
+                            <X className="h-4 w-4" />
+                          </Button>
+                        </div>
                       </div>
                       {mapping.ergraceBoat.class_name && (
                         <p className="text-xs text-gray-500 mt-1">
                           Catégorie ErgRace: {mapping.ergraceBoat.class_name}
                         </p>
                       )}
-                      {mapping.ergraceBoat.participants && mapping.ergraceBoat.participants.length > 0 && (
+                      {mapping.ergraceBoat.participants && mapping.ergraceBoat.participants.length > 0 && mapping.ergraceBoat.participants.some((p: any) => p.name && p.name.trim()) && (
                         <div className="mt-2">
                           <p className="text-xs font-medium text-gray-700 mb-1">Participants ErgRace:</p>
                           <div className="text-xs text-gray-600 space-y-0.5">
-                            {mapping.ergraceBoat.participants.map((p: any, pIndex: number) => (
-                              <div key={pIndex} className="flex items-center gap-2">
-                                <span className="w-2 h-2 rounded-full bg-blue-400"></span>
-                                <span>{p.name}</span>
-                              </div>
-                            ))}
+                            {mapping.ergraceBoat.participants
+                              .filter((p: any) => p.name && p.name.trim())
+                              .map((p: any, pIndex: number) => (
+                                <div key={pIndex} className="flex items-center gap-2">
+                                  <span className="w-2 h-2 rounded-full bg-blue-400"></span>
+                                  <span>{p.name}</span>
+                                </div>
+                              ))}
                           </div>
                         </div>
                       )}
+                      {(!mapping.ergraceBoat.participants || mapping.ergraceBoat.participants.length === 0 || !mapping.ergraceBoat.participants.some((p: any) => p.name && p.name.trim())) && (
+                        <p className="text-xs text-gray-500 mt-1">
+                          Nom boat: {mapping.ergraceBoat.name || "N/A"}
+                          {mapping.ergraceBoat.affiliation && ` • Club: ${mapping.ergraceBoat.affiliation}`}
+                        </p>
+                      )}
                     </CardHeader>
                     <CardContent>
-                      <Label>Associer à un équipage existant *</Label>
+                      <div className="flex items-center justify-between mb-2">
+                        <Label>Associer à un équipage existant *</Label>
+                        {mapping.selectedCrewId && (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => {
+                              const updated = [...boatMappings];
+                              updated[index].selectedCrewId = null;
+                              updated[index].crew = undefined;
+                              updated[index].matchScore = undefined;
+                              setBoatMappings(updated);
+                            }}
+                            className="h-6 text-xs text-red-600 hover:text-red-700 hover:bg-red-50"
+                          >
+                            Supprimer la suggestion
+                          </Button>
+                        )}
+                      </div>
                       <Select
                         value={mapping.selectedCrewId || ""}
                         onValueChange={(value) => {
