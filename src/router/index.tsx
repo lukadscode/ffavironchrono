@@ -35,6 +35,7 @@ import CategoriesPage from "@/pages/races/CategoriesPage";
 import ArbitresPage from "@/pages/event/ArbitresPage";
 import IndoorPage from "@/pages/event/IndoorPage";
 import IndoorRaceDetailPage from "@/pages/event/IndoorRaceDetailPage";
+import ImportErgRaceRacePage from "@/pages/event/ImportErgRaceRacePage";
 import ExportPage from "@/pages/event/ExportPage";
 import EventUpdatePage from "@/pages/event/EventUpdatePage";
 import EventsList from "@/pages/public/EventsList";
@@ -291,6 +292,14 @@ const router = createBrowserRouter([
         element: (
           <EventProtectedRoute allowedRoles={["organiser", "timing"]}>
             <IndoorRaceDetailPage />
+          </EventProtectedRoute>
+        )
+      },
+      { 
+        path: "indoor/import-ergrace", 
+        element: (
+          <EventProtectedRoute allowedRoles={["organiser"]}>
+            <ImportErgRaceRacePage />
           </EventProtectedRoute>
         )
       },

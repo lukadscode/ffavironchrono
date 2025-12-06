@@ -7,7 +7,6 @@ import { useToast } from "@/hooks/use-toast";
 import { Download, Loader2, Upload } from "lucide-react";
 import dayjs from "dayjs";
 import { initializeClubsCache, getClubShortCode } from "@/api/clubs";
-import ImportErgRaceRaceDialog from "@/components/races/ImportErgRaceRaceDialog";
 import { useAuth } from "@/context/AuthContext";
 
 type Race = {
@@ -70,7 +69,6 @@ export default function IndoorPage() {
   const [races, setRaces] = useState<Race[]>([]);
   const [loading, setLoading] = useState(true);
   const [isDownloadingAll, setIsDownloadingAll] = useState(false);
-  const [importDialogOpen, setImportDialogOpen] = useState(false);
 
   // Vérifier si l'utilisateur est admin ou superadmin
   const isAdmin = user?.role === "admin" || user?.role === "superadmin";
@@ -394,7 +392,7 @@ export default function IndoorPage() {
         <div className="flex gap-2">
           {isAdmin && (
             <Button
-              onClick={() => setImportDialogOpen(true)}
+              onClick={() => navigate(`/event/${eventId}/indoor/import-ergrace`)}
               variant="outline"
               className="bg-green-50 hover:bg-green-100 text-green-700 border-green-300"
             >
@@ -423,16 +421,6 @@ export default function IndoorPage() {
           )}
         </div>
       </div>
-
-      {isAdmin && (
-        <ImportErgRaceRaceDialog
-          open={importDialogOpen}
-          onOpenChange={setImportDialogOpen}
-          onSuccess={() => {
-            fetchRaces();
-          }}
-        />
-      )}
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
         {races.length === 0 ? (
