@@ -1152,20 +1152,47 @@ export default function ExportPage() {
         categories.map((c) => [c.id, c])
       );
 
-      // Enrichir les courses avec leurs équipages et résultats
-      const racesWithResults = await Promise.all(
-        races.map(async (race) => {
-          // Récupérer les race-crews
-          if (!race.race_crews || race.race_crews.length === 0) {
-            try {
-              const raceCrewsRes = await api.get(`/race-crews/${race.id}`);
-              race.race_crews = raceCrewsRes.data.data || [];
-            } catch (err) {
-              race.race_crews = [];
-            }
-          }
+          // Enrichir les courses avec leurs équipages et résultats
+          const racesWithResults = await Promise.all(
+            races.map(async (race) => {
+              // Récupérer les race-crews
+              if (!race.race_crews || race.race_crews.length === 0) {
+                try {
+                  const raceCrewsRes = await api.get(`/race-crews/${race.id}`);
+                  race.race_crews = raceCrewsRes.data.data || [];
+                } catch (err) {
+                  race.race_crews = [];
+                }
+              }
 
-          const results: any[] = [];
+              // Enrichir chaque équipage avec ses participants
+              if (race.race_crews && race.race_crews.length > 0) {
+                race.race_crews = await Promise.all(
+                  race.race_crews.map(async (rc: any) => {
+                    if (!rc.crew?.crew_participants || rc.crew.crew_participants.length === 0) {
+                      try {
+                        const crewDetailRes = await api.get(`/crews/${rc.crew_id}`);
+                        const crewDetail = crewDetailRes.data.data || crewDetailRes.data;
+                        return {
+                          ...rc,
+                          crew: {
+                            ...rc.crew,
+                            crew_participants: crewDetail.crew_participants || 
+                                             crewDetail.CrewParticipants || 
+                                             crewDetail.crewParticipants || 
+                                             [],
+                          },
+                        };
+                      } catch (err) {
+                        return rc;
+                      }
+                    }
+                    return rc;
+                  })
+                );
+              }
+
+              const results: any[] = [];
 
           if (isIndoorEvent) {
             // Récupérer les résultats indoor
@@ -1179,6 +1206,22 @@ export default function ExportPage() {
                 indoorData.participants.forEach((participant: any) => {
                   const raceCrew = race.race_crews?.find((rc: any) => rc.crew_id === participant.crew_id);
                   if (raceCrew) {
+                    // Formater les participants
+                    const participants = raceCrew.crew?.crew_participants || [];
+                    const sortedParticipants = [...participants].sort((a: any, b: any) => {
+                      if (a.is_coxswain && !b.is_coxswain) return 1;
+                      if (!a.is_coxswain && b.is_coxswain) return -1;
+                      return (a.seat_position || 0) - (b.seat_position || 0);
+                    });
+                    const participantNames = sortedParticipants
+                      .map((cp: any) => {
+                        const p = cp.participant;
+                        const name = `${p.last_name.toUpperCase()}, ${p.first_name}`;
+                        const position = cp.is_coxswain ? " (B)" : ` (${cp.seat_position})`;
+                        return `${name}${position}`;
+                      })
+                      .join(" • ");
+
                     results.push({
                       crew_id: participant.crew_id,
                       lane: raceCrew.lane,
@@ -1194,6 +1237,7 @@ export default function ExportPage() {
                       avg_pace: participant.avg_pace || "",
                       spm: participant.spm || "",
                       calories: participant.calories || "",
+                      participants: participantNames,
                     });
                   }
                 });
@@ -1257,6 +1301,22 @@ export default function ExportPage() {
                     ? allCrewTimings.findIndex((r) => r.crew_id === rc.crew_id) + 1
                     : null;
 
+                  // Formater les participants
+                  const participants = rc.crew?.crew_participants || [];
+                  const sortedParticipants = [...participants].sort((a: any, b: any) => {
+                    if (a.is_coxswain && !b.is_coxswain) return 1;
+                    if (!a.is_coxswain && b.is_coxswain) return -1;
+                    return (a.seat_position || 0) - (b.seat_position || 0);
+                  });
+                  const participantNames = sortedParticipants
+                    .map((cp: any) => {
+                      const p = cp.participant;
+                      const name = `${p.last_name.toUpperCase()}, ${p.first_name}`;
+                      const position = cp.is_coxswain ? " (B)" : ` (${cp.seat_position})`;
+                      return `${name}${position}`;
+                    })
+                    .join(" • ");
+
                   results.push({
                     crew_id: rc.crew_id,
                     lane: rc.lane,
@@ -1272,6 +1332,7 @@ export default function ExportPage() {
                     avg_pace: "",
                     spm: "",
                     calories: "",
+                    participants: participantNames,
                   });
                 });
               }
@@ -1349,23 +1410,33 @@ export default function ExportPage() {
               yPosition += 4;
             }
 
-            // Tableau des résultats
+            // Tableau des résultats avec participants
             const tableData = race.results.map((r: any) => [
               r.place?.toString() || "-",
               r.lane.toString(),
               r.club_name || "",
               r.club_code || "",
               r.category_label || "",
+              r.participants || "Aucun participant",
               r.time_display || "-",
             ]);
 
             autoTable(doc, {
               startY: yPosition,
-              head: [["Place", "C", "Club", "Code", "Catégorie", "Temps"]],
+              head: [["Place", "C", "Club", "Code", "Catégorie", "Participants", "Temps"]],
               body: tableData,
-              styles: { fontSize: 8, cellPadding: 1.5 },
+              styles: { fontSize: 7, cellPadding: 1 },
               headStyles: { fillColor: [66, 139, 202], textColor: 255, fontStyle: "bold" },
               margin: { left: 10, right: 10, top: 30 },
+              columnStyles: {
+                0: { cellWidth: 12 }, // Place
+                1: { cellWidth: 10 }, // C
+                2: { cellWidth: 30 }, // Club
+                3: { cellWidth: 15 }, // Code
+                4: { cellWidth: 25 }, // Catégorie
+                5: { cellWidth: 60 }, // Participants
+                6: { cellWidth: 20 }, // Temps
+              },
             });
 
             yPosition = (doc as any).lastAutoTable?.finalY || yPosition + (race.results.length * 5) + 5;
@@ -1416,22 +1487,31 @@ export default function ExportPage() {
             doc.text(categoryLabel, 10, yPosition);
             yPosition += 5;
 
-            // Tableau des résultats (Place en premier, sans Course et Nom Course)
+            // Tableau des résultats (Place en premier, sans Course et Nom Course, avec participants)
             const tableData = results.map((r: any) => [
               r.place?.toString() || "-",
               r.lane.toString(),
               r.club_name || "",
               r.club_code || "",
+              r.participants || "Aucun participant",
               r.time_display || "-",
             ]);
 
             autoTable(doc, {
               startY: yPosition,
-              head: [["Place", "C", "Club", "Code", "Temps"]],
+              head: [["Place", "C", "Club", "Code", "Participants", "Temps"]],
               body: tableData,
               styles: { fontSize: 7, cellPadding: 1 },
               headStyles: { fillColor: [66, 139, 202], textColor: 255, fontStyle: "bold" },
               margin: { left: 10, right: 10, top: 30 },
+              columnStyles: {
+                0: { cellWidth: 12 }, // Place
+                1: { cellWidth: 10 }, // C
+                2: { cellWidth: 30 }, // Club
+                3: { cellWidth: 15 }, // Code
+                4: { cellWidth: 60 }, // Participants
+                5: { cellWidth: 20 }, // Temps
+              },
             });
 
             yPosition = (doc as any).lastAutoTable?.finalY || yPosition + (results.length * 5) + 5;
@@ -1500,6 +1580,7 @@ export default function ExportPage() {
                 "CODE CLUB": r.club_code,
                 "CATÉGORIE": r.category_label,
                 "CODE CATÉGORIE": r.category_code,
+                "PARTICIPANTS": r.participants || "",
                 "TEMPS": r.time_display,
                 "DISTANCE (Indoor)": r.distance || "",
                 "ALLURE (Indoor)": r.avg_pace || "",
@@ -1556,6 +1637,7 @@ export default function ExportPage() {
               "COULOIR": "",
               "CLUB": "",
               "CODE CLUB": "",
+              "PARTICIPANTS": "",
               "TEMPS": "",
               "DISTANCE (Indoor)": "",
               "ALLURE (Indoor)": "",
@@ -1576,6 +1658,7 @@ export default function ExportPage() {
                 "COULOIR": r.lane,
                 "CLUB": r.club_name,
                 "CODE CLUB": r.club_code,
+                "PARTICIPANTS": r.participants || "",
                 "TEMPS": r.time_display,
                 "DISTANCE (Indoor)": r.distance || "",
                 "ALLURE (Indoor)": r.avg_pace || "",
