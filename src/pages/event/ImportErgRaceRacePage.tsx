@@ -616,15 +616,76 @@ export default function ImportErgRaceRacePage() {
       const raceId = raceRes.data.data?.id || raceRes.data.id;
 
       if (race_crews.length > 0) {
-        await Promise.all(
-          race_crews.map((rc) =>
-            api.post("/race-crews", {
+        // Créer les race-crews un par un pour pouvoir identifier celui qui pose problème
+        const errors: Array<{ crew_id: string; lane: number; error: any }> = [];
+        
+        for (const rc of race_crews) {
+          try {
+            await api.post("/race-crews", {
               race_id: raceId,
               crew_id: rc.crew_id,
               lane: rc.lane,
-            })
-          )
-        );
+            });
+          } catch (err: any) {
+            errors.push({
+              crew_id: rc.crew_id,
+              lane: rc.lane,
+              error: err,
+            });
+          }
+        }
+
+        // Si des erreurs se sont produites, les afficher avec les détails
+        if (errors.length > 0) {
+          const errorDetails = errors.map(({ crew_id, lane, error }) => {
+            // Trouver l'équipage concerné dans boatMappings
+            const mapping = boatMappings.find((m) => m.selectedCrewId === crew_id);
+            const crew = mapping?.crew || availableCrews.find((c) => c.id === crew_id);
+            const errorMessage = error?.response?.data?.message || error?.message || "Erreur inconnue";
+            
+            return { crew, mapping, lane, errorMessage };
+          });
+
+          toast({
+            title: "Erreur lors de l'import",
+            description: (
+              <div className="space-y-3 mt-2">
+                <p className="font-semibold text-sm">Équipage(s) déjà assigné(s) :</p>
+                <div className="space-y-2 text-xs">
+                  {errorDetails.map(({ crew, mapping, lane, errorMessage }, idx) => (
+                    <div key={idx} className="p-3 bg-red-50 border border-red-200 rounded-md">
+                      {crew ? (
+                        <>
+                          <p className="font-semibold text-red-900 mb-1.5">Équipage : {getCrewDisplayName(crew)}</p>
+                          <div className="space-y-1 text-red-800">
+                            {crew.club_name && (
+                              <p><span className="font-medium">Club:</span> {crew.club_name} {crew.club_code && `(${crew.club_code})`}</p>
+                            )}
+                            {crew.category && (
+                              <p><span className="font-medium">Catégorie:</span> {crew.category.label} ({crew.category.code})</p>
+                            )}
+                            {mapping && (
+                              <p><span className="font-medium">Couloir ErgRace:</span> {mapping.ergraceBoat.lane_number}</p>
+                            )}
+                            <p><span className="font-medium">Couloir demandé:</span> {lane}</p>
+                            <p className="mt-2 pt-2 border-t border-red-300 text-red-700 font-medium">{errorMessage}</p>
+                          </div>
+                        </>
+                      ) : (
+                        <p className="text-red-800">Équipage ID: {crew_id} - Couloir: {lane} - {errorMessage}</p>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ),
+            variant: "destructive",
+            duration: 15000, // Afficher plus longtemps pour permettre la lecture
+          });
+          
+          // Ne pas naviguer, laisser l'utilisateur corriger
+          return;
+        }
       }
 
       toast({
@@ -635,10 +696,47 @@ export default function ImportErgRaceRacePage() {
       navigate(`/event/${eventId}/indoor`);
     } catch (err: any) {
       console.error("Erreur import course", err);
+      
+      // Si l'erreur contient des informations sur l'équipage
+      let errorDescription = err?.response?.data?.message || err?.message || "Une erreur est survenue";
+      
+      // Essayer d'extraire l'ID de l'équipage depuis le message d'erreur
+      const crewIdMatch = errorDescription.match(/crew[_\s]?id[:\s]+([a-f0-9-]+)/i) || 
+                        errorDescription.match(/équipage[:\s]+([a-f0-9-]+)/i);
+      
+      if (crewIdMatch && crewIdMatch[1]) {
+        const problematicCrewId = crewIdMatch[1];
+        const mapping = boatMappings.find((m) => m.selectedCrewId === problematicCrewId);
+        const crew = mapping?.crew || availableCrews.find((c) => c.id === problematicCrewId);
+        
+        if (crew) {
+          const crewName = getCrewDisplayName(crew);
+          errorDescription = (
+            <div className="space-y-2">
+              <p className="font-semibold">Équipage déjà assigné :</p>
+              <div className="p-2 bg-red-50 border border-red-200 rounded text-sm text-red-800">
+                <p><strong>Équipage:</strong> {crewName}</p>
+                {crew.club_name && (
+                  <p><strong>Club:</strong> {crew.club_name} {crew.club_code && `(${crew.club_code})`}</p>
+                )}
+                {crew.category && (
+                  <p><strong>Catégorie:</strong> {crew.category.label} ({crew.category.code})</p>
+                )}
+                {mapping && (
+                  <p><strong>Couloir ErgRace:</strong> {mapping.ergraceBoat.lane_number}</p>
+                )}
+                <p className="mt-2 text-xs text-red-600">{err?.response?.data?.message || err?.message}</p>
+              </div>
+            </div>
+          );
+        }
+      }
+      
       toast({
         title: "Erreur lors de l'import",
-        description: err?.response?.data?.message || err?.message || "Une erreur est survenue",
+        description: errorDescription,
         variant: "destructive",
+        duration: 10000,
       });
     } finally {
       setImporting(false);
