@@ -258,18 +258,8 @@ export default function ImportErgRaceRaceDialog({
         }
       }
 
-      // Essayer de détecter la catégorie depuis les boats
-      if (parsed.race_definition.boats && parsed.race_definition.boats.length > 0) {
-        const firstBoat = parsed.race_definition.boats[0];
-        if (firstBoat.class_name) {
-          const matchingCategory = categories.find(
-            (c) => c.label === firstBoat.class_name || c.code === firstBoat.class_name
-          );
-          if (matchingCategory) {
-            setSelectedCategoryId(matchingCategory.id);
-          }
-        }
-      }
+      // Les catégories seront déterminées automatiquement par les équipages matchés
+      // Pas besoin de pré-définir une catégorie
 
       // Attendre que les équipages soient chargés avant de faire le matching
       // Si les équipages ne sont pas encore chargés, on les charge maintenant
