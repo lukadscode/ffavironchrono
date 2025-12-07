@@ -79,6 +79,7 @@ export default function ExportPage() {
   const [exportingGlobal, setExportingGlobal] = useState(false);
   const [exportingStartlist, setExportingStartlist] = useState(false);
   const [exportingResults, setExportingResults] = useState<{ byRace?: boolean; byCategory?: boolean; format?: "excel" | "csv" | "pdf" }>({});
+  const [exportingParticipants, setExportingParticipants] = useState<"excel" | "csv" | "pdf" | false>(false);
   const [event, setEvent] = useState<Event | null>(null);
 
   useEffect(() => {
@@ -1715,6 +1716,253 @@ export default function ExportPage() {
     }
   };
 
+  // Export des participants
+  const exportParticipants = async (format: "excel" | "csv" | "pdf") => {
+    if (!eventId) return;
+
+    setExportingParticipants(format);
+    try {
+      // Récupérer tous les participants de l'événement
+      const participantsRes = await api.get(`/participants/event/${eventId}`);
+      const participantsData = participantsRes.data.data || [];
+      
+      // Filtrer les participants qui ont au moins un équipage
+      const participants = participantsData.filter((p: any) => {
+        const crewParticipants = p.crew_participants || p.CrewParticipants || [];
+        return crewParticipants.length > 0;
+      });
+
+      // Préparer les données pour l'export
+      const exportData = participants.map((participant: any) => {
+        const crewParticipants = participant.crew_participants || participant.CrewParticipants || [];
+        const crews = crewParticipants.map((cp: any) => {
+          const crew = cp.crew || cp.Crew;
+          return {
+            club_name: crew?.club_name || "",
+            club_code: crew?.club_code || "",
+            category_code: crew?.category?.code || "",
+            category_label: crew?.category?.label || "",
+            seat_position: cp.seat_position || "",
+            is_coxswain: cp.is_coxswain || false,
+          };
+        });
+
+        // Créer une chaîne avec tous les équipages
+        const crewsInfo = crews.map((c: any) => {
+          const position = c.is_coxswain ? "Barreur" : `Place ${c.seat_position}`;
+          return `${c.club_name} (${c.category_code}) - ${position}`;
+        }).join("; ");
+
+        return {
+          "Nom": participant.last_name || "",
+          "Prénom": participant.first_name || "",
+          "Nom complet": `${participant.last_name || ""} ${participant.first_name || ""}`,
+          "Club": participant.club_name || "",
+          "Licence": participant.license_number || "",
+          "Genre": participant.gender || "",
+          "Équipages": crewsInfo,
+          "Nombre d'équipages": crews.length,
+        };
+      });
+
+      if (format === "excel") {
+        const ws = XLSX.utils.json_to_sheet(exportData);
+        const wb = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(wb, ws, "Participants");
+        
+        const fileName = `participants_${event?.name || "event"}_${dayjs().format("YYYY-MM-DD")}.xlsx`;
+        XLSX.writeFile(wb, fileName);
+        
+        toast({
+          title: "Export Excel réussi",
+          description: "Fichier Excel téléchargé",
+        });
+      } else if (format === "csv") {
+        const ws = XLSX.utils.json_to_sheet(exportData);
+        const csv = XLSX.utils.sheet_to_csv(ws);
+        const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+        const link = document.createElement("a");
+        const url = URL.createObjectURL(blob);
+        link.setAttribute("href", url);
+        link.setAttribute("download", `participants_${event?.name || "event"}_${dayjs().format("YYYY-MM-DD")}.csv`);
+        link.style.visibility = "hidden";
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        
+        toast({
+          title: "Export CSV réussi",
+          description: "Fichier CSV téléchargé",
+        });
+      } else if (format === "pdf") {
+        // Fonction pour charger le logo
+        const loadLogo = async (): Promise<string | null> => {
+          const logoUrl = "https://www.ffaviron.fr/wp-content/uploads/2025/06/FFAviron-nouveau-site.png";
+          
+          try {
+            const response = await fetch(logoUrl, {
+              mode: "cors",
+              cache: "no-cache",
+            });
+            if (response.ok) {
+              const blob = await response.blob();
+              return new Promise((resolve) => {
+                const reader = new FileReader();
+                reader.onloadend = () => {
+                  const base64data = reader.result as string;
+                  if (base64data && base64data.startsWith("data:image")) {
+                    resolve(base64data);
+                  } else {
+                    resolve(null);
+                  }
+                };
+                reader.onerror = () => resolve(null);
+                reader.readAsDataURL(blob);
+              });
+            }
+          } catch (err) {
+            console.warn("Erreur fetch logo:", err);
+          }
+
+          return new Promise((resolve) => {
+            const img = new Image();
+            img.crossOrigin = "anonymous";
+            img.onload = () => {
+              try {
+                const canvas = document.createElement("canvas");
+                canvas.width = img.width;
+                canvas.height = img.height;
+                const ctx = canvas.getContext("2d");
+                if (ctx) {
+                  ctx.drawImage(img, 0, 0);
+                  const dataUrl = canvas.toDataURL("image/png");
+                  if (dataUrl && dataUrl.startsWith("data:image")) {
+                    resolve(dataUrl);
+                  } else {
+                    resolve(null);
+                  }
+                } else {
+                  resolve(null);
+                }
+              } catch (err) {
+                console.warn("Erreur conversion logo", err);
+                resolve(null);
+              }
+            };
+            img.onerror = () => resolve(null);
+            img.src = logoUrl;
+          });
+        };
+
+        const logoDataUrl = await loadLogo();
+
+        const doc = new jsPDF({
+          orientation: "portrait",
+          unit: "mm",
+          format: "a4",
+        });
+
+        // Fonction pour ajouter l'en-tête
+        const addHeader = (logoUrl: string | null) => {
+          if (logoUrl && logoUrl.startsWith("data:image")) {
+            try {
+              const format = logoUrl.match(/data:image\/(\w+);/)?.[1] || "PNG";
+              doc.addImage(logoUrl, format.toUpperCase() as "PNG" | "JPEG", 10, 5, 35, 12);
+            } catch (err) {
+              console.warn("Erreur ajout logo au PDF:", err);
+            }
+          }
+
+          doc.setFontSize(15);
+          doc.setFont("helvetica", "bold");
+          doc.text("LISTE DES PARTICIPANTS", 105, 12, { align: "center" });
+          
+          if (event) {
+            doc.setFontSize(10);
+            doc.setFont("helvetica", "normal");
+            doc.text(event.name, 105, 17, { align: "center" });
+            if (event.location) {
+              doc.setFontSize(8);
+              doc.text(event.location, 105, 21, { align: "center" });
+            }
+            if (event.start_date) {
+              const startDate = dayjs(event.start_date);
+              const endDate = event.end_date ? dayjs(event.end_date) : null;
+              const dateStr = endDate && !startDate.isSame(endDate, "day")
+                ? `${startDate.format("DD/MM/YYYY")} - ${endDate.format("DD/MM/YYYY")}`
+                : startDate.format("DD/MM/YYYY");
+              doc.text(dateStr, 105, 24, { align: "center" });
+            }
+          }
+
+          doc.setDrawColor(200, 200, 200);
+          doc.setLineWidth(0.3);
+          doc.line(10, 27, 200, 27);
+        };
+
+        addHeader(logoDataUrl);
+
+        let yPosition = 32;
+
+        // Préparer les données pour le tableau
+        const tableData = exportData.map((p: any) => [
+          p["Nom"],
+          p["Prénom"],
+          p["Club"],
+          p["Licence"] || "-",
+          p["Genre"] || "-",
+          p["Nombre d'équipages"].toString(),
+        ]);
+
+        // Tableau des participants
+        autoTable(doc, {
+          startY: yPosition,
+          head: [["Nom", "Prénom", "Club", "Licence", "Genre", "Nb Équipages"]],
+          body: tableData,
+          styles: {
+            fontSize: 8,
+            cellPadding: 2,
+          },
+          headStyles: {
+            fillColor: [66, 139, 202],
+            textColor: 255,
+            fontStyle: "bold",
+            fontSize: 9,
+          },
+          alternateRowStyles: {
+            fillColor: [245, 245, 245],
+          },
+          columnStyles: {
+            0: { cellWidth: 35 }, // Nom
+            1: { cellWidth: 30 }, // Prénom
+            2: { cellWidth: 40 }, // Club
+            3: { cellWidth: 25 }, // Licence
+            4: { cellWidth: 20 }, // Genre
+            5: { cellWidth: 20, halign: "center" }, // Nb Équipages
+          },
+          margin: { top: yPosition, left: 10, right: 10 },
+        });
+
+        const fileName = `participants_${event?.name || "event"}_${dayjs().format("YYYY-MM-DD")}.pdf`;
+        doc.save(fileName);
+
+        toast({
+          title: "Export PDF réussi",
+          description: "Fichier PDF téléchargé",
+        });
+      }
+    } catch (err: any) {
+      console.error("Erreur export participants:", err);
+      toast({
+        title: "Erreur",
+        description: err?.response?.data?.message || "Impossible de générer l'export",
+        variant: "destructive",
+      });
+    } finally {
+      setExportingParticipants(false);
+    }
+  };
+
   if (loading) {
     return (
       <div className="flex items-center justify-center py-20">
@@ -1944,6 +2192,74 @@ export default function ExportPage() {
               >
                 <FileText className="w-4 h-4 mr-2" />
                 {exportingResults.byCategory && exportingResults.format === "pdf" ? (
+                  <>
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    Génération...
+                  </>
+                ) : (
+                  "PDF (.pdf)"
+                )}
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Export Participants */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Users className="w-5 h-5" />
+              Export Participants
+            </CardTitle>
+            <CardDescription>
+              Liste complète de tous les participants avec leurs équipages et catégories
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <p className="text-sm text-muted-foreground">
+              Formats disponibles :
+            </p>
+            <div className="space-y-2">
+              <Button
+                onClick={() => exportParticipants("excel")}
+                disabled={exportingParticipants === "excel"}
+                variant="outline"
+                className="w-full justify-start"
+              >
+                <FileSpreadsheet className="w-4 h-4 mr-2" />
+                {exportingParticipants === "excel" ? (
+                  <>
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    Génération...
+                  </>
+                ) : (
+                  "Excel (.xlsx)"
+                )}
+              </Button>
+              <Button
+                onClick={() => exportParticipants("csv")}
+                disabled={exportingParticipants === "csv"}
+                variant="outline"
+                className="w-full justify-start"
+              >
+                <FileText className="w-4 h-4 mr-2" />
+                {exportingParticipants === "csv" ? (
+                  <>
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    Génération...
+                  </>
+                ) : (
+                  "CSV (.csv)"
+                )}
+              </Button>
+              <Button
+                onClick={() => exportParticipants("pdf")}
+                disabled={exportingParticipants === "pdf"}
+                variant="outline"
+                className="w-full justify-start"
+              >
+                <FileText className="w-4 h-4 mr-2" />
+                {exportingParticipants === "pdf" ? (
                   <>
                     <Loader2 className="w-4 h-4 mr-2 animate-spin" />
                     Génération...
