@@ -16,8 +16,10 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Loader2, Trophy, Calendar, MapPin, Award } from "lucide-react";
+import { Loader2, Trophy, Calendar, MapPin, Award, ExternalLink } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Button } from "@/components/ui/button";
+import { Link } from "react-router-dom";
 import dayjs from "dayjs";
 
 interface ClubRanking {
@@ -46,6 +48,7 @@ export default function ClubRankingsPage() {
   const [data, setData] = useState<EventRankings[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [activeTab, setActiveTab] = useState<"global" | "by-event">("global");
 
   useEffect(() => {
     fetchRankings();
@@ -158,8 +161,36 @@ export default function ClubRankingsPage() {
         </Alert>
       )}
 
+      {/* Onglets */}
+      <div className="mb-6">
+        <div className="flex gap-2 border-b bg-muted/30">
+          <button
+            onClick={() => setActiveTab("global")}
+            className={`px-6 py-3 font-medium flex items-center gap-2 border-b-2 transition-all ${
+              activeTab === "global"
+                ? "border-primary text-primary bg-background"
+                : "border-transparent text-muted-foreground hover:text-foreground hover:bg-muted/50"
+            }`}
+          >
+            <Award className="w-4 h-4" />
+            Classement général
+          </button>
+          <button
+            onClick={() => setActiveTab("by-event")}
+            className={`px-6 py-3 font-medium flex items-center gap-2 border-b-2 transition-all ${
+              activeTab === "by-event"
+                ? "border-primary text-primary bg-background"
+                : "border-transparent text-muted-foreground hover:text-foreground hover:bg-muted/50"
+            }`}
+          >
+            <Trophy className="w-4 h-4" />
+            Classement par événement
+          </button>
+        </div>
+      </div>
+
       {/* Classement Global */}
-      {globalRanking.length > 0 && (
+      {activeTab === "global" && globalRanking.length > 0 && (
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
@@ -231,8 +262,18 @@ export default function ClubRankingsPage() {
         </Card>
       )}
 
+      {activeTab === "global" && globalRanking.length === 0 && (
+        <Card>
+          <CardContent className="py-12 text-center">
+            <p className="text-muted-foreground">
+              Aucun classement global disponible pour ce type d'événement.
+            </p>
+          </CardContent>
+        </Card>
+      )}
+
       {/* Classements par Événement */}
-      {data.length === 0 ? (
+      {activeTab === "by-event" && data.length === 0 ? (
         <Card>
           <CardContent className="py-12 text-center">
             <p className="text-muted-foreground">
@@ -242,32 +283,41 @@ export default function ClubRankingsPage() {
         </Card>
       ) : (
         <div className="space-y-6">
-          <h2 className="text-2xl font-semibold">Classements par Événement</h2>
           {data.map((eventRankings) => (
             <Card key={eventRankings.event.id}>
               <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <Trophy className="w-5 h-5 text-primary" />
-                  {eventRankings.event.name}
-                </CardTitle>
-                <CardDescription className="flex flex-wrap items-center gap-4">
-                  <div className="flex items-center gap-2">
-                    <Calendar className="w-4 h-4" />
-                    <span>
-                      {dayjs(eventRankings.event.start_date).format("DD/MM/YYYY")}
-                      {!dayjs(eventRankings.event.start_date).isSame(
-                        dayjs(eventRankings.event.end_date),
-                        "day"
-                      ) && (
-                        <> - {dayjs(eventRankings.event.end_date).format("DD/MM/YYYY")}</>
-                      )}
-                    </span>
+                <div className="flex items-start justify-between">
+                  <div className="flex-1">
+                    <CardTitle className="flex items-center gap-2">
+                      <Trophy className="w-5 h-5 text-primary" />
+                      {eventRankings.event.name}
+                    </CardTitle>
+                    <CardDescription className="flex flex-wrap items-center gap-4 mt-2">
+                      <div className="flex items-center gap-2">
+                        <Calendar className="w-4 h-4" />
+                        <span>
+                          {dayjs(eventRankings.event.start_date).format("DD/MM/YYYY")}
+                          {!dayjs(eventRankings.event.start_date).isSame(
+                            dayjs(eventRankings.event.end_date),
+                            "day"
+                          ) && (
+                            <> - {dayjs(eventRankings.event.end_date).format("DD/MM/YYYY")}</>
+                          )}
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <MapPin className="w-4 h-4" />
+                        <span>{eventRankings.event.location}</span>
+                      </div>
+                    </CardDescription>
                   </div>
-                  <div className="flex items-center gap-2">
-                    <MapPin className="w-4 h-4" />
-                    <span>{eventRankings.event.location}</span>
-                  </div>
-                </CardDescription>
+                  <Button asChild variant="outline" size="sm" className="ml-4">
+                    <Link to={`/event/${eventRankings.event.id}/results`}>
+                      <ExternalLink className="w-4 h-4 mr-2" />
+                      Voir le détail
+                    </Link>
+                  </Button>
+                </div>
               </CardHeader>
               <CardContent className="p-0">
                 <div className="overflow-x-auto">
