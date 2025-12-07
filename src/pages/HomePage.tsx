@@ -125,15 +125,15 @@ export default function HomePage() {
     });
   }, [filteredEvents]);
 
-  // Événements passés (archivés le lendemain de la compétition)
+  // Événements passés (archivés le lendemain de la fin de la compétition)
   const pastEvents = useMemo(() => {
     const today = dayjs().startOf("day");
     return filteredEvents.filter((e) => {
       if (e.is_finished) return true;
       const endDate = dayjs(e.end_date).startOf("day");
-      // Archiver le lendemain de la fin de la compétition
-      const archiveDate = endDate.add(1, "day");
-      return archiveDate.isBefore(today);
+      // Un événement est passé si sa date de fin est avant aujourd'hui
+      // (ou si on veut archiver le lendemain, on vérifie si endDate + 1 jour est avant ou égale à aujourd'hui)
+      return endDate.isBefore(today);
     });
   }, [filteredEvents]);
 
