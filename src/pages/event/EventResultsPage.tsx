@@ -104,15 +104,6 @@ export default function EventResultsPage() {
   const [error, setError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<"categories" | "clubs" | "club-ranking">("categories");
   const [isIndoor, setIsIndoor] = useState<boolean>(false);
-  const [clubRanking, setClubRanking] = useState<Array<{
-    id: string;
-    club_name: string;
-    club_code: string | null;
-    total_points: number;
-    rank: number | null;
-    points_count: number;
-    results_count: number;
-  }>>([]);
   const [eventName, setEventName] = useState<string>("");
   const { toast } = useToast();
 
@@ -133,21 +124,6 @@ export default function EventResultsPage() {
           isIndoorEvent = raceType.includes("indoor");
           setIsIndoor(isIndoorEvent);
           setEventName(eventData.name || "");
-          
-          // Récupérer le classement des clubs depuis l'API (uniquement pour indoor)
-          if (isIndoorEvent) {
-            try {
-              const rankingRes = await api.get(`/rankings/event/${eventId}/ranking?ranking_type=indoor_points`);
-              if (rankingRes.data.status === "success") {
-                setClubRanking(rankingRes.data.data || []);
-              }
-            } catch (rankingErr) {
-              console.error("Erreur récupération classement clubs:", rankingErr);
-              setClubRanking([]);
-            }
-          } else {
-            setClubRanking([]);
-          }
         } catch (err) {
           console.error("Erreur vérification type événement", err);
         }
@@ -262,6 +238,42 @@ export default function EventResultsPage() {
     );
   }, [categoryResults]);
 
+  // Classement des clubs par points (uniquement pour indoor)
+  const clubRanking = useMemo(() => {
+    if (!isIndoor) return [];
+
+    const clubPointsMap = new Map<string, { club_name: string; club_code: string | null; totalPoints: number; resultCount: number }>();
+
+    categoryResults.forEach((categoryResult) => {
+      categoryResult.results.forEach((result) => {
+        if (!result.club_name || !result.is_eligible_for_points || result.points === null) return;
+
+        const clubId = result.club_code || result.club_name || "unknown";
+        
+        if (!clubPointsMap.has(clubId)) {
+          clubPointsMap.set(clubId, {
+            club_name: result.club_name,
+            club_code: result.club_code,
+            totalPoints: 0,
+            resultCount: 0,
+          });
+        }
+
+        const clubData = clubPointsMap.get(clubId)!;
+        clubData.totalPoints += result.points || 0;
+        clubData.resultCount += 1;
+      });
+    });
+
+    // Trier par total de points décroissant
+    return Array.from(clubPointsMap.values())
+      .sort((a, b) => b.totalPoints - a.totalPoints)
+      .map((club, index) => ({
+        ...club,
+        rank: index + 1,
+      }));
+  }, [categoryResults, isIndoor]);
+
   // Fonction d'export Excel pour les résultats par catégories
   const exportCategoriesToExcel = () => {
     const exportData: any[] = [];
@@ -358,9 +370,8 @@ export default function EventResultsPage() {
       "Rang": club.rank || "-",
       "Club": club.club_name,
       "Code Club": club.club_code || "",
-      "Total points": club.total_points.toFixed(1),
-      "Nombre de points": club.points_count,
-      "Nombre de résultats": club.results_count,
+      "Total points": club.totalPoints.toFixed(1),
+      "Nombre de résultats": club.resultCount,
     }));
 
     const ws = XLSX.utils.json_to_sheet(exportData);
@@ -818,8 +829,7 @@ export default function EventResultsPage() {
                         <TableHead className="w-20 text-center font-semibold">Rang</TableHead>
                         <TableHead className="min-w-[250px] font-semibold">Club</TableHead>
                         <TableHead className="w-32 text-center font-semibold">Total points</TableHead>
-                        <TableHead className="w-32 text-center font-semibold">Nb points</TableHead>
-                        <TableHead className="w-32 text-center font-semibold">Nb résultats</TableHead>
+                        <TableHead className="w-32 text-center font-semibold">Résultats</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
@@ -849,17 +859,12 @@ export default function EventResultsPage() {
                           </TableCell>
                           <TableCell className="text-center">
                             <span className="font-bold text-xl text-primary">
-                              {club.total_points.toFixed(1)}
+                              {club.totalPoints.toFixed(1)}
                             </span>
                           </TableCell>
                           <TableCell className="text-center">
                             <span className="text-muted-foreground">
-                              {club.points_count} point{club.points_count > 1 ? "s" : ""}
-                            </span>
-                          </TableCell>
-                          <TableCell className="text-center">
-                            <span className="text-muted-foreground">
-                              {club.results_count} résultat{club.results_count > 1 ? "s" : ""}
+                              {club.resultCount} résultat{club.resultCount > 1 ? "s" : ""}
                             </span>
                           </TableCell>
                         </TableRow>
