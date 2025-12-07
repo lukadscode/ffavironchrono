@@ -15,40 +15,62 @@ interface Category {
   gender: "Homme" | "Femme" | "Mixte" | null;
 }
 
-interface Result {
+interface Participant {
+  id: string | null;
+  first_name: string | null;
+  last_name: string | null;
+  license_number: string | null;
+  seat_position: number | null;
+  is_coxswain: boolean;
+}
+
+// Type unifié pour les résultats (normal et indoor)
+interface UnifiedResult {
   race_id: string;
   race_number: number;
-  phase_id: string;
-  phase_name: string;
-  crew_id: string;
-  lane: number;
+  race_name?: string | null;
+  phase_id?: string;
+  phase_name?: string | null;
+  crew_id: string | null;
+  lane?: number;
   club_name: string | null;
   club_code: string | null;
-  position: number | null;
-  finish_time: string | null;
-  final_time: string | null;
-  has_timing: boolean;
+  position: number | null; // place pour indoor, position pour normal
+  finish_time?: string | null;
+  final_time?: string | null; // string pour normal
+  time_display?: string | null; // pour indoor
+  time_ms?: number | null; // pour indoor
+  has_timing?: boolean;
+  // Champs spécifiques indoor
+  distance?: number | null;
+  avg_pace?: string | null;
+  spm?: number | null;
+  calories?: number | null;
+  // Participants (pour indoor)
+  participants?: Participant[];
 }
 
 interface CategoryResult {
   category: Category;
-  results: Result[];
+  results: UnifiedResult[];
 }
 
 interface ClubResult {
   club_id: string;
   club_name: string;
   club_code: string | null;
-  results: Array<Result & { category: Category }>;
+  results: Array<UnifiedResult & { category: Category }>;
 }
 
 /**
- * Convertit un temps en millisecondes (string) en format lisible
+ * Convertit un temps en millisecondes (string ou number) en format lisible
  */
-function formatTime(finalTime: string | null): string | null {
-  if (!finalTime) return null;
+function formatTime(finalTime: string | number | null | undefined): string | null {
+  if (finalTime === null || finalTime === undefined) return null;
   
-  const ms = parseInt(finalTime, 10);
+  const ms = typeof finalTime === "string" ? parseInt(finalTime, 10) : finalTime;
+  if (isNaN(ms)) return null;
+  
   const totalSeconds = Math.floor(ms / 1000);
   const minutes = Math.floor(totalSeconds / 60);
   const seconds = totalSeconds % 60;
@@ -67,6 +89,7 @@ export default function EventResultsPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<"categories" | "clubs">("categories");
+  const [isIndoor, setIsIndoor] = useState<boolean>(false);
 
   useEffect(() => {
     const fetchResults = async () => {
@@ -75,13 +98,79 @@ export default function EventResultsPage() {
       try {
         setLoading(true);
         setError(null);
-        const response = await api.get(`/events/${eventId}/results-by-category`);
+
+        // D'abord, déterminer le type d'événement
+        let isIndoorEvent = false;
+        try {
+          const eventRes = await api.get(`/events/${eventId}`);
+          const eventData = eventRes.data.data || eventRes.data;
+          const raceType = eventData.race_type?.toLowerCase() || "";
+          isIndoorEvent = raceType.includes("indoor");
+          setIsIndoor(isIndoorEvent);
+        } catch (err) {
+          console.error("Erreur vérification type événement", err);
+        }
+
+        // Utiliser la bonne API selon le type d'événement
+        let response;
+        if (isIndoorEvent) {
+          // API pour les résultats indoor
+          response = await api.get(`/indoor-results/event/${eventId}/bycategorie`);
+        } else {
+          // API pour les résultats normaux
+          response = await api.get(`/events/${eventId}/results-by-category`);
+        }
         
         if (response.data.status === "error") {
           throw new Error(response.data.message || "Erreur lors de la récupération des résultats");
         }
 
-        setCategoryResults(response.data.data || []);
+        // Normaliser les résultats pour un format unifié
+        const rawData = response.data.data || [];
+        const normalizedResults: CategoryResult[] = rawData.map((catResult: any) => ({
+          category: catResult.category,
+          results: catResult.results.map((r: any) => {
+            // Normaliser selon le type d'événement
+            if (isIndoorEvent) {
+              // Format indoor
+              return {
+                race_id: r.race_id,
+                race_number: r.race_number,
+                race_name: r.race_name,
+                crew_id: r.crew_id,
+                club_name: r.crew?.club_name || null,
+                club_code: r.crew?.club_code || null,
+                position: r.place, // place devient position
+                time_display: r.time_display,
+                time_ms: r.time_ms,
+                has_timing: r.time_ms !== null && r.time_ms !== undefined,
+                distance: r.distance,
+                avg_pace: r.avg_pace,
+                spm: r.spm,
+                calories: r.calories,
+                participants: r.crew?.participants || [],
+              };
+            } else {
+              // Format normal
+              return {
+                race_id: r.race_id,
+                race_number: r.race_number,
+                phase_id: r.phase_id,
+                phase_name: r.phase_name,
+                crew_id: r.crew_id,
+                lane: r.lane,
+                club_name: r.club_name,
+                club_code: r.club_code,
+                position: r.position,
+                finish_time: r.finish_time,
+                final_time: r.final_time,
+                has_timing: r.has_timing,
+              };
+            }
+          }),
+        }));
+
+        setCategoryResults(normalizedResults);
       } catch (err: any) {
         console.error("Erreur récupération résultats:", err);
         setError(
@@ -105,7 +194,7 @@ export default function EventResultsPage() {
       categoryResult.results.forEach((result) => {
         if (!result.club_name) return;
 
-        const clubId = result.club_code || result.club_name;
+        const clubId = result.club_code || result.club_name || "unknown";
         
         if (!clubMap.has(clubId)) {
           clubMap.set(clubId, {
@@ -218,62 +307,116 @@ export default function EventResultsPage() {
                             <TableHead className="w-20 text-center font-semibold">Position</TableHead>
                             <TableHead className="min-w-[200px] font-semibold">Club</TableHead>
                             <TableHead className="w-24 text-center font-semibold">Course</TableHead>
-                            <TableHead className="min-w-[150px] font-semibold">Phase</TableHead>
-                            <TableHead className="w-20 text-center font-semibold">Couloir</TableHead>
+                            {!isIndoor && (
+                              <>
+                                <TableHead className="min-w-[150px] font-semibold">Phase</TableHead>
+                                <TableHead className="w-20 text-center font-semibold">Couloir</TableHead>
+                              </>
+                            )}
+                            {isIndoor && (
+                              <TableHead className="min-w-[200px] font-semibold">Participants</TableHead>
+                            )}
                             <TableHead className="w-32 text-right font-semibold">Temps</TableHead>
+                            {isIndoor && (
+                              <>
+                                <TableHead className="w-24 text-right font-semibold">Distance</TableHead>
+                                <TableHead className="w-24 text-right font-semibold">Allure</TableHead>
+                                <TableHead className="w-20 text-center font-semibold">SPM</TableHead>
+                              </>
+                            )}
                           </TableRow>
                         </TableHeader>
                         <TableBody>
-                          {categoryResult.results.map((result) => (
-                            <TableRow 
-                              key={`${result.crew_id}-${result.race_id}`}
-                              className={`${
-                                result.position === 1 ? "bg-amber-50 dark:bg-amber-950/20" :
-                                result.position === 2 ? "bg-slate-50 dark:bg-slate-900/20" :
-                                result.position === 3 ? "bg-amber-100 dark:bg-amber-900/20" : ""
-                              }`}
-                            >
-                              <TableCell className="text-center">
-                                {result.position !== null ? (
-                                  <span className="font-bold text-lg text-primary">
-                                    {result.position}
-                                  </span>
-                                ) : (
-                                  <span className="text-muted-foreground">-</span>
-                                )}
-                              </TableCell>
-                              <TableCell>
-                                <div className="font-medium">
-                                  {result.club_name || "N/A"}
-                                </div>
-                                {result.club_code && (
-                                  <div className="text-sm text-muted-foreground">
-                                    {result.club_code}
+                          {categoryResult.results.map((result) => {
+                            // Formater les participants pour l'affichage
+                            const participantsDisplay = result.participants && result.participants.length > 0
+                              ? result.participants
+                                  .sort((a, b) => {
+                                    if (a.is_coxswain && !b.is_coxswain) return 1;
+                                    if (!a.is_coxswain && b.is_coxswain) return -1;
+                                    return (a.seat_position || 0) - (b.seat_position || 0);
+                                  })
+                                  .map((p) => {
+                                    const name = `${p.last_name?.toUpperCase() || ""}, ${p.first_name || ""}`;
+                                    const position = p.is_coxswain ? " (B)" : ` (${p.seat_position})`;
+                                    return `${name}${position}`;
+                                  })
+                                  .join(" • ")
+                              : null;
+
+                            return (
+                              <TableRow 
+                                key={`${result.crew_id || "unknown"}-${result.race_id}`}
+                                className={`${
+                                  result.position === 1 ? "bg-amber-50 dark:bg-amber-950/20" :
+                                  result.position === 2 ? "bg-slate-50 dark:bg-slate-900/20" :
+                                  result.position === 3 ? "bg-amber-100 dark:bg-amber-900/20" : ""
+                                }`}
+                              >
+                                <TableCell className="text-center">
+                                  {result.position !== null ? (
+                                    <span className="font-bold text-lg text-primary">
+                                      {result.position}
+                                    </span>
+                                  ) : (
+                                    <span className="text-muted-foreground">-</span>
+                                  )}
+                                </TableCell>
+                                <TableCell>
+                                  <div className="font-medium">
+                                    {result.club_name || "N/A"}
                                   </div>
+                                  {result.club_code && (
+                                    <div className="text-sm text-muted-foreground">
+                                      {result.club_code}
+                                    </div>
+                                  )}
+                                </TableCell>
+                                <TableCell className="text-center">
+                                  {result.race_name || `Course ${result.race_number}`}
+                                </TableCell>
+                                {!isIndoor && (
+                                  <>
+                                    <TableCell>
+                                      {result.phase_name || "-"}
+                                    </TableCell>
+                                    <TableCell className="text-center">
+                                      {result.lane || "-"}
+                                    </TableCell>
+                                  </>
                                 )}
-                              </TableCell>
-                              <TableCell className="text-center">
-                                {result.race_number}
-                              </TableCell>
-                              <TableCell>
-                                {result.phase_name || "-"}
-                              </TableCell>
-                              <TableCell className="text-center">
-                                {result.lane}
-                              </TableCell>
-                              <TableCell className="text-right">
-                                {result.has_timing ? (
-                                  <span className="font-mono font-semibold">
-                                    {formatTime(result.final_time) || "-"}
-                                  </span>
-                                ) : (
-                                  <span className="text-muted-foreground italic text-sm">
-                                    DNS/DNF
-                                  </span>
+                                {isIndoor && (
+                                  <TableCell className="text-sm">
+                                    {participantsDisplay || "Aucun participant"}
+                                  </TableCell>
                                 )}
-                              </TableCell>
-                            </TableRow>
-                          ))}
+                                <TableCell className="text-right">
+                                  {(result.has_timing !== false && (result.time_display || result.final_time || result.time_ms)) ? (
+                                    <span className="font-mono font-semibold">
+                                      {result.time_display || formatTime(result.final_time || result.time_ms) || "-"}
+                                    </span>
+                                  ) : (
+                                    <span className="text-muted-foreground italic text-sm">
+                                      DNS/DNF
+                                    </span>
+                                  )}
+                                </TableCell>
+                                {isIndoor && (
+                                  <>
+                                    <TableCell className="text-right">
+                                      {result.distance ? `${result.distance}m` : "-"}
+                                    </TableCell>
+                                    <TableCell className="text-right">
+                                      {result.avg_pace || "-"}
+                                    </TableCell>
+                                    <TableCell className="text-center">
+                                      {result.spm || "-"}
+                                    </TableCell>
+                                  </>
+                                )}
+                              </TableRow>
+                            );
+                          })}
                         </TableBody>
                       </Table>
                     </div>
@@ -319,9 +462,23 @@ export default function EventResultsPage() {
                             <TableHead className="min-w-[180px] font-semibold">Catégorie</TableHead>
                             <TableHead className="w-20 text-center font-semibold">Position</TableHead>
                             <TableHead className="w-24 text-center font-semibold">Course</TableHead>
-                            <TableHead className="min-w-[150px] font-semibold">Phase</TableHead>
-                            <TableHead className="w-20 text-center font-semibold">Couloir</TableHead>
+                            {!isIndoor && (
+                              <>
+                                <TableHead className="min-w-[150px] font-semibold">Phase</TableHead>
+                                <TableHead className="w-20 text-center font-semibold">Couloir</TableHead>
+                              </>
+                            )}
+                            {isIndoor && (
+                              <TableHead className="min-w-[200px] font-semibold">Participants</TableHead>
+                            )}
                             <TableHead className="w-32 text-right font-semibold">Temps</TableHead>
+                            {isIndoor && (
+                              <>
+                                <TableHead className="w-24 text-right font-semibold">Distance</TableHead>
+                                <TableHead className="w-24 text-right font-semibold">Allure</TableHead>
+                                <TableHead className="w-20 text-center font-semibold">SPM</TableHead>
+                              </>
+                            )}
                           </TableRow>
                         </TableHeader>
                         <TableBody>
@@ -334,51 +491,91 @@ export default function EventResultsPage() {
                               if (catCompare !== 0) return catCompare;
                               return (a.position || 999) - (b.position || 999);
                             })
-                            .map((result) => (
-                              <TableRow 
-                                key={`${result.crew_id}-${result.race_id}`}
-                              >
-                                <TableCell>
-                                  <div className="font-medium">
-                                    {result.category.label || result.category.code || "N/A"}
-                                  </div>
-                                  {result.category.gender && (
-                                    <div className="text-sm text-muted-foreground">
-                                      {result.category.gender}
+                            .map((result) => {
+                              // Formater les participants pour l'affichage
+                              const participantsDisplay = result.participants && result.participants.length > 0
+                                ? result.participants
+                                    .sort((a, b) => {
+                                      if (a.is_coxswain && !b.is_coxswain) return 1;
+                                      if (!a.is_coxswain && b.is_coxswain) return -1;
+                                      return (a.seat_position || 0) - (b.seat_position || 0);
+                                    })
+                                    .map((p) => {
+                                      const name = `${p.last_name?.toUpperCase() || ""}, ${p.first_name || ""}`;
+                                      const position = p.is_coxswain ? " (B)" : ` (${p.seat_position})`;
+                                      return `${name}${position}`;
+                                    })
+                                    .join(" • ")
+                                : null;
+
+                              return (
+                                <TableRow 
+                                  key={`${result.crew_id || "unknown"}-${result.race_id}`}
+                                >
+                                  <TableCell>
+                                    <div className="font-medium">
+                                      {result.category.label || result.category.code || "N/A"}
                                     </div>
+                                    {result.category.gender && (
+                                      <div className="text-sm text-muted-foreground">
+                                        {result.category.gender}
+                                      </div>
+                                    )}
+                                  </TableCell>
+                                  <TableCell className="text-center">
+                                    {result.position !== null ? (
+                                      <span className="font-bold text-lg text-primary">
+                                        {result.position}
+                                      </span>
+                                    ) : (
+                                      <span className="text-muted-foreground">-</span>
+                                    )}
+                                  </TableCell>
+                                  <TableCell className="text-center">
+                                    {result.race_name || `Course ${result.race_number}`}
+                                  </TableCell>
+                                  {!isIndoor && (
+                                    <>
+                                      <TableCell>
+                                        {result.phase_name || "-"}
+                                      </TableCell>
+                                      <TableCell className="text-center">
+                                        {result.lane || "-"}
+                                      </TableCell>
+                                    </>
                                   )}
-                                </TableCell>
-                                <TableCell className="text-center">
-                                  {result.position !== null ? (
-                                    <span className="font-bold text-lg text-primary">
-                                      {result.position}
-                                    </span>
-                                  ) : (
-                                    <span className="text-muted-foreground">-</span>
+                                  {isIndoor && (
+                                    <TableCell className="text-sm">
+                                      {participantsDisplay || "Aucun participant"}
+                                    </TableCell>
                                   )}
-                                </TableCell>
-                                <TableCell className="text-center">
-                                  {result.race_number}
-                                </TableCell>
-                                <TableCell>
-                                  {result.phase_name || "-"}
-                                </TableCell>
-                                <TableCell className="text-center">
-                                  {result.lane}
-                                </TableCell>
-                                <TableCell className="text-right">
-                                  {result.has_timing ? (
-                                    <span className="font-mono font-semibold">
-                                      {formatTime(result.final_time) || "-"}
-                                    </span>
-                                  ) : (
-                                    <span className="text-muted-foreground italic text-sm">
-                                      DNS/DNF
-                                    </span>
+                                  <TableCell className="text-right">
+                                    {(result.has_timing !== false && (result.time_display || result.final_time || result.time_ms)) ? (
+                                      <span className="font-mono font-semibold">
+                                        {result.time_display || formatTime(result.final_time || result.time_ms) || "-"}
+                                      </span>
+                                    ) : (
+                                      <span className="text-muted-foreground italic text-sm">
+                                        DNS/DNF
+                                      </span>
+                                    )}
+                                  </TableCell>
+                                  {isIndoor && (
+                                    <>
+                                      <TableCell className="text-right">
+                                        {result.distance ? `${result.distance}m` : "-"}
+                                      </TableCell>
+                                      <TableCell className="text-right">
+                                        {result.avg_pace || "-"}
+                                      </TableCell>
+                                      <TableCell className="text-center">
+                                        {result.spm || "-"}
+                                      </TableCell>
+                                    </>
                                   )}
-                                </TableCell>
-                              </TableRow>
-                            ))}
+                                </TableRow>
+                              );
+                            })}
                         </TableBody>
                       </Table>
                     </div>
