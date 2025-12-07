@@ -35,7 +35,15 @@ export default function HomePage() {
     const fetchEvents = async () => {
       try {
         const res = await publicApi.get("/events");
-        setEvents(res.data.data || []);
+        const eventsData = res.data.data || [];
+        setEvents(eventsData);
+        // Debug: afficher les événements pour vérifier qu'ils sont bien récupérés
+        console.log("Événements récupérés:", eventsData.length);
+        eventsData.forEach((e: Event) => {
+          const endDate = dayjs(e.end_date);
+          const today = dayjs();
+          console.log(`Événement: ${e.name}, end_date: ${e.end_date}, is_finished: ${e.is_finished}, est passé: ${endDate.isBefore(today)}`);
+        });
       } catch (err) {
         console.error("Erreur chargement événements", err);
       } finally {
@@ -129,10 +137,13 @@ export default function HomePage() {
   const pastEvents = useMemo(() => {
     const today = dayjs().startOf("day");
     return filteredEvents.filter((e) => {
+      // Si l'événement est marqué comme terminé, il est dans les archives
       if (e.is_finished) return true;
+      
       const endDate = dayjs(e.end_date).startOf("day");
       // Un événement est passé si sa date de fin est avant aujourd'hui
-      // (ou si on veut archiver le lendemain, on vérifie si endDate + 1 jour est avant ou égale à aujourd'hui)
+      // (si l'événement s'est terminé hier ou avant, il apparaît dans les archives)
+      // On utilise isBefore pour exclure les événements qui se terminent aujourd'hui
       return endDate.isBefore(today);
     });
   }, [filteredEvents]);
