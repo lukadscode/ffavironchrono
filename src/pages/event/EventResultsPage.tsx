@@ -43,9 +43,19 @@ interface UnifiedResult {
   has_timing?: boolean;
   // Champs spécifiques indoor
   distance?: number | null;
+  distance_info?: {
+    id: string;
+    meters: number | null;
+    is_relay: boolean;
+    relay_count: number | null;
+    label: string;
+  } | null;
   avg_pace?: string | null;
   spm?: number | null;
   calories?: number | null;
+  // Points (pour indoor)
+  points?: number | null;
+  is_eligible_for_points?: boolean;
   // Participants (pour indoor)
   participants?: Participant[];
 }
@@ -88,7 +98,7 @@ export default function EventResultsPage() {
   const [categoryResults, setCategoryResults] = useState<CategoryResult[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<"categories" | "clubs">("categories");
+  const [activeTab, setActiveTab] = useState<"categories" | "clubs" | "club-ranking">("categories");
   const [isIndoor, setIsIndoor] = useState<boolean>(false);
 
   useEffect(() => {
@@ -145,9 +155,12 @@ export default function EventResultsPage() {
                 time_ms: r.time_ms,
                 has_timing: r.time_ms !== null && r.time_ms !== undefined,
                 distance: r.distance,
+                distance_info: r.distance_info || null,
                 avg_pace: r.avg_pace,
                 spm: r.spm,
                 calories: r.calories,
+                points: r.points || null,
+                is_eligible_for_points: r.is_eligible_for_points || false,
                 participants: r.crew?.participants || [],
               };
             } else {
@@ -218,6 +231,42 @@ export default function EventResultsPage() {
     );
   }, [categoryResults]);
 
+  // Classement des clubs par points (uniquement pour indoor)
+  const clubRanking = useMemo(() => {
+    if (!isIndoor) return [];
+
+    const clubPointsMap = new Map<string, { club_name: string; club_code: string | null; totalPoints: number; resultCount: number }>();
+
+    categoryResults.forEach((categoryResult) => {
+      categoryResult.results.forEach((result) => {
+        if (!result.club_name || !result.is_eligible_for_points || result.points === null) return;
+
+        const clubId = result.club_code || result.club_name || "unknown";
+        
+        if (!clubPointsMap.has(clubId)) {
+          clubPointsMap.set(clubId, {
+            club_name: result.club_name,
+            club_code: result.club_code,
+            totalPoints: 0,
+            resultCount: 0,
+          });
+        }
+
+        const clubData = clubPointsMap.get(clubId)!;
+        clubData.totalPoints += result.points || 0;
+        clubData.resultCount += 1;
+      });
+    });
+
+    // Trier par total de points décroissant
+    return Array.from(clubPointsMap.values())
+      .sort((a, b) => b.totalPoints - a.totalPoints)
+      .map((club, index) => ({
+        ...club,
+        rank: index + 1,
+      }));
+  }, [categoryResults, isIndoor]);
+
   if (loading) {
     return (
       <div className="flex items-center justify-center min-h-[400px]">
@@ -273,6 +322,19 @@ export default function EventResultsPage() {
             <Building2 className="w-4 h-4" />
             Par clubs
           </button>
+          {isIndoor && (
+            <button
+              onClick={() => setActiveTab("club-ranking")}
+              className={`px-6 py-3 font-medium flex items-center gap-2 border-b-2 transition-all ${
+                activeTab === "club-ranking"
+                  ? "border-primary text-primary bg-background"
+                  : "border-transparent text-muted-foreground hover:text-foreground hover:bg-muted/50"
+              }`}
+            >
+              <Trophy className="w-4 h-4" />
+              Classement clubs
+            </button>
+          )}
         </div>
       </div>
 
@@ -322,6 +384,7 @@ export default function EventResultsPage() {
                                 <TableHead className="w-24 text-right font-semibold">Distance</TableHead>
                                 <TableHead className="w-24 text-right font-semibold">Allure</TableHead>
                                 <TableHead className="w-20 text-center font-semibold">SPM</TableHead>
+                                <TableHead className="w-20 text-center font-semibold">Points</TableHead>
                               </>
                             )}
                           </TableRow>
@@ -404,13 +467,22 @@ export default function EventResultsPage() {
                                 {isIndoor && (
                                   <>
                                     <TableCell className="text-right">
-                                      {result.distance ? `${result.distance}m` : "-"}
+                                      {result.distance_info?.label || (result.distance ? `${result.distance}m` : "-")}
                                     </TableCell>
                                     <TableCell className="text-right">
                                       {result.avg_pace || "-"}
                                     </TableCell>
                                     <TableCell className="text-center">
                                       {result.spm || "-"}
+                                    </TableCell>
+                                    <TableCell className="text-center">
+                                      {result.is_eligible_for_points && result.points !== null ? (
+                                        <span className="font-bold text-primary">
+                                          {result.points}
+                                        </span>
+                                      ) : (
+                                        <span className="text-muted-foreground text-sm">-</span>
+                                      )}
                                     </TableCell>
                                   </>
                                 )}
@@ -477,6 +549,7 @@ export default function EventResultsPage() {
                                 <TableHead className="w-24 text-right font-semibold">Distance</TableHead>
                                 <TableHead className="w-24 text-right font-semibold">Allure</TableHead>
                                 <TableHead className="w-20 text-center font-semibold">SPM</TableHead>
+                                <TableHead className="w-20 text-center font-semibold">Points</TableHead>
                               </>
                             )}
                           </TableRow>
@@ -563,13 +636,22 @@ export default function EventResultsPage() {
                                   {isIndoor && (
                                     <>
                                       <TableCell className="text-right">
-                                        {result.distance ? `${result.distance}m` : "-"}
+                                        {result.distance_info?.label || (result.distance ? `${result.distance}m` : "-")}
                                       </TableCell>
                                       <TableCell className="text-right">
                                         {result.avg_pace || "-"}
                                       </TableCell>
                                       <TableCell className="text-center">
                                         {result.spm || "-"}
+                                      </TableCell>
+                                      <TableCell className="text-center">
+                                        {result.is_eligible_for_points && result.points !== null ? (
+                                          <span className="font-bold text-primary">
+                                            {result.points}
+                                          </span>
+                                        ) : (
+                                          <span className="text-muted-foreground text-sm">-</span>
+                                        )}
                                       </TableCell>
                                     </>
                                   )}
@@ -583,6 +665,79 @@ export default function EventResultsPage() {
                 </Card>
               ))}
             </div>
+          )}
+        </div>
+      )}
+
+      {activeTab === "club-ranking" && isIndoor && (
+        <div className="mt-6">
+          {clubRanking.length === 0 ? (
+            <Card>
+              <CardContent className="py-12 text-center">
+                <p className="text-muted-foreground">Aucun classement disponible. Les points ne sont attribués que pour les distances éligibles (2000m, 500m, relais 8x250m).</p>
+              </CardContent>
+            </Card>
+          ) : (
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Trophy className="w-5 h-5 text-primary" />
+                  Classement des clubs par points
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="p-0">
+                <div className="overflow-x-auto">
+                  <Table>
+                    <TableHeader>
+                      <TableRow className="bg-muted/50">
+                        <TableHead className="w-20 text-center font-semibold">Rang</TableHead>
+                        <TableHead className="min-w-[250px] font-semibold">Club</TableHead>
+                        <TableHead className="w-32 text-center font-semibold">Total points</TableHead>
+                        <TableHead className="w-32 text-center font-semibold">Résultats</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {clubRanking.map((club) => (
+                        <TableRow 
+                          key={club.club_code || club.club_name}
+                          className={`${
+                            club.rank === 1 ? "bg-amber-50 dark:bg-amber-950/20" :
+                            club.rank === 2 ? "bg-slate-50 dark:bg-slate-900/20" :
+                            club.rank === 3 ? "bg-amber-100 dark:bg-amber-900/20" : ""
+                          }`}
+                        >
+                          <TableCell className="text-center">
+                            <span className="font-bold text-lg text-primary">
+                              {club.rank}
+                            </span>
+                          </TableCell>
+                          <TableCell>
+                            <div className="font-medium">
+                              {club.club_name}
+                            </div>
+                            {club.club_code && (
+                              <div className="text-sm text-muted-foreground">
+                                {club.club_code}
+                              </div>
+                            )}
+                          </TableCell>
+                          <TableCell className="text-center">
+                            <span className="font-bold text-xl text-primary">
+                              {club.totalPoints.toFixed(1)}
+                            </span>
+                          </TableCell>
+                          <TableCell className="text-center">
+                            <span className="text-muted-foreground">
+                              {club.resultCount} résultat{club.resultCount > 1 ? "s" : ""}
+                            </span>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
+              </CardContent>
+            </Card>
           )}
         </div>
       )}
