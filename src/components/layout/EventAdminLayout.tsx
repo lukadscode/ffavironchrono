@@ -52,7 +52,7 @@ const allNavItems = [
   { to: "notifications", label: "Notifications", icon: Bell, permission: "notifications" },
   { to: "indoor", label: "Indoor", icon: Activity, permission: "indoor" },
   { to: "arbitres", label: "Arbitres", icon: Gavel, permission: "arbitres" },
-  { to: "results", label: "Résultats", icon: Trophy, permission: "permissions" }, // Seulement admin/superadmin
+  { to: "results", label: "Résultats", icon: Trophy, permission: "overview" }, // Organisateur, admin et superadmin
   { to: "export", label: "Exports", icon: FileDown, permission: "overview" },
   { to: "update", label: "Mise à jour FFAviron", icon: RefreshCw, permission: "permissions" }, // Seulement organisateur
   { to: "timingPoint", label: "Points", icon: Timer, permission: "timingPoint" },
@@ -86,10 +86,11 @@ export default function EventAdminLayout() {
       items = items.filter(item => item.to !== "indoor");
     }
     
-    // Filtrer "Résultats" - seulement pour admin/superadmin
+    // Filtrer "Résultats" - pour organisateur, admin et superadmin
     items = items.filter(item => {
       if (item.to === "results") {
-        return isGlobalAdmin;
+        // Visible pour les admins globaux ou les organisateurs
+        return isGlobalAdmin || eventRole === "organiser";
       }
       return true;
     });
