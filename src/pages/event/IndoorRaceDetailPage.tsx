@@ -563,21 +563,33 @@ export default function IndoorRaceDetailPage() {
       }
 
       // Normaliser les participants pour gérer les différences entre formats
-      // Dans le nouveau format, le temps est dans "time" et non "score"
+      // Dans le nouveau format, le temps est dans "time" (string) et "score" contient la distance (number)
+      // Le backend attend que "score" soit une string contenant le temps
       const normalizedParticipants = normalizedResults.participants.map((participant: any) => {
         const normalized: any = { ...participant };
         
-        // Si le temps est dans "time" mais pas dans "score", utiliser "time"
-        if (normalized.time && !normalized.score) {
-          // Convertir le temps en millisecondes si nécessaire
-          // Le format "time" peut être "MM:SS.m" ou déjà en millisecondes
-          if (typeof normalized.time === 'string' && normalized.time.includes(':')) {
-            // Format "MM:SS.m" - on garde tel quel, le backend s'en chargera
+        // Dans le nouveau format, "score" contient la distance (number) et "time" contient le temps (string)
+        // Le backend attend que "score" soit une string contenant le temps
+        // Donc on utilise toujours "time" pour remplacer "score" si "time" existe
+        if (normalized.time) {
+          if (typeof normalized.time === 'string') {
+            // Le temps est dans "time" au format "MM:SS.m" (ex: "11:31.0")
+            // On remplace "score" par "time" car le backend attend le temps dans "score"
             normalized.score = normalized.time;
           } else if (typeof normalized.time === 'number') {
-            // Déjà en millisecondes
-            normalized.score = normalized.time;
+            // Si "time" est un nombre (millisecondes), on le convertit en string
+            normalized.score = normalized.time.toString();
           }
+        } else if (normalized.score && typeof normalized.score !== 'string') {
+          // Si "score" existe mais n'est pas une string (c'est la distance dans le nouveau format)
+          // et qu'il n'y a pas de "time", on convertit en string pour l'ancien format
+          normalized.score = normalized.score.toString();
+        }
+        
+        // S'assurer que score est toujours une string (requis par le backend)
+        if (!normalized.score || typeof normalized.score !== 'string') {
+          // Si on n'a toujours pas de score valide, utiliser une valeur par défaut
+          normalized.score = "0:00.0";
         }
         
         // S'assurer que lane_number existe (peut être "lane" dans certains formats)
