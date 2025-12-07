@@ -27,6 +27,10 @@ export default function DashboardLayout() {
     ...(isAdmin
       ? [{ to: "/dashboard/clubs-management", label: "Gestion clubs", icon: Building2 }]
       : []),
+    // Afficher le lien des classements des clubs seulement pour les admins
+    ...(isAdmin
+      ? [{ to: "/dashboard/club-rankings", label: "Classements clubs", icon: Trophy }]
+      : []),
     // Afficher le lien de gestion des templates de scoring seulement pour les superadmins
     ...(isSuperAdmin
       ? [{ to: "/dashboard/scoring-templates", label: "Templates de scoring", icon: Trophy }]
