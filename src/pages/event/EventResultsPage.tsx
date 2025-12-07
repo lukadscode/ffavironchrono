@@ -2,7 +2,7 @@ import { useEffect, useState, useMemo } from "react";
 import { useParams } from "react-router-dom";
 import api from "@/lib/axios";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-// Pas de composant Tabs disponible, on utilise des boutons pour basculer
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Trophy, Building2, Loader2, AlertCircle } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 
@@ -161,13 +161,13 @@ export default function EventResultsPage() {
       </div>
 
       <div className="mb-6">
-        <div className="flex gap-2 border-b">
+        <div className="flex gap-2 border-b bg-muted/30">
           <button
             onClick={() => setActiveTab("categories")}
-            className={`px-4 py-2 font-medium flex items-center gap-2 border-b-2 transition-colors ${
+            className={`px-6 py-3 font-medium flex items-center gap-2 border-b-2 transition-all ${
               activeTab === "categories"
-                ? "border-primary text-primary"
-                : "border-transparent text-muted-foreground hover:text-foreground"
+                ? "border-primary text-primary bg-background"
+                : "border-transparent text-muted-foreground hover:text-foreground hover:bg-muted/50"
             }`}
           >
             <Trophy className="w-4 h-4" />
@@ -175,10 +175,10 @@ export default function EventResultsPage() {
           </button>
           <button
             onClick={() => setActiveTab("clubs")}
-            className={`px-4 py-2 font-medium flex items-center gap-2 border-b-2 transition-colors ${
+            className={`px-6 py-3 font-medium flex items-center gap-2 border-b-2 transition-all ${
               activeTab === "clubs"
-                ? "border-primary text-primary"
-                : "border-transparent text-muted-foreground hover:text-foreground"
+                ? "border-primary text-primary bg-background"
+                : "border-transparent text-muted-foreground hover:text-foreground hover:bg-muted/50"
             }`}
           >
             <Building2 className="w-4 h-4" />
@@ -210,70 +210,72 @@ export default function EventResultsPage() {
                       )}
                     </CardTitle>
                   </CardHeader>
-                  <CardContent>
+                  <CardContent className="p-0">
                     <div className="overflow-x-auto">
-                      <table className="w-full border-collapse">
-                        <thead>
-                          <tr className="border-b">
-                            <th className="text-left p-2 font-semibold">Position</th>
-                            <th className="text-left p-2 font-semibold">Club</th>
-                            <th className="text-left p-2 font-semibold">Course</th>
-                            <th className="text-left p-2 font-semibold">Phase</th>
-                            <th className="text-left p-2 font-semibold">Couloir</th>
-                            <th className="text-left p-2 font-semibold">Temps</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {categoryResult.results.map((result, idx) => (
-                            <tr 
+                      <Table>
+                        <TableHeader>
+                          <TableRow className="bg-muted/50">
+                            <TableHead className="w-20 text-center font-semibold">Position</TableHead>
+                            <TableHead className="min-w-[200px] font-semibold">Club</TableHead>
+                            <TableHead className="w-24 text-center font-semibold">Course</TableHead>
+                            <TableHead className="min-w-[150px] font-semibold">Phase</TableHead>
+                            <TableHead className="w-20 text-center font-semibold">Couloir</TableHead>
+                            <TableHead className="w-32 text-right font-semibold">Temps</TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {categoryResult.results.map((result) => (
+                            <TableRow 
                               key={`${result.crew_id}-${result.race_id}`}
-                              className={`border-b hover:bg-muted/50 ${
-                                result.position === 1 ? "bg-amber-50" :
-                                result.position === 2 ? "bg-gray-50" :
-                                result.position === 3 ? "bg-amber-100" : ""
+                              className={`${
+                                result.position === 1 ? "bg-amber-50 dark:bg-amber-950/20" :
+                                result.position === 2 ? "bg-slate-50 dark:bg-slate-900/20" :
+                                result.position === 3 ? "bg-amber-100 dark:bg-amber-900/20" : ""
                               }`}
                             >
-                              <td className="p-2">
+                              <TableCell className="text-center">
                                 {result.position !== null ? (
-                                  <span className="font-bold text-primary">
+                                  <span className="font-bold text-lg text-primary">
                                     {result.position}
                                   </span>
                                 ) : (
                                   <span className="text-muted-foreground">-</span>
                                 )}
-                              </td>
-                              <td className="p-2">
-                                {result.club_name}
+                              </TableCell>
+                              <TableCell>
+                                <div className="font-medium">
+                                  {result.club_name || "N/A"}
+                                </div>
                                 {result.club_code && (
-                                  <span className="text-muted-foreground ml-1">
-                                    ({result.club_code})
-                                  </span>
+                                  <div className="text-sm text-muted-foreground">
+                                    {result.club_code}
+                                  </div>
                                 )}
-                              </td>
-                              <td className="p-2">
-                                Course {result.race_number}
-                              </td>
-                              <td className="p-2">
-                                {result.phase_name}
-                              </td>
-                              <td className="p-2">
+                              </TableCell>
+                              <TableCell className="text-center">
+                                {result.race_number}
+                              </TableCell>
+                              <TableCell>
+                                {result.phase_name || "-"}
+                              </TableCell>
+                              <TableCell className="text-center">
                                 {result.lane}
-                              </td>
-                              <td className="p-2">
+                              </TableCell>
+                              <TableCell className="text-right">
                                 {result.has_timing ? (
-                                  <span className="font-mono">
+                                  <span className="font-mono font-semibold">
                                     {formatTime(result.final_time) || "-"}
                                   </span>
                                 ) : (
-                                  <span className="text-muted-foreground italic">
+                                  <span className="text-muted-foreground italic text-sm">
                                     DNS/DNF
                                   </span>
                                 )}
-                              </td>
-                            </tr>
+                              </TableCell>
+                            </TableRow>
                           ))}
-                        </tbody>
-                      </table>
+                        </TableBody>
+                      </Table>
                     </div>
                   </CardContent>
                 </Card>
@@ -309,20 +311,20 @@ export default function EventResultsPage() {
                       </span>
                     </CardTitle>
                   </CardHeader>
-                  <CardContent>
+                  <CardContent className="p-0">
                     <div className="overflow-x-auto">
-                      <table className="w-full border-collapse">
-                        <thead>
-                          <tr className="border-b">
-                            <th className="text-left p-2 font-semibold">Catégorie</th>
-                            <th className="text-left p-2 font-semibold">Position</th>
-                            <th className="text-left p-2 font-semibold">Course</th>
-                            <th className="text-left p-2 font-semibold">Phase</th>
-                            <th className="text-left p-2 font-semibold">Couloir</th>
-                            <th className="text-left p-2 font-semibold">Temps</th>
-                          </tr>
-                        </thead>
-                        <tbody>
+                      <Table>
+                        <TableHeader>
+                          <TableRow className="bg-muted/50">
+                            <TableHead className="min-w-[180px] font-semibold">Catégorie</TableHead>
+                            <TableHead className="w-20 text-center font-semibold">Position</TableHead>
+                            <TableHead className="w-24 text-center font-semibold">Course</TableHead>
+                            <TableHead className="min-w-[150px] font-semibold">Phase</TableHead>
+                            <TableHead className="w-20 text-center font-semibold">Couloir</TableHead>
+                            <TableHead className="w-32 text-right font-semibold">Temps</TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
                           {clubResult.results
                             .sort((a, b) => {
                               // Trier par catégorie puis par position
@@ -333,46 +335,52 @@ export default function EventResultsPage() {
                               return (a.position || 999) - (b.position || 999);
                             })
                             .map((result) => (
-                              <tr 
+                              <TableRow 
                                 key={`${result.crew_id}-${result.race_id}`}
-                                className="border-b hover:bg-muted/50"
                               >
-                                <td className="p-2">
-                                  {result.category.label || result.category.code || "N/A"}
-                                </td>
-                                <td className="p-2">
+                                <TableCell>
+                                  <div className="font-medium">
+                                    {result.category.label || result.category.code || "N/A"}
+                                  </div>
+                                  {result.category.gender && (
+                                    <div className="text-sm text-muted-foreground">
+                                      {result.category.gender}
+                                    </div>
+                                  )}
+                                </TableCell>
+                                <TableCell className="text-center">
                                   {result.position !== null ? (
-                                    <span className="font-bold text-primary">
+                                    <span className="font-bold text-lg text-primary">
                                       {result.position}
                                     </span>
                                   ) : (
                                     <span className="text-muted-foreground">-</span>
                                   )}
-                                </td>
-                                <td className="p-2">
-                                  Course {result.race_number}
-                                </td>
-                                <td className="p-2">
-                                  {result.phase_name}
-                                </td>
-                                <td className="p-2">
+                                </TableCell>
+                                <TableCell className="text-center">
+                                  {result.race_number}
+                                </TableCell>
+                                <TableCell>
+                                  {result.phase_name || "-"}
+                                </TableCell>
+                                <TableCell className="text-center">
                                   {result.lane}
-                                </td>
-                                <td className="p-2">
+                                </TableCell>
+                                <TableCell className="text-right">
                                   {result.has_timing ? (
-                                    <span className="font-mono">
+                                    <span className="font-mono font-semibold">
                                       {formatTime(result.final_time) || "-"}
                                     </span>
                                   ) : (
-                                    <span className="text-muted-foreground italic">
+                                    <span className="text-muted-foreground italic text-sm">
                                       DNS/DNF
                                     </span>
                                   )}
-                                </td>
-                              </tr>
+                                </TableCell>
+                              </TableRow>
                             ))}
-                        </tbody>
-                      </table>
+                        </TableBody>
+                      </Table>
                     </div>
                   </CardContent>
                 </Card>
