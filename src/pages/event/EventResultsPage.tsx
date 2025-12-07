@@ -3,8 +3,12 @@ import { useParams } from "react-router-dom";
 import api from "@/lib/axios";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Trophy, Building2, Loader2, AlertCircle } from "lucide-react";
+import { Trophy, Building2, Loader2, AlertCircle, FileSpreadsheet, Download } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Button } from "@/components/ui/button";
+import { useToast } from "@/hooks/use-toast";
+import * as XLSX from "xlsx";
+import dayjs from "dayjs";
 
 // Types basés sur la documentation API
 interface Category {
@@ -100,6 +104,17 @@ export default function EventResultsPage() {
   const [error, setError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<"categories" | "clubs" | "club-ranking">("categories");
   const [isIndoor, setIsIndoor] = useState<boolean>(false);
+  const [clubRanking, setClubRanking] = useState<Array<{
+    id: string;
+    club_name: string;
+    club_code: string | null;
+    total_points: number;
+    rank: number | null;
+    points_count: number;
+    results_count: number;
+  }>>([]);
+  const [eventName, setEventName] = useState<string>("");
+  const { toast } = useToast();
 
   useEffect(() => {
     const fetchResults = async () => {
@@ -117,6 +132,22 @@ export default function EventResultsPage() {
           const raceType = eventData.race_type?.toLowerCase() || "";
           isIndoorEvent = raceType.includes("indoor");
           setIsIndoor(isIndoorEvent);
+          setEventName(eventData.name || "");
+          
+          // Récupérer le classement des clubs depuis l'API (uniquement pour indoor)
+          if (isIndoorEvent) {
+            try {
+              const rankingRes = await api.get(`/rankings/event/${eventId}/ranking?ranking_type=indoor_points`);
+              if (rankingRes.data.status === "success") {
+                setClubRanking(rankingRes.data.data || []);
+              }
+            } catch (rankingErr) {
+              console.error("Erreur récupération classement clubs:", rankingErr);
+              setClubRanking([]);
+            }
+          } else {
+            setClubRanking([]);
+          }
         } catch (err) {
           console.error("Erreur vérification type événement", err);
         }
@@ -231,41 +262,119 @@ export default function EventResultsPage() {
     );
   }, [categoryResults]);
 
-  // Classement des clubs par points (uniquement pour indoor)
-  const clubRanking = useMemo(() => {
-    if (!isIndoor) return [];
-
-    const clubPointsMap = new Map<string, { club_name: string; club_code: string | null; totalPoints: number; resultCount: number }>();
-
+  // Fonction d'export Excel pour les résultats par catégories
+  const exportCategoriesToExcel = () => {
+    const exportData: any[] = [];
+    
     categoryResults.forEach((categoryResult) => {
       categoryResult.results.forEach((result) => {
-        if (!result.club_name || !result.is_eligible_for_points || result.points === null) return;
-
-        const clubId = result.club_code || result.club_name || "unknown";
-        
-        if (!clubPointsMap.has(clubId)) {
-          clubPointsMap.set(clubId, {
-            club_name: result.club_name,
-            club_code: result.club_code,
-            totalPoints: 0,
-            resultCount: 0,
-          });
-        }
-
-        const clubData = clubPointsMap.get(clubId)!;
-        clubData.totalPoints += result.points || 0;
-        clubData.resultCount += 1;
+        exportData.push({
+          "Catégorie": categoryResult.category.label || categoryResult.category.code || "",
+          "Code Catégorie": categoryResult.category.code || "",
+          "Genre": categoryResult.category.gender || "",
+          "Position": result.position || "-",
+          "Club": result.club_name || "",
+          "Code Club": result.club_code || "",
+          "Course": result.race_name || `Course ${result.race_number}`,
+          ...(isIndoor ? {
+            "Participants": result.participants?.map((p: any) => 
+              `${p.last_name?.toUpperCase() || ""}, ${p.first_name || ""}`
+            ).join(" • ") || "",
+            "Temps": result.time_display || "-",
+            "Distance": result.distance_info?.label || (result.distance ? `${result.distance}m` : "-"),
+            "Allure": result.avg_pace || "-",
+            "SPM": result.spm || "-",
+            "Points": result.is_eligible_for_points && result.points !== null ? result.points : "-",
+          } : {
+            "Phase": result.phase_name || "-",
+            "Couloir": result.lane || "-",
+            "Temps": result.time_display || formatTime(result.final_time || result.time_ms) || "-",
+          }),
+        });
       });
     });
 
-    // Trier par total de points décroissant
-    return Array.from(clubPointsMap.values())
-      .sort((a, b) => b.totalPoints - a.totalPoints)
-      .map((club, index) => ({
-        ...club,
-        rank: index + 1,
-      }));
-  }, [categoryResults, isIndoor]);
+    const ws = XLSX.utils.json_to_sheet(exportData);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Résultats par catégories");
+    
+    const fileName = `resultats_categories_${eventName || "event"}_${dayjs().format("YYYY-MM-DD")}.xlsx`;
+    XLSX.writeFile(wb, fileName);
+    
+    toast({
+      title: "Export Excel réussi",
+      description: "Fichier Excel téléchargé",
+    });
+  };
+
+  // Fonction d'export Excel pour les résultats par clubs
+  const exportClubsToExcel = () => {
+    const exportData: any[] = [];
+    
+    clubResults.forEach((clubResult) => {
+      clubResult.results.forEach((result) => {
+        exportData.push({
+          "Club": clubResult.club_name,
+          "Code Club": clubResult.club_code || "",
+          "Catégorie": result.category.label || result.category.code || "",
+          "Code Catégorie": result.category.code || "",
+          "Genre": result.category.gender || "",
+          "Position": result.position || "-",
+          "Course": result.race_name || `Course ${result.race_number}`,
+          ...(isIndoor ? {
+            "Participants": result.participants?.map((p: any) => 
+              `${p.last_name?.toUpperCase() || ""}, ${p.first_name || ""}`
+            ).join(" • ") || "",
+            "Temps": result.time_display || "-",
+            "Distance": result.distance_info?.label || (result.distance ? `${result.distance}m` : "-"),
+            "Allure": result.avg_pace || "-",
+            "SPM": result.spm || "-",
+            "Points": result.is_eligible_for_points && result.points !== null ? result.points : "-",
+          } : {
+            "Phase": result.phase_name || "-",
+            "Couloir": result.lane || "-",
+            "Temps": result.time_display || formatTime(result.final_time || result.time_ms) || "-",
+          }),
+        });
+      });
+    });
+
+    const ws = XLSX.utils.json_to_sheet(exportData);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Résultats par clubs");
+    
+    const fileName = `resultats_clubs_${eventName || "event"}_${dayjs().format("YYYY-MM-DD")}.xlsx`;
+    XLSX.writeFile(wb, fileName);
+    
+    toast({
+      title: "Export Excel réussi",
+      description: "Fichier Excel téléchargé",
+    });
+  };
+
+  // Fonction d'export Excel pour le classement des clubs
+  const exportClubRankingToExcel = () => {
+    const exportData = clubRanking.map((club) => ({
+      "Rang": club.rank || "-",
+      "Club": club.club_name,
+      "Code Club": club.club_code || "",
+      "Total points": club.total_points.toFixed(1),
+      "Nombre de points": club.points_count,
+      "Nombre de résultats": club.results_count,
+    }));
+
+    const ws = XLSX.utils.json_to_sheet(exportData);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Classement clubs");
+    
+    const fileName = `classement_clubs_${eventName || "event"}_${dayjs().format("YYYY-MM-DD")}.xlsx`;
+    XLSX.writeFile(wb, fileName);
+    
+    toast({
+      title: "Export Excel réussi",
+      description: "Fichier Excel téléchargé",
+    });
+  };
 
   if (loading) {
     return (
@@ -299,42 +408,58 @@ export default function EventResultsPage() {
       </div>
 
       <div className="mb-6">
-        <div className="flex gap-2 border-b bg-muted/30">
-          <button
-            onClick={() => setActiveTab("categories")}
-            className={`px-6 py-3 font-medium flex items-center gap-2 border-b-2 transition-all ${
-              activeTab === "categories"
-                ? "border-primary text-primary bg-background"
-                : "border-transparent text-muted-foreground hover:text-foreground hover:bg-muted/50"
-            }`}
-          >
-            <Trophy className="w-4 h-4" />
-            Par catégories
-          </button>
-          <button
-            onClick={() => setActiveTab("clubs")}
-            className={`px-6 py-3 font-medium flex items-center gap-2 border-b-2 transition-all ${
-              activeTab === "clubs"
-                ? "border-primary text-primary bg-background"
-                : "border-transparent text-muted-foreground hover:text-foreground hover:bg-muted/50"
-            }`}
-          >
-            <Building2 className="w-4 h-4" />
-            Par clubs
-          </button>
-          {isIndoor && (
+        <div className="flex items-center justify-between gap-4 mb-4">
+          <div className="flex gap-2 border-b bg-muted/30 flex-1">
             <button
-              onClick={() => setActiveTab("club-ranking")}
+              onClick={() => setActiveTab("categories")}
               className={`px-6 py-3 font-medium flex items-center gap-2 border-b-2 transition-all ${
-                activeTab === "club-ranking"
+                activeTab === "categories"
                   ? "border-primary text-primary bg-background"
                   : "border-transparent text-muted-foreground hover:text-foreground hover:bg-muted/50"
               }`}
             >
               <Trophy className="w-4 h-4" />
-              Classement clubs
+              Par catégories
             </button>
-          )}
+            <button
+              onClick={() => setActiveTab("clubs")}
+              className={`px-6 py-3 font-medium flex items-center gap-2 border-b-2 transition-all ${
+                activeTab === "clubs"
+                  ? "border-primary text-primary bg-background"
+                  : "border-transparent text-muted-foreground hover:text-foreground hover:bg-muted/50"
+              }`}
+            >
+              <Building2 className="w-4 h-4" />
+              Par clubs
+            </button>
+            {isIndoor && (
+              <button
+                onClick={() => setActiveTab("club-ranking")}
+                className={`px-6 py-3 font-medium flex items-center gap-2 border-b-2 transition-all ${
+                  activeTab === "club-ranking"
+                    ? "border-primary text-primary bg-background"
+                    : "border-transparent text-muted-foreground hover:text-foreground hover:bg-muted/50"
+                }`}
+              >
+                <Trophy className="w-4 h-4" />
+                Classement clubs
+              </button>
+            )}
+          </div>
+          <Button
+            onClick={() => {
+              if (activeTab === "categories") exportCategoriesToExcel();
+              else if (activeTab === "clubs") exportClubsToExcel();
+              else if (activeTab === "club-ranking" && isIndoor) exportClubRankingToExcel();
+            }}
+            variant="outline"
+            size="sm"
+            className="flex items-center gap-2"
+          >
+            <FileSpreadsheet className="w-4 h-4" />
+            <Download className="w-4 h-4" />
+            Excel
+          </Button>
         </div>
       </div>
 
@@ -693,7 +818,8 @@ export default function EventResultsPage() {
                         <TableHead className="w-20 text-center font-semibold">Rang</TableHead>
                         <TableHead className="min-w-[250px] font-semibold">Club</TableHead>
                         <TableHead className="w-32 text-center font-semibold">Total points</TableHead>
-                        <TableHead className="w-32 text-center font-semibold">Résultats</TableHead>
+                        <TableHead className="w-32 text-center font-semibold">Nb points</TableHead>
+                        <TableHead className="w-32 text-center font-semibold">Nb résultats</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
@@ -723,12 +849,17 @@ export default function EventResultsPage() {
                           </TableCell>
                           <TableCell className="text-center">
                             <span className="font-bold text-xl text-primary">
-                              {club.totalPoints.toFixed(1)}
+                              {club.total_points.toFixed(1)}
                             </span>
                           </TableCell>
                           <TableCell className="text-center">
                             <span className="text-muted-foreground">
-                              {club.resultCount} résultat{club.resultCount > 1 ? "s" : ""}
+                              {club.points_count} point{club.points_count > 1 ? "s" : ""}
+                            </span>
+                          </TableCell>
+                          <TableCell className="text-center">
+                            <span className="text-muted-foreground">
+                              {club.results_count} résultat{club.results_count > 1 ? "s" : ""}
                             </span>
                           </TableCell>
                         </TableRow>
