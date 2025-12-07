@@ -29,6 +29,7 @@ interface ClubRanking {
   total_points: number;
   rank: number | null;
   points_count: number;
+  results_count: number;
 }
 
 interface EventRankings {
@@ -84,6 +85,7 @@ export default function ClubRankingsPage() {
       best_points: number;
       best_event_name: string;
       best_event_date: string;
+      best_results_count: number;
     }> = {};
 
     // Pour chaque événement, trouver le meilleur score de chaque club
@@ -99,6 +101,7 @@ export default function ClubRankingsPage() {
             best_points: ranking.total_points,
             best_event_name: eventRankings.event.name,
             best_event_date: eventRankings.event.start_date,
+            best_results_count: ranking.results_count || 0,
           };
         }
       });
@@ -209,6 +212,7 @@ export default function ClubRankingsPage() {
                     <TableHead className="w-20 text-center font-semibold">Rang</TableHead>
                     <TableHead className="min-w-[250px] font-semibold">Club</TableHead>
                     <TableHead className="w-32 text-center font-semibold">Meilleur score</TableHead>
+                    <TableHead className="w-32 text-center font-semibold">Nb résultats</TableHead>
                     <TableHead className="min-w-[200px] font-semibold">Événement</TableHead>
                     <TableHead className="w-32 text-center font-semibold">Date</TableHead>
                   </TableRow>
@@ -241,6 +245,11 @@ export default function ClubRankingsPage() {
                       <TableCell className="text-center">
                         <span className="font-bold text-xl text-primary">
                           {club.best_points.toFixed(1)}
+                        </span>
+                      </TableCell>
+                      <TableCell className="text-center">
+                        <span className="text-muted-foreground">
+                          {club.best_results_count} résultat{club.best_results_count > 1 ? "s" : ""}
                         </span>
                       </TableCell>
                       <TableCell>
@@ -328,12 +337,13 @@ export default function ClubRankingsPage() {
                         <TableHead className="min-w-[250px] font-semibold">Club</TableHead>
                         <TableHead className="w-32 text-center font-semibold">Total points</TableHead>
                         <TableHead className="w-32 text-center font-semibold">Nb points</TableHead>
+                        <TableHead className="w-32 text-center font-semibold">Nb résultats</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
                       {eventRankings.rankings.length === 0 ? (
                         <TableRow>
-                          <TableCell colSpan={4} className="text-center text-muted-foreground py-8">
+                          <TableCell colSpan={5} className="text-center text-muted-foreground py-8">
                             Aucun classement disponible pour cet événement
                           </TableCell>
                         </TableRow>
@@ -374,6 +384,11 @@ export default function ClubRankingsPage() {
                             <TableCell className="text-center">
                               <span className="text-muted-foreground">
                                 {ranking.points_count} point{ranking.points_count > 1 ? "s" : ""}
+                              </span>
+                            </TableCell>
+                            <TableCell className="text-center">
+                              <span className="text-muted-foreground">
+                                {ranking.results_count || 0} résultat{(ranking.results_count || 0) > 1 ? "s" : ""}
                               </span>
                             </TableCell>
                           </TableRow>
