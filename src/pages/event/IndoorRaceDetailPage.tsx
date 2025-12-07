@@ -532,8 +532,18 @@ export default function IndoorRaceDetailPage() {
         return;
       }
 
-      // Vérifier que c'est bien un fichier ErgRace
-      if (!ergraceData.results || !ergraceData.results.race_id) {
+      // Normaliser les données pour supporter les deux formats :
+      // Format 1 : { results: { race_id, participants, ... } }
+      // Format 2 : { race_id, participants, ... } (données directement à la racine)
+      let normalizedResults: any;
+      
+      if (ergraceData.results) {
+        // Format avec encapsulation dans "results"
+        normalizedResults = ergraceData.results;
+      } else if (ergraceData.race_id || ergraceData.participants) {
+        // Format sans encapsulation (données à la racine)
+        normalizedResults = ergraceData;
+      } else {
         toast({
           title: "Format invalide",
           description: "Le fichier ne semble pas être un fichier ErgRace valide",
@@ -542,10 +552,47 @@ export default function IndoorRaceDetailPage() {
         return;
       }
 
-      // Préparer le payload pour l'API
+      // Vérifier que les données essentielles sont présentes
+      if (!normalizedResults.participants || !Array.isArray(normalizedResults.participants)) {
+        toast({
+          title: "Format invalide",
+          description: "Le fichier ne contient pas de participants valides",
+          variant: "destructive",
+        });
+        return;
+      }
+
+      // Normaliser les participants pour gérer les différences entre formats
+      // Dans le nouveau format, le temps est dans "time" et non "score"
+      const normalizedParticipants = normalizedResults.participants.map((participant: any) => {
+        const normalized: any = { ...participant };
+        
+        // Si le temps est dans "time" mais pas dans "score", utiliser "time"
+        if (normalized.time && !normalized.score) {
+          // Convertir le temps en millisecondes si nécessaire
+          // Le format "time" peut être "MM:SS.m" ou déjà en millisecondes
+          if (typeof normalized.time === 'string' && normalized.time.includes(':')) {
+            // Format "MM:SS.m" - on garde tel quel, le backend s'en chargera
+            normalized.score = normalized.time;
+          } else if (typeof normalized.time === 'number') {
+            // Déjà en millisecondes
+            normalized.score = normalized.time;
+          }
+        }
+        
+        // S'assurer que lane_number existe (peut être "lane" dans certains formats)
+        if (normalized.lane && !normalized.lane_number) {
+          normalized.lane_number = normalized.lane;
+        }
+        
+        return normalized;
+      });
+
+      // Préparer le payload pour l'API avec les données normalisées
       const payload = {
         results: {
-          ...ergraceData.results,
+          ...normalizedResults,
+          participants: normalizedParticipants,
           c2_race_id: raceId, // ID de la course dans la plateforme
         },
       };
