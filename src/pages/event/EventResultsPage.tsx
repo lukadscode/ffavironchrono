@@ -132,7 +132,7 @@ export default function EventResultsPage() {
           results: catResult.results.map((r: any) => {
             // Normaliser selon le type d'événement
             if (isIndoorEvent) {
-              // Format indoor
+              // Format indoor - utiliser position (classement catégorie) au lieu de place
               return {
                 race_id: r.race_id,
                 race_number: r.race_number,
@@ -140,7 +140,7 @@ export default function EventResultsPage() {
                 crew_id: r.crew_id,
                 club_name: r.crew?.club_name || null,
                 club_code: r.crew?.club_code || null,
-                position: r.place, // place devient position
+                position: r.position, // Position dans le classement de la catégorie
                 time_display: r.time_display,
                 time_ms: r.time_ms,
                 has_timing: r.time_ms !== null && r.time_ms !== undefined,
