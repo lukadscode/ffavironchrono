@@ -40,6 +40,7 @@ import ExportPage from "@/pages/event/ExportPage";
 import EventUpdatePage from "@/pages/event/EventUpdatePage";
 import EventResultsPage from "@/pages/event/EventResultsPage";
 import ClubRankingsPage from "@/pages/dashboard/ClubRankingsPage";
+import EventStatisticsPage from "@/pages/dashboard/EventStatisticsPage";
 import EventsList from "@/pages/public/EventsList";
 import PublicEvent from "@/pages/public/PublicEvent";
 import Live from "@/pages/public/Live";
@@ -104,6 +105,7 @@ const router = createBrowserRouter([
       { path: "users-management/:userId", element: <UserDetailPage /> },
       { path: "profile", element: <ProfilePage /> },
       { path: "club-rankings", element: <ClubRankingsPage /> },
+      { path: "event-statistics", element: <EventStatisticsPage /> },
       { path: "websocket-test", element: <WebSocketTestPage /> },
     ],
   },
