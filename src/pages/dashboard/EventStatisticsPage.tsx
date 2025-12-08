@@ -93,8 +93,9 @@ export default function EventStatisticsPage() {
   };
 
   const fetchEvent = async () => {
+    if (!selectedEventId) return;
     try {
-      const res = await api.get(`/events/${eventId}`);
+      const res = await api.get(`/events/${selectedEventId}`);
       setEvent(res.data.data || res.data);
     } catch (err) {
       console.error("Erreur chargement événement:", err);
