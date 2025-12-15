@@ -1009,9 +1009,9 @@ export default function ImportErgRaceResultsWithRacePage() {
                 <Label>Résumé des participants (et affectation)</Label>
                 <ScrollArea className="h-64 border rounded-md p-3 mt-1 text-xs">
                   <div className="space-y-1">
-                    {ergResults.participants
-                      .filter((p: any) => p.__include !== false)
-                      .map((p: any, idx: number) => {
+                    {ergResults.participants.map((p: any, idx: number) => {
+                      if (p.__include === false) return null;
+
                         const mapped = eventParticipants.find(
                           (ep) => ep.id === p.__mapped_participant_id
                         );
@@ -1314,7 +1314,7 @@ export default function ImportErgRaceResultsWithRacePage() {
                             )}
                           </div>
                         );
-                      })}
+                    })}
                   </div>
                 </ScrollArea>
               </div>
