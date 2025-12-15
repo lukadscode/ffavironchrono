@@ -1104,25 +1104,69 @@ export default function ImportErgRaceResultsWithRacePage() {
                                     ...ergResults,
                                     participants: updated,
                                   });
+                                  setParticipantSearchQuery("");
                                 }}
                               >
                                 <SelectTrigger className="h-7 px-2 py-0 text-[11px]">
                                   <SelectValue placeholder="Aucun participant lié" />
                                 </SelectTrigger>
-                                <SelectContent className="max-h-64">
-                                  <SelectItem value="__none__">Aucun participant lié</SelectItem>
-                                  {eventParticipants.map((ep) => (
-                                    <SelectItem key={ep.id} value={ep.id}>
-                                      {ep.last_name.toUpperCase()}{" "}
-                                      {ep.first_name}
-                                      {ep.club_name
-                                        ? ` – ${ep.club_name}`
-                                        : ""}
-                                      {ep.license_number
-                                        ? ` (${ep.license_number})`
-                                        : ""}
+                                <SelectContent className="max-h-64 p-0">
+                                  {/* Barre de recherche participants */}
+                                  <div className="sticky top-0 z-10 bg-background border-b p-2">
+                                    <div className="relative">
+                                      <Search className="absolute left-2 top-1/2 transform -translate-y-1/2 w-3 h-3 text-muted-foreground" />
+                                      <Input
+                                        placeholder="Rechercher un participant..."
+                                        className="h-7 pl-6 pr-2 text-[11px]"
+                                        value={participantSearchQuery}
+                                        onChange={(e) =>
+                                          setParticipantSearchQuery(
+                                            e.target.value
+                                          )
+                                        }
+                                        onClick={(e) => e.stopPropagation()}
+                                      />
+                                    </div>
+                                  </div>
+                                  <ScrollArea className="max-h-56">
+                                    <SelectItem value="__none__">
+                                      Aucun participant lié
                                     </SelectItem>
-                                  ))}
+                                    {eventParticipants
+                                      .filter((ep) => {
+                                        const q =
+                                          participantSearchQuery
+                                            .toLowerCase()
+                                            .trim();
+                                        if (!q) return true;
+                                        const fullName = `${ep.last_name} ${ep.first_name}`
+                                          .toLowerCase()
+                                          .trim();
+                                        const club = (
+                                          ep.club_name || ""
+                                        ).toLowerCase();
+                                        const license = (
+                                          ep.license_number || ""
+                                        ).toLowerCase();
+                                        return (
+                                          fullName.includes(q) ||
+                                          club.includes(q) ||
+                                          license.includes(q)
+                                        );
+                                      })
+                                      .map((ep) => (
+                                        <SelectItem key={ep.id} value={ep.id}>
+                                          {ep.last_name.toUpperCase()}{" "}
+                                          {ep.first_name}
+                                          {ep.club_name
+                                            ? ` – ${ep.club_name}`
+                                            : ""}
+                                          {ep.license_number
+                                            ? ` (${ep.license_number})`
+                                            : ""}
+                                        </SelectItem>
+                                      ))}
+                                  </ScrollArea>
                                 </SelectContent>
                               </Select>
                             </div>
