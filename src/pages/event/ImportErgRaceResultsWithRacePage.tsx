@@ -90,6 +90,88 @@ const getDistanceLabel = (distance: Distance): string => {
   return "Distance inconnue";
 };
 
+// Helpers pour matching de noms (inspirés de ImportErgRaceRacePage)
+const normalizeName = (name: string): string => {
+  return name
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+};
+
+const parseErgRaceName = (name: string): { lastName: string; firstName: string } => {
+  const normalized = normalizeName(name);
+  if (normalized.includes(",")) {
+    const parts = normalized.split(",").map((p) => p.trim());
+    return {
+      lastName: parts[0] || "",
+      firstName: parts[1] || "",
+    };
+  }
+  const parts = normalized.split(" ");
+  if (parts.length >= 2) {
+    return {
+      lastName: parts[parts.length - 1] || "",
+      firstName: parts.slice(0, -1).join(" ") || "",
+    };
+  }
+  return { lastName: normalized, firstName: "" };
+};
+
+const computeMatchScore = (
+  ergraceName: string | undefined,
+  ergraceAffiliation: string | undefined,
+  participant: EventParticipant
+): number => {
+  if (! ergraceName) return 0;
+
+  const parsed = parseErgRaceName(ergraceName);
+  const ergLast = normalizeName(parsed.lastName);
+  const ergFirst = normalizeName(parsed.firstName);
+
+  const pLast = normalizeName(participant.last_name);
+  const pFirst = normalizeName(participant.first_name);
+
+  let score = 0;
+
+  // Nom + prénom exacts
+  if (ergLast === pLast && ergFirst === pFirst) {
+    score = 100;
+  } else if (ergLast === pLast) {
+    // Nom exact, prénom proche
+    if (
+      ergFirst &&
+      pFirst &&
+      (pFirst.startsWith(ergFirst) || ergFirst.startsWith(pFirst))
+    ) {
+      score = 80;
+  } else {
+      score = 60;
+    }
+  } else if (
+    pLast.includes(ergLast) ||
+    ergLast.includes(pLast)
+  ) {
+    // Nom partiellement inclus
+    score = 40;
+  } else {
+    // Sans correspondance de nom, on ne va pas plus loin
+    score = 0;
+  }
+
+  // Bonus club si fourni
+  if (ergraceAffiliation && score >= 40) {
+    const ergClub = normalizeName(ergraceAffiliation);
+    const pClub = normalizeName(participant.club_name || "");
+    if (ergClub && pClub && (ergClub === pClub || pClub.includes(ergClub) || ergClub.includes(pClub))) {
+      score = Math.min(100, score + 10);
+    }
+  }
+
+  return score;
+};
+
 export default function ImportErgRaceResultsWithRacePage() {
   const { eventId } = useParams();
   const navigate = useNavigate();
@@ -320,33 +402,36 @@ export default function ImportErgRaceResultsWithRacePage() {
           const include = p.participant && p.participant !== "EMPTY";
           const laneValue = p.lane_number ?? p.lane ?? index + 1;
 
-          // tentative de matching par nom simple (nom de famille uniquement) + club
           let mappedId: string | undefined = undefined;
+          let matchScore: number | undefined = undefined;
+
           if (include && eventParticipants.length > 0 && p.participant) {
-            const nameUpper = p.participant.toUpperCase();
-            // on essaye de récupérer juste le nom de famille (before/after espace ou virgule)
-            const lastName =
-              nameUpper.includes(",")
-                ? nameUpper.split(",")[0].trim()
-                : nameUpper.split(" ").slice(-1)[0].trim();
+            // Calculer un score pour chaque participant événement
+            const scored = eventParticipants.map((ep) => ({
+              participant: ep,
+              score: computeMatchScore(p.participant!, p.affiliation, ep),
+            }));
 
-            const clubCode = (p.affiliation || "").toUpperCase();
+            // Trier par score décroissant
+            scored.sort((a, b) => b.score - a.score);
 
-            const cand = eventParticipants.find((ep) => {
-              const epLast = ep.last_name.toUpperCase();
-              const epClub = (ep.club_name || "").toUpperCase();
-              const lastMatch =
-                epLast === lastName ||
-                epLast.includes(lastName) ||
-                lastName.includes(epLast);
-              const clubMatch =
-                !clubCode ||
-                epClub.includes(clubCode) ||
-                clubCode.includes(epClub);
-              return lastMatch && clubMatch;
-            });
-            if (cand) {
-              mappedId = cand.id;
+            const best = scored[0];
+            const second = scored[1];
+
+            if (best && best.score > 0) {
+              // Logique proche de l'import ErgRace des équipages :
+              // on accepte si:
+              // - score >= 70, ou
+              // - score >= 40 et nettement meilleur que le second (écart >= 20)
+              const accept =
+                best.score >= 70 ||
+                (best.score >= 40 &&
+                  (!second || best.score - second.score >= 20));
+
+              if (accept) {
+                mappedId = best.participant.id;
+                matchScore = best.score;
+              }
             }
           }
 
@@ -358,7 +443,8 @@ export default function ImportErgRaceResultsWithRacePage() {
             ...p,
             __include: include,
             __mapped_participant_id: mappedId,
-          };
+            __match_score: matchScore,
+          } as any;
         }
       );
 
@@ -783,6 +869,7 @@ export default function ImportErgRaceResultsWithRacePage() {
                         const mapped = eventParticipants.find(
                           (ep) => ep.id === p.__mapped_participant_id
                         );
+                        const score: number | undefined = p.__match_score;
                         return (
                           <div
                             key={idx}
@@ -798,6 +885,19 @@ export default function ImportErgRaceResultsWithRacePage() {
                                   {p.score || p.time || ""}
                                 </span>
                               </div>
+                              {typeof score === "number" && score > 0 && (
+                                <span
+                                  className={`text-[10px] px-2 py-0.5 rounded-full font-medium ${
+                                    score >= 80
+                                      ? "bg-green-100 text-green-700"
+                                      : score >= 60
+                                      ? "bg-yellow-100 text-yellow-700"
+                                      : "bg-orange-100 text-orange-700"
+                                  }`}
+                                >
+                                  Auto-affecté ({score}%)
+                                </span>
+                              )}
                               <Button
                                 type="button"
                                 variant="ghost"
