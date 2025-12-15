@@ -831,7 +831,7 @@ export default function ImportErgRaceResultsWithRacePage() {
                                 Affecté à :
                               </span>
                               <Select
-                                value={p.__mapped_participant_id || ""}
+                                value={p.__mapped_participant_id || "__none__"}
                                 onValueChange={(value) => {
                                   if (!ergResults) return;
                                   const updated =
@@ -841,7 +841,9 @@ export default function ImportErgRaceResultsWithRacePage() {
                                           ? {
                                               ...pp,
                                               __mapped_participant_id:
-                                                value || undefined,
+                                                value === "__none__"
+                                                  ? undefined
+                                                  : value,
                                             }
                                           : pp
                                     );
@@ -855,9 +857,7 @@ export default function ImportErgRaceResultsWithRacePage() {
                                   <SelectValue placeholder="Aucun participant lié" />
                                 </SelectTrigger>
                                 <SelectContent className="max-h-64">
-                                  <SelectItem value="">
-                                    Aucun participant lié
-                                  </SelectItem>
+                                  <SelectItem value="__none__">Aucun participant lié</SelectItem>
                                   {eventParticipants.map((ep) => (
                                     <SelectItem key={ep.id} value={ep.id}>
                                       {ep.last_name.toUpperCase()}{" "}
