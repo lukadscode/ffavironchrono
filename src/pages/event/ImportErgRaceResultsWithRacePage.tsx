@@ -208,6 +208,7 @@ export default function ImportErgRaceResultsWithRacePage() {
   // Participants de l'événement pour mapping
   const [eventParticipants, setEventParticipants] = useState<EventParticipant[]>([]);
   const [mappingLoaded, setMappingLoaded] = useState(false);
+  const [participantSearchQuery, setParticipantSearchQuery] = useState("");
 
   // Équipages de l'événement (avec participants) pour pouvoir retrouver l'équipage d'un participant
   const [eventCrews, setEventCrews] = useState<any[]>([]);
@@ -688,8 +689,30 @@ export default function ImportErgRaceResultsWithRacePage() {
       }
 
       // 3) Importer les résultats indoor via l'endpoint existant
-      const normalizedParticipants =
-        normalizeParticipantsForBackend(includedParticipants);
+      //    → on attache aussi crew_id à chaque participant en fonction du couloir
+      const laneToCrew = new Map<number, string>();
+      laneCrewPairs.forEach(({ lane, crew_id }) => {
+        if (!laneToCrew.has(lane)) {
+          laneToCrew.set(lane, crew_id);
+        }
+      });
+
+      const normalizedParticipants = normalizeParticipantsForBackend(
+        includedParticipants
+      ).map((np: any, index: number) => {
+        const laneValue =
+          np.lane_number ?? np.lane ?? (includedParticipants[index] as any)?.lane_number ??
+          (includedParticipants[index] as any)?.lane ??
+          index + 1;
+        const crewId = laneToCrew.get(laneValue);
+        if (crewId) {
+          return {
+            ...np,
+            crew_id: crewId,
+          };
+        }
+        return np;
+      });
 
       // Certains fichiers ErgRace ont race_id vide,
       // l'API attend cependant une valeur non vide.
