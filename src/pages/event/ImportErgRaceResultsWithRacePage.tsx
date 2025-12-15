@@ -321,14 +321,17 @@ export default function ImportErgRaceResultsWithRacePage() {
       // Récupérer les participants de l'événement
       const res = await api.get(`/participants/event/${eventId}`);
       const data = res.data.data || [];
-      const normalized: EventParticipant[] = data.map((p: any) => ({
-        id: p.id,
-        first_name: p.first_name,
-        last_name: p.last_name,
-        club_name: p.club_name,
-        license_number: p.license_number,
-        crews: participantMap.get(p.id) || [],
-      }));
+      const normalized: EventParticipant[] = data.map((p: any) => {
+        const pid = String(p.id);
+        return {
+          id: pid,
+          first_name: p.first_name,
+          last_name: p.last_name,
+          club_name: p.club_name,
+          license_number: p.license_number,
+          crews: participantMap.get(pid) || [],
+        };
+      });
 
       setEventParticipants(normalized);
       return { participants: normalized, crews: crewsWithParticipants };
@@ -490,7 +493,7 @@ export default function ImportErgRaceResultsWithRacePage() {
                   (!second || best.score - second.score >= 20));
 
               if (accept) {
-                mappedId = best.participant.id;
+                mappedId = String(best.participant.id);
                 matchScore = best.score;
               }
             }
@@ -1036,7 +1039,7 @@ export default function ImportErgRaceResultsWithRacePage() {
                                   {p.score || p.time || ""}
                                 </span>
                               </div>
-                              {typeof score === "number" && score > 0 && (
+                              {typeof score === "number" && score > 0 ? (
                                 <span
                                   className={`text-[10px] px-2 py-0.5 rounded-full font-medium ${
                                     score >= 80
@@ -1047,6 +1050,10 @@ export default function ImportErgRaceResultsWithRacePage() {
                                   }`}
                                 >
                                   Auto-affecté ({score}%)
+                                </span>
+                              ) : (
+                                <span className="text-[10px] px-2 py-0.5 rounded-full font-medium bg-red-100 text-red-700">
+                                  Non affecté
                                 </span>
                               )}
                               <Button
