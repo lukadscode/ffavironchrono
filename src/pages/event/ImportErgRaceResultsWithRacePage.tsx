@@ -639,6 +639,9 @@ export default function ImportErgRaceResultsWithRacePage() {
       const raceRes = await api.post("/races", racePayload);
       const raceId = raceRes.data.data?.id || raceRes.data.id;
 
+      // Distance cible de la course (pour filtrer les équipages incompatibles)
+      const targetDistance = distances.find((d) => d.id === selectedDistanceId);
+
       // 2) Créer les race_crews en fonction de l'affectation des participants
       //    On ne conserve que les lignes marquées comme incluses (__include !== false)
       const includedParticipants = ergResults.participants.filter(
@@ -647,6 +650,48 @@ export default function ImportErgRaceResultsWithRacePage() {
 
       // Pour chaque ligne avec un participant FFA mappé, essayer de retrouver son équipage
       const laneCrewPairs: Array<{ lane: number; crew_id: string }> = [];
+      // Helper pour vérifier la cohérence distance/catégorie d'un équipage
+      const isCrewCompatibleWithDistance = (crewId: string): boolean => {
+        if (!targetDistance) return true; // si on n'a pas de distance définie, ne filtre pas
+
+        const crew = eventCrews.find((c: any) => c.id === crewId);
+        if (!crew || !crew.category) return true;
+
+        const catDist = crew.category.distance || null;
+        const catDistanceId =
+          crew.category.distance_id || (catDist && catDist.id) || null;
+
+        // 1) distance_id strictement identique
+        if (catDistanceId && catDistanceId === targetDistance.id) {
+          return true;
+        }
+
+        if (!catDist) return false;
+
+        // 2) Sinon, comparer les caractéristiques brutes (mètres / temps)
+        const t = targetDistance;
+        // Courses distance (non temps)
+        if (!t.is_time_based && !catDist.is_time_based) {
+          if (t.meters != null && catDist.meters != null) {
+            return Number(t.meters) === Number(catDist.meters);
+          }
+        }
+
+        // Courses temps
+        if (t.is_time_based && catDist.is_time_based) {
+          if (
+            t.duration_seconds != null &&
+            catDist.duration_seconds != null
+          ) {
+            return (
+              Number(t.duration_seconds) === Number(catDist.duration_seconds)
+            );
+          }
+        }
+
+        return false;
+      };
+
       includedParticipants.forEach((p: any, index: number) => {
         const mappedId: string | undefined = p.__mapped_participant_id;
         if (!mappedId) return;
@@ -655,9 +700,18 @@ export default function ImportErgRaceResultsWithRacePage() {
         const laneValue = p.lane_number ?? p.lane ?? index + 1;
         if (!ep || !ep.crews || ep.crews.length === 0) return;
 
+        // Filtrer les équipages du participant en fonction de la distance de la course
+        const compatibleCrewIds = ep.crews
+          .map((c) => c.id)
+          .filter((id) => isCrewCompatibleWithDistance(id));
+        if (compatibleCrewIds.length === 0) {
+          // Aucun équipage cohérent avec la distance => on n'affecte pas
+          return;
+        }
+
         // Si un équipage a été choisi explicitement pour cette ligne, on le privilégie
         const explicitCrewId: string | undefined = p.__mapped_crew_id;
-        const availableCrewIds = ep.crews.map((c) => c.id);
+        const availableCrewIds = compatibleCrewIds;
 
         let crewIdToUse: string | undefined = undefined;
         if (explicitCrewId && availableCrewIds.includes(explicitCrewId)) {
@@ -1008,9 +1062,11 @@ export default function ImportErgRaceResultsWithRacePage() {
               </Alert>
 
               <div>
-                <Label>Résumé des participants (et affectation)</Label>
-                <ScrollArea className="h-64 border rounded-md p-3 mt-1 text-xs">
-                  <div className="space-y-1">
+                <Label className="text-base font-semibold mb-3 block">
+                  Résumé des participants (et affectation)
+                </Label>
+                <ScrollArea className="h-[600px] border-2 rounded-lg p-4 mt-2 bg-gray-50/50">
+                  <div className="space-y-3">
                     {ergResults.participants.map((p: any, idx: number) => {
                       if (p.__include === false) return null;
 
@@ -1032,32 +1088,38 @@ export default function ImportErgRaceResultsWithRacePage() {
                       return (
                           <div
                             key={idx}
-                            className="flex flex-col gap-1 border-b pb-1 last:border-b-0 py-1"
+                            className="flex flex-col gap-3 border-2 border-gray-200 rounded-lg p-4 bg-white shadow-sm hover:shadow-md transition-shadow"
                           >
-                            <div className="flex items-center justify-between gap-2">
+                            <div className="flex items-center justify-between gap-3">
                               <div className="flex-1 overflow-hidden">
-                                <span>
-                                  Couloir {p.lane_number ?? p.lane ?? "?"} –{" "}
-                                  {p.participant || "EMPTY"}
-                                </span>
-                                <span className="ml-2 text-muted-foreground">
-                                  {p.score || p.time || ""}
-                                </span>
+                                <div className="flex items-center gap-3">
+                                  <span className="text-base font-semibold text-gray-900">
+                                    Couloir {p.lane_number ?? p.lane ?? "?"}
+                                  </span>
+                                  <span className="text-base font-medium text-gray-800">
+                                    {p.participant || "EMPTY"}
+                                  </span>
+                                  {p.score || p.time ? (
+                                    <span className="text-base font-bold text-blue-600">
+                                      {p.score || p.time}
+                                    </span>
+                                  ) : null}
+                                </div>
                               </div>
                               {typeof score === "number" && score > 0 ? (
                                 <span
-                                  className={`text-[10px] px-2 py-0.5 rounded-full font-medium ${
+                                  className={`text-sm px-3 py-1.5 rounded-full font-semibold whitespace-nowrap ${
                                     score >= 80
-                                      ? "bg-green-100 text-green-700"
+                                      ? "bg-green-100 text-green-800 border border-green-300"
                                       : score >= 60
-                                      ? "bg-yellow-100 text-yellow-700"
-                                      : "bg-orange-100 text-orange-700"
+                                      ? "bg-yellow-100 text-yellow-800 border border-yellow-300"
+                                      : "bg-orange-100 text-orange-800 border border-orange-300"
                                   }`}
                                 >
                                   Auto-affecté ({score}%)
                                 </span>
                               ) : (
-                                <span className="text-[10px] px-2 py-0.5 rounded-full font-medium bg-red-100 text-red-700">
+                                <span className="text-sm px-3 py-1.5 rounded-full font-semibold bg-red-100 text-red-800 border border-red-300 whitespace-nowrap">
                                   Non affecté
                                 </span>
                               )}
@@ -1065,7 +1127,7 @@ export default function ImportErgRaceResultsWithRacePage() {
                                 type="button"
                                 variant="ghost"
                                 size="icon"
-                                className="h-6 w-6 text-red-600 hover:text-red-700 hover:bg-red-50 flex-shrink-0"
+                                className="h-8 w-8 text-red-600 hover:text-red-700 hover:bg-red-50 flex-shrink-0"
                                 onClick={() => {
                                   if (!ergResults) return;
                                   const updated = ergResults.participants.map(
@@ -1086,11 +1148,11 @@ export default function ImportErgRaceResultsWithRacePage() {
                                 }}
                                 title="Exclure cette ligne de l'import"
                               >
-                                <X className="h-3 w-3" />
+                                <X className="h-4 w-4" />
                               </Button>
                             </div>
-                            <div className="flex items-center gap-2 text-[11px]">
-                              <span className="text-muted-foreground">
+                            <div className="flex items-center gap-3">
+                              <span className="text-sm font-medium text-gray-700 whitespace-nowrap">
                                 Affecté à :
                               </span>
                               <Select
@@ -1138,17 +1200,17 @@ export default function ImportErgRaceResultsWithRacePage() {
                                   }));
                                 }}
                               >
-                                <SelectTrigger className="h-7 px-2 py-0 text-[11px]">
+                                <SelectTrigger className="h-10 px-3 py-2 text-sm font-medium">
                                   <SelectValue placeholder="Aucun participant lié" />
                                 </SelectTrigger>
                                 <SelectContent className="max-h-64 p-0">
                                   {/* Barre de recherche participants */}
-                                  <div className="sticky top-0 z-10 bg-background border-b p-2">
+                                  <div className="sticky top-0 z-10 bg-background border-b p-3">
                                     <div className="relative">
-                                      <Search className="absolute left-2 top-1/2 transform -translate-y-1/2 w-3 h-3 text-muted-foreground" />
+                                      <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-muted-foreground" />
                                       <Input
                                         placeholder="Rechercher un participant..."
-                                        className="h-7 pl-6 pr-2 text-[11px]"
+                                        className="h-10 pl-10 pr-3 text-sm"
                                         value={searchQuery}
                                         onChange={(e) => {
                                           const q = e.target.value;
@@ -1187,7 +1249,7 @@ export default function ImportErgRaceResultsWithRacePage() {
                                         );
                                       })
                                       .map((ep) => (
-                                        <SelectItem key={ep.id} value={ep.id}>
+                                        <SelectItem key={ep.id} value={ep.id} className="text-sm py-2">
                                           {ep.last_name.toUpperCase()}{" "}
                                           {ep.first_name}
                                           {ep.club_name
@@ -1203,18 +1265,20 @@ export default function ImportErgRaceResultsWithRacePage() {
                               </Select>
                             </div>
                             {mapped && (
-                              <div className="flex flex-col gap-1 text-[11px] text-muted-foreground">
+                              <div className="flex flex-col gap-2 text-sm text-gray-600 bg-gray-50 rounded-md p-3 border border-gray-200">
                                 <div>
-                                  Lié à :{" "}
-                                  <span className="font-medium">
+                                  <span className="font-semibold text-gray-700">Lié à :</span>{" "}
+                                  <span className="font-semibold text-gray-900">
                                     {mapped.last_name.toUpperCase()}{" "}
                                     {mapped.first_name}
                                   </span>
-                                  {mapped.club_name && ` – ${mapped.club_name}`}
+                                  {mapped.club_name && (
+                                    <span className="text-gray-600"> – {mapped.club_name}</span>
+                                  )}
                                 </div>
                                 {participantCrews.length > 0 && (
-                                  <div className="flex items-center gap-2">
-                                    <span>Équipage :</span>
+                                  <div className="flex items-center gap-3">
+                                    <span className="font-semibold text-gray-700 whitespace-nowrap">Équipage :</span>
                                     <Select
                                       value={
                                         p.__mapped_crew_id ||
@@ -1238,17 +1302,17 @@ export default function ImportErgRaceResultsWithRacePage() {
                                         });
                                       }}
                                     >
-                                      <SelectTrigger className="h-7 px-2 py-0 text-[11px]">
+                                      <SelectTrigger className="h-10 px-3 py-2 text-sm font-medium">
                                         <SelectValue placeholder="Choisir un équipage" />
                                       </SelectTrigger>
                                       <SelectContent className="max-h-64 p-0">
                                         {/* Barre de recherche */}
-                                        <div className="sticky top-0 z-10 bg-background border-b p-2">
+                                        <div className="sticky top-0 z-10 bg-background border-b p-3">
                                           <div className="relative">
-                                            <Search className="absolute left-2 top-1/2 transform -translate-y-1/2 w-3 h-3 text-muted-foreground" />
+                                            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-muted-foreground" />
                                             <Input
                                               placeholder="Rechercher un équipage..."
-                                              className="h-7 pl-6 pr-2 text-[11px]"
+                                              className="h-10 pl-10 pr-3 text-sm"
                                               onClick={(e) => e.stopPropagation()}
                                               onChange={(e) => {
                                                 const q = e.target.value
@@ -1320,10 +1384,11 @@ export default function ImportErgRaceResultsWithRacePage() {
                                               <SelectItem
                                                 key={crew.id}
                                                 value={crew.id}
+                                                className="text-sm py-2"
                                               >
                                                 {labelCat} – {clubLabel}
                                                 {participantsLabel && (
-                                                  <span className="text-[10px] text-muted-foreground ml-1">
+                                                  <span className="text-xs text-muted-foreground ml-2">
                                                     ({participantsLabel})
                                                   </span>
                                                 )}
