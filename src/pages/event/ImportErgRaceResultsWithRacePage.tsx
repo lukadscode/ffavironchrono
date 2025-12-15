@@ -688,6 +688,13 @@ export default function ImportErgRaceResultsWithRacePage() {
         );
       }
 
+      // Petit retour utilisateur avant l'import des résultats
+      toast({
+        title: "Course créée",
+        description:
+          "La course et les équipages ont été créés. Import des résultats ErgRace en cours...",
+      });
+
       // 3) Importer les résultats indoor via l'endpoint existant
       //    → on attache aussi crew_id à chaque participant en fonction du couloir
       const laneToCrew = new Map<number, string>();
