@@ -715,7 +715,10 @@ export default function ImportErgRaceResultsWithRacePage() {
         if (crewId) {
           return {
             ...np,
+            // On aligne ergrace_participant_id côté backend sur l'équipage,
+            // en utilisant crew_id comme identifiant principal du participant indoor.
             crew_id: crewId,
+            id: crewId,
           };
         }
         return np;
