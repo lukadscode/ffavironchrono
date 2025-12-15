@@ -71,6 +71,14 @@ interface ErgRaceResultsPayload {
   [key: string]: any;
 }
 
+interface EventParticipant {
+  id: string;
+  first_name: string;
+  last_name: string;
+  club_name?: string;
+  license_number?: string;
+}
+
 const getDistanceLabel = (distance: Distance): string => {
   if (distance.label) return distance.label;
   if (distance.is_time_based && distance.duration_seconds != null) {
@@ -114,6 +122,10 @@ export default function ImportErgRaceResultsWithRacePage() {
   const [nonEmptyParticipantsCount, setNonEmptyParticipantsCount] = useState(0);
   const [laneCount, setLaneCount] = useState<number | null>(null);
 
+  // Participants de l'événement pour mapping
+  const [eventParticipants, setEventParticipants] = useState<EventParticipant[]>([]);
+  const [mappingLoaded, setMappingLoaded] = useState(false);
+
   useEffect(() => {
     if (!isAdmin) {
       toast({
@@ -134,6 +146,7 @@ export default function ImportErgRaceResultsWithRacePage() {
       fetchDistances();
       fetchPhases();
       fetchNextRaceNumber();
+      fetchEventParticipants();
     }
   }, [eventId]);
 
@@ -174,6 +187,26 @@ export default function ImportErgRaceResultsWithRacePage() {
       }
     } catch (err) {
       console.error("Erreur chargement courses pour numéro proposé", err);
+    }
+  };
+
+  const fetchEventParticipants = async () => {
+    try {
+      const res = await api.get(`/participants/event/${eventId}`);
+      const data = res.data.data || [];
+      const normalized: EventParticipant[] = data.map((p: any) => ({
+        id: p.id,
+        first_name: p.first_name,
+        last_name: p.last_name,
+        club_name: p.club_name,
+        license_number: p.license_number,
+      }));
+      setEventParticipants(normalized);
+    } catch (err) {
+      console.error("Erreur chargement participants événement", err);
+      setEventParticipants([]);
+    } finally {
+      setMappingLoaded(true);
     }
   };
 
@@ -278,12 +311,55 @@ export default function ImportErgRaceResultsWithRacePage() {
       }
 
       // Statistiques sur les participants / couloirs
-      // On ajoute un flag interne "__include" pour pouvoir exclure certaines lignes (vides, erreurs, etc.)
+      // On ajoute des champs internes :
+      // - "__include" pour exclure certaines lignes
+      // - "__mapped_participant_id" pour lier à un participant de la base
+      // - "id" généré si absent (l'API le requiert)
       const participantsWithInclude = results.participants.map(
-        (p: ErgRaceParticipant) => ({
-          ...p,
-          __include: p.participant && p.participant !== "EMPTY",
-        })
+        (p: ErgRaceParticipant, index: number) => {
+          const include = p.participant && p.participant !== "EMPTY";
+          const laneValue = p.lane_number ?? p.lane ?? index + 1;
+
+          // tentative de matching par nom simple (nom de famille uniquement) + club
+          let mappedId: string | undefined = undefined;
+          if (include && eventParticipants.length > 0 && p.participant) {
+            const nameUpper = p.participant.toUpperCase();
+            // on essaye de récupérer juste le nom de famille (before/after espace ou virgule)
+            const lastName =
+              nameUpper.includes(",")
+                ? nameUpper.split(",")[0].trim()
+                : nameUpper.split(" ").slice(-1)[0].trim();
+
+            const clubCode = (p.affiliation || "").toUpperCase();
+
+            const cand = eventParticipants.find((ep) => {
+              const epLast = ep.last_name.toUpperCase();
+              const epClub = (ep.club_name || "").toUpperCase();
+              const lastMatch =
+                epLast === lastName ||
+                epLast.includes(lastName) ||
+                lastName.includes(epLast);
+              const clubMatch =
+                !clubCode ||
+                epClub.includes(clubCode) ||
+                clubCode.includes(epClub);
+              return lastMatch && clubMatch;
+            });
+            if (cand) {
+              mappedId = cand.id;
+            }
+          }
+
+          return {
+            id:
+              (p as any).id && String((p as any).id).trim().length > 0
+                ? (p as any).id
+                : `ergrace-${laneValue}-${index}`,
+            ...p,
+            __include: include,
+            __mapped_participant_id: mappedId,
+          };
+        }
       );
 
       const total = participantsWithInclude.length;
@@ -318,8 +394,10 @@ export default function ImportErgRaceResultsWithRacePage() {
     }
   };
 
-  const normalizeParticipantsForBackend = (participants: ErgRaceParticipant[]): ErgRaceParticipant[] => {
-    return participants.map((participant: ErgRaceParticipant) => {
+  const normalizeParticipantsForBackend = (
+    participants: ErgRaceParticipant[]
+  ): ErgRaceParticipant[] => {
+    return participants.map((participant: ErgRaceParticipant, index: number) => {
       const normalized: ErgRaceParticipant = { ...participant };
 
       // Copié de la logique de IndoorRaceDetailPage :
@@ -346,7 +424,13 @@ export default function ImportErgRaceResultsWithRacePage() {
         normalized.lane_number = normalized.lane;
       }
 
-      return normalized;
+      // L'API exige un champ "id" non vide sur chaque participant
+      if (!normalized.id || String(normalized.id).trim().length === 0) {
+        const laneValue = normalized.lane_number ?? normalized.lane ?? index + 1;
+        normalized.id = `ergrace-${laneValue}-${index}`;
+      }
+
+      return normalized as any;
     });
   };
 
@@ -690,57 +774,118 @@ export default function ImportErgRaceResultsWithRacePage() {
               </Alert>
 
               <div>
-                <Label>Résumé des participants</Label>
-                <ScrollArea className="h-48 border rounded-md p-3 mt-1 text-xs">
+                <Label>Résumé des participants (et affectation)</Label>
+                <ScrollArea className="h-64 border rounded-md p-3 mt-1 text-xs">
                   <div className="space-y-1">
                     {ergResults.participants
                       .filter((p: any) => p.__include !== false)
-                      .slice(0, 30)
-                      .map((p, idx) => (
-                        <div
-                          key={idx}
-                          className="flex items-center justify-between gap-2 border-b pb-1 last:border-b-0"
-                        >
-                          <div className="flex-1 overflow-hidden">
-                            <span>
-                              Couloir {p.lane_number ?? p.lane ?? "?"} –{" "}
-                              {p.participant || "EMPTY"}
-                            </span>
-                            <span className="ml-2 text-muted-foreground">
-                              {p.score || p.time || ""}
-                            </span>
-                          </div>
-                          <Button
-                            type="button"
-                            variant="ghost"
-                            size="icon"
-                            className="h-6 w-6 text-red-600 hover:text-red-700 hover:bg-red-50 flex-shrink-0"
-                            onClick={() => {
-                              if (!ergResults) return;
-                              const updated = ergResults.participants.map(
-                                (pp: any, i: number) =>
-                                  i === idx ? { ...pp, __include: false } : pp
-                              );
-                              setErgResults({
-                                ...ergResults,
-                                participants: updated,
-                              });
-                              setNonEmptyParticipantsCount(
-                                updated.filter((pp: any) => pp.__include).length
-                              );
-                            }}
-                            title="Exclure cette ligne de l'import"
+                      .map((p: any, idx: number) => {
+                        const mapped = eventParticipants.find(
+                          (ep) => ep.id === p.__mapped_participant_id
+                        );
+                        return (
+                          <div
+                            key={idx}
+                            className="flex flex-col gap-1 border-b pb-1 last:border-b-0 py-1"
                           >
-                            <X className="h-3 w-3" />
-                          </Button>
-                        </div>
-                      ))}
-                    {ergResults.participants.length > 30 && (
-                      <div className="text-center text-muted-foreground mt-2">
-                        + {ergResults.participants.length - 30} lignes
-                        supplémentaires...
-                      </div>
-                    )}
+                            <div className="flex items-center justify-between gap-2">
+                              <div className="flex-1 overflow-hidden">
+                                <span>
+                                  Couloir {p.lane_number ?? p.lane ?? "?"} –{" "}
+                                  {p.participant || "EMPTY"}
+                                </span>
+                                <span className="ml-2 text-muted-foreground">
+                                  {p.score || p.time || ""}
+                                </span>
+                              </div>
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="icon"
+                                className="h-6 w-6 text-red-600 hover:text-red-700 hover:bg-red-50 flex-shrink-0"
+                                onClick={() => {
+                                  if (!ergResults) return;
+                                  const updated = ergResults.participants.map(
+                                    (pp: any, i: number) =>
+                                      i === idx
+                                        ? { ...pp, __include: false }
+                                        : pp
+                                  );
+                                  setErgResults({
+                                    ...ergResults,
+                                    participants: updated,
+                                  });
+                                  setNonEmptyParticipantsCount(
+                                    updated.filter(
+                                      (pp: any) => pp.__include
+                                    ).length
+                                  );
+                                }}
+                                title="Exclure cette ligne de l'import"
+                              >
+                                <X className="h-3 w-3" />
+                              </Button>
+                            </div>
+                            <div className="flex items-center gap-2 text-[11px]">
+                              <span className="text-muted-foreground">
+                                Affecté à :
+                              </span>
+                              <Select
+                                value={p.__mapped_participant_id || ""}
+                                onValueChange={(value) => {
+                                  if (!ergResults) return;
+                                  const updated =
+                                    ergResults.participants.map(
+                                      (pp: any, i: number) =>
+                                        i === idx
+                                          ? {
+                                              ...pp,
+                                              __mapped_participant_id:
+                                                value || undefined,
+                                            }
+                                          : pp
+                                    );
+                                  setErgResults({
+                                    ...ergResults,
+                                    participants: updated,
+                                  });
+                                }}
+                              >
+                                <SelectTrigger className="h-7 px-2 py-0 text-[11px]">
+                                  <SelectValue placeholder="Aucun participant lié" />
+                                </SelectTrigger>
+                                <SelectContent className="max-h-64">
+                                  <SelectItem value="">
+                                    Aucun participant lié
+                                  </SelectItem>
+                                  {eventParticipants.map((ep) => (
+                                    <SelectItem key={ep.id} value={ep.id}>
+                                      {ep.last_name.toUpperCase()}{" "}
+                                      {ep.first_name}
+                                      {ep.club_name
+                                        ? ` – ${ep.club_name}`
+                                        : ""}
+                                      {ep.license_number
+                                        ? ` (${ep.license_number})`
+                                        : ""}
+                                    </SelectItem>
+                                  ))}
+                                </SelectContent>
+                              </Select>
+                            </div>
+                            {mapped && (
+                              <div className="text-[11px] text-muted-foreground">
+                                Lié à :{" "}
+                                <span className="font-medium">
+                                  {mapped.last_name.toUpperCase()}{" "}
+                                  {mapped.first_name}
+                                </span>
+                                {mapped.club_name && ` – ${mapped.club_name}`}
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
                   </div>
                 </ScrollArea>
               </div>
