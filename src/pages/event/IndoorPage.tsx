@@ -391,14 +391,26 @@ export default function IndoorPage() {
         <h2 className="text-2xl font-bold text-slate-900">Indoor - Liste des courses</h2>
         <div className="flex gap-2">
           {isAdmin && (
-            <Button
-              onClick={() => navigate(`/event/${eventId}/indoor/import-ergrace`)}
-              variant="outline"
-              className="bg-green-50 hover:bg-green-100 text-green-700 border-green-300"
-            >
-              <Upload className="w-4 h-4 mr-2" />
-              Importer une course ErgRace
-            </Button>
+            <>
+              <Button
+                onClick={() => navigate(`/event/${eventId}/indoor/import-ergrace`)}
+                variant="outline"
+                className="bg-green-50 hover:bg-green-100 text-green-700 border-green-300"
+              >
+                <Upload className="w-4 h-4 mr-2" />
+                Importer une course ErgRace
+              </Button>
+              <Button
+                onClick={() =>
+                  navigate(`/event/${eventId}/indoor/import-ergrace-results`)
+                }
+                variant="outline"
+                className="bg-purple-50 hover:bg-purple-100 text-purple-700 border-purple-300"
+              >
+                <Upload className="w-4 h-4 mr-2" />
+                Importer course + résultats (JSON)
+              </Button>
+            </>
           )}
           {races.length > 0 && (
             <Button
