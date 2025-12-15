@@ -19,13 +19,7 @@ import {
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { ScrollArea } from "@/components/ui/scroll-area";
 
-import {
-  AlertCircle,
-  ArrowLeft,
-  CheckCircle2,
-  Loader2,
-  Upload,
-} from "lucide-react";
+import { AlertCircle, ArrowLeft, CheckCircle2, Loader2, Upload, X } from "lucide-react";
 
 interface Distance {
   id: string;
@@ -76,6 +70,17 @@ interface ErgRaceResultsPayload {
   participants: ErgRaceParticipant[];
   [key: string]: any;
 }
+
+const getDistanceLabel = (distance: Distance): string => {
+  if (distance.label) return distance.label;
+  if (distance.is_time_based && distance.duration_seconds != null) {
+    return `${distance.duration_seconds}s`;
+  }
+  if (!distance.is_time_based && distance.meters != null) {
+    return `${distance.meters}m`;
+  }
+  return "Distance inconnue";
+};
 
 export default function ImportErgRaceResultsWithRacePage() {
   const { eventId } = useParams();
@@ -273,9 +278,17 @@ export default function ImportErgRaceResultsWithRacePage() {
       }
 
       // Statistiques sur les participants / couloirs
-      const total = results.participants.length;
-      const nonEmpty = results.participants.filter(
-        (p) => p.participant && p.participant !== "EMPTY"
+      // On ajoute un flag interne "__include" pour pouvoir exclure certaines lignes (vides, erreurs, etc.)
+      const participantsWithInclude = results.participants.map(
+        (p: ErgRaceParticipant) => ({
+          ...p,
+          __include: p.participant && p.participant !== "EMPTY",
+        })
+      );
+
+      const total = participantsWithInclude.length;
+      const nonEmpty = participantsWithInclude.filter(
+        (p: any) => p.__include
       ).length;
       const laneNumbers = results.participants
         .map((p) => (p.lane_number ?? p.lane) as number | undefined)
@@ -287,7 +300,10 @@ export default function ImportErgRaceResultsWithRacePage() {
       setNonEmptyParticipantsCount(nonEmpty);
       setLaneCount(computedLaneCount);
 
-      setErgResults(results);
+      setErgResults({
+        ...results,
+        participants: participantsWithInclude,
+      });
       setStep("configure");
     } finally {
       setLoadingFile(false);
@@ -302,9 +318,7 @@ export default function ImportErgRaceResultsWithRacePage() {
     }
   };
 
-  const normalizeParticipantsForBackend = (
-    participants: ErgRaceParticipant[]
-  ): ErgRaceParticipant[] => {
+  const normalizeParticipantsForBackend = (participants: ErgRaceParticipant[]): ErgRaceParticipant[] => {
     return participants.map((participant: ErgRaceParticipant) => {
       const normalized: ErgRaceParticipant = { ...participant };
 
@@ -390,14 +404,26 @@ export default function ImportErgRaceResultsWithRacePage() {
       const raceId = raceRes.data.data?.id || raceRes.data.id;
 
       // 2) Importer les résultats indoor via l'endpoint existant
-      const normalizedParticipants = normalizeParticipantsForBackend(
-        ergResults.participants
+      //    On ne conserve que les lignes marquées comme incluses (__include !== false)
+      const includedParticipants = ergResults.participants.filter(
+        (p: any) => p.__include !== false
       );
+      const normalizedParticipants =
+        normalizeParticipantsForBackend(includedParticipants);
+
+      // Certains fichiers ErgRace ont race_id vide,
+      // l'API attend cependant une valeur non vide.
+      const backendRaceId =
+        (ergResults as any).race_id &&
+        String((ergResults as any).race_id).trim().length > 0
+          ? (ergResults as any).race_id
+          : raceId;
 
       const payload = {
         results: {
           ...ergResults,
           participants: normalizedParticipants,
+          race_id: backendRaceId,
           c2_race_id: raceId,
         },
       };
@@ -634,7 +660,7 @@ export default function ImportErgRaceResultsWithRacePage() {
                     <SelectContent>
                       {distances.map((distance) => (
                         <SelectItem key={distance.id} value={distance.id}>
-                          {distance.label}
+                          {getDistanceLabel(distance)}
                         </SelectItem>
                       ))}
                     </SelectContent>
@@ -655,7 +681,9 @@ export default function ImportErgRaceResultsWithRacePage() {
                     <>
                       {" "}
                       → Distance sélectionnée :{" "}
-                      {distances.find((d) => d.id === selectedDistanceId)?.label}
+                      {getDistanceLabel(
+                        distances.find((d) => d.id === selectedDistanceId)!
+                      )}
                     </>
                   )}
                 </AlertDescription>
@@ -665,21 +693,48 @@ export default function ImportErgRaceResultsWithRacePage() {
                 <Label>Résumé des participants</Label>
                 <ScrollArea className="h-48 border rounded-md p-3 mt-1 text-xs">
                   <div className="space-y-1">
-                    {ergResults.participants.slice(0, 30).map((p, idx) => (
-                      <div
-                        key={idx}
-                        className="flex items-center justify-between border-b pb-1 last:border-b-0"
-                      >
-                        <span>
-                          Couloir{" "}
-                          {p.lane_number ?? p.lane ?? "?"} –{" "}
-                          {p.participant || "EMPTY"}
-                        </span>
-                        <span className="text-muted-foreground">
-                          {p.score || p.time || ""}
-                        </span>
-                      </div>
-                    ))}
+                    {ergResults.participants
+                      .filter((p: any) => p.__include !== false)
+                      .slice(0, 30)
+                      .map((p, idx) => (
+                        <div
+                          key={idx}
+                          className="flex items-center justify-between gap-2 border-b pb-1 last:border-b-0"
+                        >
+                          <div className="flex-1 overflow-hidden">
+                            <span>
+                              Couloir {p.lane_number ?? p.lane ?? "?"} –{" "}
+                              {p.participant || "EMPTY"}
+                            </span>
+                            <span className="ml-2 text-muted-foreground">
+                              {p.score || p.time || ""}
+                            </span>
+                          </div>
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon"
+                            className="h-6 w-6 text-red-600 hover:text-red-700 hover:bg-red-50 flex-shrink-0"
+                            onClick={() => {
+                              if (!ergResults) return;
+                              const updated = ergResults.participants.map(
+                                (pp: any, i: number) =>
+                                  i === idx ? { ...pp, __include: false } : pp
+                              );
+                              setErgResults({
+                                ...ergResults,
+                                participants: updated,
+                              });
+                              setNonEmptyParticipantsCount(
+                                updated.filter((pp: any) => pp.__include).length
+                              );
+                            }}
+                            title="Exclure cette ligne de l'import"
+                          >
+                            <X className="h-3 w-3" />
+                          </Button>
+                        </div>
+                      ))}
                     {ergResults.participants.length > 30 && (
                       <div className="text-center text-muted-foreground mt-2">
                         + {ergResults.participants.length - 30} lignes
