@@ -208,7 +208,9 @@ export default function ImportErgRaceResultsWithRacePage() {
   // Participants de l'événement pour mapping
   const [eventParticipants, setEventParticipants] = useState<EventParticipant[]>([]);
   const [mappingLoaded, setMappingLoaded] = useState(false);
-  const [participantSearchQuery, setParticipantSearchQuery] = useState("");
+  // Recherche / ouverture par ligne pour le select de participants
+  const [participantSearchQueries, setParticipantSearchQueries] = useState<Record<number, string>>({});
+  const [openParticipantSelects, setOpenParticipantSelects] = useState<Record<number, boolean>>({});
 
   // Équipages de l'événement (avec participants) pour pouvoir retrouver l'équipage d'un participant
   const [eventCrews, setEventCrews] = useState<any[]>([]);
@@ -1012,19 +1014,22 @@ export default function ImportErgRaceResultsWithRacePage() {
                     {ergResults.participants.map((p: any, idx: number) => {
                       if (p.__include === false) return null;
 
-                        const mapped = eventParticipants.find(
-                          (ep) => ep.id === p.__mapped_participant_id
-                        );
-                        const participantCrews =
-                          mapped && mapped.crews && mapped.crews.length > 0
-                            ? mapped.crews
-                                .map((c) =>
-                                  eventCrews.find((ec) => ec.id === c.id)
-                                )
-                                .filter(Boolean)
-                            : [];
-                        const score: number | undefined = p.__match_score;
-                        return (
+                      const mapped = eventParticipants.find(
+                        (ep) => ep.id === p.__mapped_participant_id
+                      );
+                      const participantCrews =
+                        mapped && mapped.crews && mapped.crews.length > 0
+                          ? mapped.crews
+                              .map((c) =>
+                                eventCrews.find((ec) => ec.id === c.id)
+                              )
+                              .filter(Boolean)
+                          : [];
+                      const score: number | undefined = p.__match_score;
+                      const searchQuery =
+                        participantSearchQueries[idx] || "";
+
+                      return (
                           <div
                             key={idx}
                             className="flex flex-col gap-1 border-b pb-1 last:border-b-0 py-1"
@@ -1090,6 +1095,19 @@ export default function ImportErgRaceResultsWithRacePage() {
                               </span>
                               <Select
                                 value={p.__mapped_participant_id || "__none__"}
+                                open={openParticipantSelects[idx] || false}
+                                onOpenChange={(open) => {
+                                  setOpenParticipantSelects((prev) => ({
+                                    ...prev,
+                                    [idx]: open,
+                                  }));
+                                  if (!open) {
+                                    setParticipantSearchQueries((prev) => ({
+                                      ...prev,
+                                      [idx]: "",
+                                    }));
+                                  }
+                                }}
                                 onValueChange={(value) => {
                                   if (!ergResults) return;
                                   const updated =
@@ -1102,7 +1120,6 @@ export default function ImportErgRaceResultsWithRacePage() {
                                                 value === "__none__"
                                                   ? undefined
                                                   : value,
-                                              // si on change de participant, on réinitialise l'équipage choisi
                                               __mapped_crew_id: undefined,
                                             }
                                           : pp
@@ -1111,7 +1128,14 @@ export default function ImportErgRaceResultsWithRacePage() {
                                     ...ergResults,
                                     participants: updated,
                                   });
-                                  setParticipantSearchQuery("");
+                                  setOpenParticipantSelects((prev) => ({
+                                    ...prev,
+                                    [idx]: false,
+                                  }));
+                                  setParticipantSearchQueries((prev) => ({
+                                    ...prev,
+                                    [idx]: "",
+                                  }));
                                 }}
                               >
                                 <SelectTrigger className="h-7 px-2 py-0 text-[11px]">
@@ -1125,12 +1149,14 @@ export default function ImportErgRaceResultsWithRacePage() {
                                       <Input
                                         placeholder="Rechercher un participant..."
                                         className="h-7 pl-6 pr-2 text-[11px]"
-                                        value={participantSearchQuery}
-                                        onChange={(e) =>
-                                          setParticipantSearchQuery(
-                                            e.target.value
-                                          )
-                                        }
+                                        value={searchQuery}
+                                        onChange={(e) => {
+                                          const q = e.target.value;
+                                          setParticipantSearchQueries((prev) => ({
+                                            ...prev,
+                                            [idx]: q,
+                                          }));
+                                        }}
                                         onClick={(e) => e.stopPropagation()}
                                       />
                                     </div>
@@ -1141,10 +1167,9 @@ export default function ImportErgRaceResultsWithRacePage() {
                                     </SelectItem>
                                     {eventParticipants
                                       .filter((ep) => {
-                                        const q =
-                                          participantSearchQuery
-                                            .toLowerCase()
-                                            .trim();
+                                        const q = searchQuery
+                                          .toLowerCase()
+                                          .trim();
                                         if (!q) return true;
                                         const fullName = `${ep.last_name} ${ep.first_name}`
                                           .toLowerCase()
