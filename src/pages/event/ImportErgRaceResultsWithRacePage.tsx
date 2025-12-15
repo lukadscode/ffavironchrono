@@ -77,6 +77,7 @@ interface EventParticipant {
   last_name: string;
   club_name?: string;
   license_number?: string;
+  crews?: { id: string }[];
 }
 
 const getDistanceLabel = (distance: Distance): string => {
@@ -208,6 +209,9 @@ export default function ImportErgRaceResultsWithRacePage() {
   const [eventParticipants, setEventParticipants] = useState<EventParticipant[]>([]);
   const [mappingLoaded, setMappingLoaded] = useState(false);
 
+  // Équipages de l'événement (avec participants) pour pouvoir retrouver l'équipage d'un participant
+  const [eventCrews, setEventCrews] = useState<any[]>([]);
+
   useEffect(() => {
     if (!isAdmin) {
       toast({
@@ -274,6 +278,46 @@ export default function ImportErgRaceResultsWithRacePage() {
 
   const fetchEventParticipants = async () => {
     try {
+      // Récupérer d'abord les équipages avec leurs participants
+      const crewsRes = await api.get(`/crews/event/${eventId}`);
+      const crewsData = crewsRes.data.data || [];
+
+      // Enrichir chaque équipage avec ses participants détaillés
+      const crewsWithParticipants = await Promise.all(
+        crewsData.map(async (crew: any) => {
+          try {
+            const crewDetailRes = await api.get(`/crews/${crew.id}`);
+            const crewDetail = crewDetailRes.data.data || crewDetailRes.data;
+            return {
+              ...crew,
+              crew_participants: crewDetail.crew_participants || [],
+            };
+          } catch (err) {
+            console.error(`Erreur chargement participants pour crew ${crew.id}:`, err);
+            return {
+              ...crew,
+              crew_participants: crew.crew_participants || [],
+            };
+          }
+        })
+      );
+
+      setEventCrews(crewsWithParticipants);
+
+      // Construire une map participant -> liste d'équipages
+      const participantMap = new Map<string, { id: string }[]>();
+      crewsWithParticipants.forEach((crew: any) => {
+        (crew.crew_participants || []).forEach((cp: any) => {
+          const pid = cp.participant?.id;
+          if (!pid) return;
+          if (!participantMap.has(pid)) {
+            participantMap.set(pid, []);
+          }
+          participantMap.get(pid)!.push({ id: crew.id });
+        });
+      });
+
+      // Récupérer les participants de l'événement
       const res = await api.get(`/participants/event/${eventId}`);
       const data = res.data.data || [];
       const normalized: EventParticipant[] = data.map((p: any) => ({
@@ -282,7 +326,9 @@ export default function ImportErgRaceResultsWithRacePage() {
         last_name: p.last_name,
         club_name: p.club_name,
         license_number: p.license_number,
+        crews: participantMap.get(p.id) || [],
       }));
+
       setEventParticipants(normalized);
     } catch (err) {
       console.error("Erreur chargement participants événement", err);
@@ -573,11 +619,61 @@ export default function ImportErgRaceResultsWithRacePage() {
       const raceRes = await api.post("/races", racePayload);
       const raceId = raceRes.data.data?.id || raceRes.data.id;
 
-      // 2) Importer les résultats indoor via l'endpoint existant
+      // 2) Créer les race_crews en fonction de l'affectation des participants
       //    On ne conserve que les lignes marquées comme incluses (__include !== false)
       const includedParticipants = ergResults.participants.filter(
         (p: any) => p.__include !== false
       );
+
+      // Pour chaque ligne avec un participant FFA mappé, essayer de retrouver son équipage
+      const laneCrewPairs: Array<{ lane: number; crew_id: string }> = [];
+      includedParticipants.forEach((p: any, index: number) => {
+        const mappedId: string | undefined = p.__mapped_participant_id;
+        if (!mappedId) return;
+
+        const ep = eventParticipants.find((e) => e.id === mappedId);
+        const laneValue = p.lane_number ?? p.lane ?? index + 1;
+        if (!ep || !ep.crews || ep.crews.length === 0) return;
+
+        // Si un équipage a été choisi explicitement pour cette ligne, on le privilégie
+        const explicitCrewId: string | undefined = p.__mapped_crew_id;
+        const availableCrewIds = ep.crews.map((c) => c.id);
+
+        let crewIdToUse: string | undefined = undefined;
+        if (explicitCrewId && availableCrewIds.includes(explicitCrewId)) {
+          crewIdToUse = explicitCrewId;
+        } else {
+          // Sinon, fallback sur le premier équipage connu pour ce participant
+          crewIdToUse = availableCrewIds[0];
+        }
+
+        if (!crewIdToUse) return;
+
+        laneCrewPairs.push({ lane: laneValue, crew_id: crewIdToUse });
+      });
+
+      // Créer les race_crews (en évitant les doublons sur (lane, crew_id))
+      if (laneCrewPairs.length > 0) {
+        const seen = new Set<string>();
+        const uniquePairs = laneCrewPairs.filter((p) => {
+          const key = `${p.lane}-${p.crew_id}`;
+          if (seen.has(key)) return false;
+          seen.add(key);
+          return true;
+        });
+
+        await Promise.all(
+          uniquePairs.map((rc) =>
+            api.post("/race-crews", {
+              race_id: raceId,
+              crew_id: rc.crew_id,
+              lane: rc.lane,
+            })
+          )
+        );
+      }
+
+      // 3) Importer les résultats indoor via l'endpoint existant
       const normalizedParticipants =
         normalizeParticipantsForBackend(includedParticipants);
 
@@ -869,6 +965,14 @@ export default function ImportErgRaceResultsWithRacePage() {
                         const mapped = eventParticipants.find(
                           (ep) => ep.id === p.__mapped_participant_id
                         );
+                        const participantCrews =
+                          mapped && mapped.crews && mapped.crews.length > 0
+                            ? mapped.crews
+                                .map((c) =>
+                                  eventCrews.find((ec) => ec.id === c.id)
+                                )
+                                .filter(Boolean)
+                            : [];
                         const score: number | undefined = p.__match_score;
                         return (
                           <div
@@ -944,6 +1048,8 @@ export default function ImportErgRaceResultsWithRacePage() {
                                                 value === "__none__"
                                                   ? undefined
                                                   : value,
+                                              // si on change de participant, on réinitialise l'équipage choisi
+                                              __mapped_crew_id: undefined,
                                             }
                                           : pp
                                     );
@@ -974,13 +1080,72 @@ export default function ImportErgRaceResultsWithRacePage() {
                               </Select>
                             </div>
                             {mapped && (
-                              <div className="text-[11px] text-muted-foreground">
-                                Lié à :{" "}
-                                <span className="font-medium">
-                                  {mapped.last_name.toUpperCase()}{" "}
-                                  {mapped.first_name}
-                                </span>
-                                {mapped.club_name && ` – ${mapped.club_name}`}
+                              <div className="flex flex-col gap-1 text-[11px] text-muted-foreground">
+                                <div>
+                                  Lié à :{" "}
+                                  <span className="font-medium">
+                                    {mapped.last_name.toUpperCase()}{" "}
+                                    {mapped.first_name}
+                                  </span>
+                                  {mapped.club_name && ` – ${mapped.club_name}`}
+                                </div>
+                                {participantCrews.length > 1 && (
+                                  <div className="flex items-center gap-2">
+                                    <span>Équipage :</span>
+                                    <Select
+                                      value={
+                                        p.__mapped_crew_id ||
+                                        (participantCrews[0] as any).id
+                                      }
+                                      onValueChange={(value) => {
+                                        if (!ergResults) return;
+                                        const updated =
+                                          ergResults.participants.map(
+                                            (pp: any, i: number) =>
+                                              i === idx
+                                                ? {
+                                                    ...pp,
+                                                    __mapped_crew_id: value,
+                                                  }
+                                                : pp
+                                          );
+                                        setErgResults({
+                                          ...ergResults,
+                                          participants: updated,
+                                        });
+                                      }}
+                                    >
+                                      <SelectTrigger className="h-7 px-2 py-0 text-[11px]">
+                                        <SelectValue placeholder="Choisir un équipage" />
+                                      </SelectTrigger>
+                                      <SelectContent className="max-h-64">
+                                        {participantCrews.map((crew: any) => (
+                                          <SelectItem
+                                            key={crew.id}
+                                            value={crew.id}
+                                          >
+                                            {crew.category?.label ||
+                                              crew.category?.code ||
+                                              "Équipage"}{" "}
+                                            – {crew.club_name || "Club ?"}
+                                          </SelectItem>
+                                        ))}
+                                      </SelectContent>
+                                    </Select>
+                                  </div>
+                                )}
+                                {participantCrews.length === 1 && (
+                                  <div>
+                                    Équipage :{" "}
+                                    <span className="font-medium">
+                                      {participantCrews[0].category?.label ||
+                                        participantCrews[0].category?.code ||
+                                        "Équipage"}
+                                    </span>
+                                    {participantCrews[0].club_name &&
+                                      ` – ${participantCrews[0].club_name}`}
+                                  </div>
+                                )}
                               </div>
                             )}
                           </div>
