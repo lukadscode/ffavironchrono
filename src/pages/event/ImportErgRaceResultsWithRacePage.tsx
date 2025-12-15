@@ -19,7 +19,7 @@ import {
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { ScrollArea } from "@/components/ui/scroll-area";
 
-import { AlertCircle, ArrowLeft, CheckCircle2, Loader2, Upload, X } from "lucide-react";
+import { AlertCircle, ArrowLeft, CheckCircle2, Loader2, Upload, X, Search } from "lucide-react";
 
 interface Distance {
   id: string;
@@ -330,6 +330,7 @@ export default function ImportErgRaceResultsWithRacePage() {
       }));
 
       setEventParticipants(normalized);
+      return { participants: normalized, crews: crewsWithParticipants };
     } catch (err) {
       console.error("Erreur chargement participants événement", err);
       setEventParticipants([]);
@@ -439,6 +440,19 @@ export default function ImportErgRaceResultsWithRacePage() {
       }
 
       // Statistiques sur les participants / couloirs
+      // S'assurer que les participants d'événement sont chargés pour l'auto-matching
+      let participantsForMatching = eventParticipants;
+      if (!participantsForMatching || participantsForMatching.length === 0) {
+        try {
+          const loaded = await fetchEventParticipants();
+          if (loaded?.participants) {
+            participantsForMatching = loaded.participants;
+          }
+        } catch (e) {
+          console.error("Erreur chargement participants pour matching:", e);
+        }
+      }
+
       // On ajoute des champs internes :
       // - "__include" pour exclure certaines lignes
       // - "__mapped_participant_id" pour lier à un participant de la base
@@ -451,9 +465,9 @@ export default function ImportErgRaceResultsWithRacePage() {
           let mappedId: string | undefined = undefined;
           let matchScore: number | undefined = undefined;
 
-          if (include && eventParticipants.length > 0 && p.participant) {
+          if (include && participantsForMatching.length > 0 && p.participant) {
             // Calculer un score pour chaque participant événement
-            const scored = eventParticipants.map((ep) => ({
+            const scored = participantsForMatching.map((ep) => ({
               participant: ep,
               score: computeMatchScore(p.participant!, p.affiliation, ep),
             }));
@@ -1089,7 +1103,7 @@ export default function ImportErgRaceResultsWithRacePage() {
                                   </span>
                                   {mapped.club_name && ` – ${mapped.club_name}`}
                                 </div>
-                                {participantCrews.length > 1 && (
+                                {participantCrews.length > 0 && (
                                   <div className="flex items-center gap-2">
                                     <span>Équipage :</span>
                                     <Select
@@ -1118,32 +1132,98 @@ export default function ImportErgRaceResultsWithRacePage() {
                                       <SelectTrigger className="h-7 px-2 py-0 text-[11px]">
                                         <SelectValue placeholder="Choisir un équipage" />
                                       </SelectTrigger>
-                                      <SelectContent className="max-h-64">
-                                        {participantCrews.map((crew: any) => (
-                                          <SelectItem
-                                            key={crew.id}
-                                            value={crew.id}
-                                          >
-                                            {crew.category?.label ||
+                                      <SelectContent className="max-h-64 p-0">
+                                        {/* Barre de recherche */}
+                                        <div className="sticky top-0 z-10 bg-background border-b p-2">
+                                          <div className="relative">
+                                            <Search className="absolute left-2 top-1/2 transform -translate-y-1/2 w-3 h-3 text-muted-foreground" />
+                                            <Input
+                                              placeholder="Rechercher un équipage..."
+                                              className="h-7 pl-6 pr-2 text-[11px]"
+                                              onClick={(e) => e.stopPropagation()}
+                                              onChange={(e) => {
+                                                const q = e.target.value
+                                                  .toLowerCase()
+                                                  .trim();
+                                                const filtered = participantCrews.filter(
+                                                  (crew: any) => {
+                                                    const label = (
+                                                      crew.category?.label ||
+                                                      crew.category?.code ||
+                                                      ""
+                                                    )
+                                                      .toString()
+                                                      .toLowerCase();
+                                                    const club = (
+                                                      crew.club_name || ""
+                                                    )
+                                                      .toString()
+                                                      .toLowerCase();
+                                                    const participantsLabel = (
+                                                      crew.crew_participants ||
+                                                      []
+                                                    )
+                                                      .map(
+                                                        (cp: any) =>
+                                                          `${cp.participant?.last_name || ""} ${cp.participant?.first_name || ""}`
+                                                      )
+                                                      .join(" ")
+                                                      .toLowerCase();
+                                                    return (
+                                                      !q ||
+                                                      label.includes(q) ||
+                                                      club.includes(q) ||
+                                                      participantsLabel.includes(
+                                                        q
+                                                      )
+                                                    );
+                                                  }
+                                                );
+                                                // On remplace temporairement la liste affichée
+                                                // en modifiant participantCrews localement n'est pas possible,
+                                                // on filtrera plutôt directement dans le rendu ci-dessous
+                                                (participantCrews as any)._filter =
+                                                  q;
+                                              }}
+                                            />
+                                          </div>
+                                        </div>
+                                        {/* Liste filtrée */}
+                                        <ScrollArea className="max-h-56">
+                                          {participantCrews.map((crew: any) => {
+                                            const labelCat =
+                                              crew.category?.label ||
                                               crew.category?.code ||
-                                              "Équipage"}{" "}
-                                            – {crew.club_name || "Club ?"}
-                                          </SelectItem>
-                                        ))}
+                                              "Équipage";
+                                            const clubLabel =
+                                              crew.club_name || "Club ?";
+                                            const participantsLabel = (
+                                              crew.crew_participants || []
+                                            )
+                                              .map((cp: any) =>
+                                                cp.participant
+                                                  ? `${cp.participant.last_name.toUpperCase()} ${cp.participant.first_name}`
+                                                  : ""
+                                              )
+                                              .filter(Boolean)
+                                              .join(" • ");
+                                            return (
+                                              <SelectItem
+                                                key={crew.id}
+                                                value={crew.id}
+                                              >
+                                                {labelCat} – {clubLabel}
+                                                {participantsLabel && (
+                                                  <span className="text-[10px] text-muted-foreground ml-1">
+                                                    ({participantsLabel})
+                                                  </span>
+                                                )}
+                                              </SelectItem>
+                                            );
+                                          })}
+                                        </ScrollArea>
                                       </SelectContent>
                                     </Select>
-                                  </div>
-                                )}
-                                {participantCrews.length === 1 && (
-                                  <div>
-                                    Équipage :{" "}
-                                    <span className="font-medium">
-                                      {participantCrews[0].category?.label ||
-                                        participantCrews[0].category?.code ||
-                                        "Équipage"}
-                                    </span>
-                                    {participantCrews[0].club_name &&
-                                      ` – ${participantCrews[0].club_name}`}
                                   </div>
                                 )}
                               </div>
