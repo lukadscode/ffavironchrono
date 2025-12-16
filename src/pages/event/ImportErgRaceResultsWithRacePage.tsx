@@ -101,23 +101,42 @@ const normalizeName = (name: string): string => {
     .trim();
 };
 
-const parseErgRaceName = (name: string): { lastName: string; firstName: string } => {
+const parseErgRaceName = (name: string): { lastName: string; firstName: string; licenseNumber?: string } => {
   const normalized = normalizeName(name);
-  if (normalized.includes(",")) {
-    const parts = normalized.split(",").map((p) => p.trim());
+  
+  // Extraire le numéro de licence entre parenthèses si présent
+  const licenseMatch = normalized.match(/\((\d+)\)/);
+  const licenseNumber = licenseMatch ? licenseMatch[1] : undefined;
+  
+  // Retirer le numéro de licence et les parties de catégorie (comme "jeune j11", "senior", etc.)
+  let cleaned = normalized
+    .replace(/\(\d+\)/g, "") // Retirer (613571)
+    .replace(/\b(jeune|junior|senior|cadet|minime|benjamin|poussin|espoir)\s*\w*\b/gi, "") // Retirer catégories
+    .trim();
+  
+  // Nettoyer les espaces multiples
+  cleaned = cleaned.replace(/\s+/g, " ").trim();
+  
+  if (cleaned.includes(",")) {
+    const parts = cleaned.split(",").map((p) => p.trim());
     return {
       lastName: parts[0] || "",
       firstName: parts[1] || "",
+      licenseNumber,
     };
   }
-  const parts = normalized.split(" ");
+  
+  const parts = cleaned.split(" ").filter(p => p.length > 0);
   if (parts.length >= 2) {
+    // Prendre le dernier mot comme nom de famille, le reste comme prénom
     return {
       lastName: parts[parts.length - 1] || "",
       firstName: parts.slice(0, -1).join(" ") || "",
+      licenseNumber,
     };
   }
-  return { lastName: normalized, firstName: "" };
+  
+  return { lastName: cleaned, firstName: "", licenseNumber };
 };
 
 const computeMatchScore = (
@@ -130,15 +149,37 @@ const computeMatchScore = (
   const parsed = parseErgRaceName(ergraceName);
   const ergLast = normalizeName(parsed.lastName);
   const ergFirst = normalizeName(parsed.firstName);
+  const ergLicense = parsed.licenseNumber;
 
   const pLast = normalizeName(participant.last_name);
   const pFirst = normalizeName(participant.first_name);
+  const pLicense = normalizeName(participant.license_number || "");
 
   let score = 0;
 
+  // Si le numéro de licence correspond exactement, c'est une correspondance parfaite
+  if (ergLicense && pLicense && ergLicense === pLicense) {
+    score = 100;
+    // Vérifier quand même si le nom correspond aussi pour confirmer
+    if (ergLast === pLast && ergFirst === pFirst) {
+      return 100; // Parfait match nom + licence
+    } else if (ergLast === pLast) {
+      // Nom correspond avec licence
+      return 95;
+    } else {
+      // Licence correspond mais nom diffère un peu (peut arriver avec erreurs de saisie)
+      return 90;
+    }
+  }
+
+  // Sinon, on continue avec la correspondance par nom
   // Nom + prénom exacts
   if (ergLast === pLast && ergFirst === pFirst) {
     score = 100;
+    // Bonus si la licence correspond aussi
+    if (ergLicense && pLicense && ergLicense === pLicense) {
+      score = 100;
+    }
   } else if (ergLast === pLast) {
     // Nom exact, prénom proche
     if (
@@ -147,8 +188,16 @@ const computeMatchScore = (
       (pFirst.startsWith(ergFirst) || ergFirst.startsWith(pFirst))
     ) {
       score = 80;
-  } else {
+      // Bonus si la licence correspond
+      if (ergLicense && pLicense && ergLicense === pLicense) {
+        score = 95;
+      }
+    } else {
       score = 60;
+      // Bonus si la licence correspond
+      if (ergLicense && pLicense && ergLicense === pLicense) {
+        score = 85;
+      }
     }
   } else if (
     pLast.includes(ergLast) ||
@@ -156,6 +205,10 @@ const computeMatchScore = (
   ) {
     // Nom partiellement inclus
     score = 40;
+    // Bonus si la licence correspond
+    if (ergLicense && pLicense && ergLicense === pLicense) {
+      score = 75;
+    }
   } else {
     // Sans correspondance de nom, on ne va pas plus loin
     score = 0;
