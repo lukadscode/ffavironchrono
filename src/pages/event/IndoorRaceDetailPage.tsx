@@ -934,7 +934,14 @@ export default function IndoorRaceDetailPage() {
       }
 
       // Calculer l'allure si elle n'est pas fournie
-      const avgPace = manualResultPace || calculatePace(timeMs, distanceNum);
+      let avgPace = manualResultPace?.trim() || calculatePace(timeMs, distanceNum);
+      // S'assurer que avgPace est toujours une string valide
+      if (!avgPace || typeof avgPace !== 'string') {
+        avgPace = calculatePace(timeMs, distanceNum);
+      }
+      if (!avgPace || avgPace.trim().length === 0) {
+        avgPace = "0:00.0"; // Valeur par défaut si le calcul échoue
+      }
       
       // Utiliser le format de temps saisi par l'utilisateur (format MM:SS.S ou MM:SS.SS)
       // Si ce n'est pas dans le bon format, utiliser formatTime
@@ -942,6 +949,10 @@ export default function IndoorRaceDetailPage() {
       // S'assurer que le format est correct (au moins MM:SS.S)
       if (!timeDisplay.match(/^\d+:\d{2}\.\d{1,2}$/)) {
         timeDisplay = formatTime(timeMs);
+      }
+      // S'assurer que timeDisplay est toujours une string valide
+      if (!timeDisplay || typeof timeDisplay !== 'string' || timeDisplay.trim().length === 0) {
+        timeDisplay = "0:00.0";
       }
 
       // Utiliser l'endpoint d'import avec un format compatible ErgRace
@@ -957,23 +968,30 @@ export default function IndoorRaceDetailPage() {
         return;
       }
 
+      // S'assurer que tous les champs string sont bien des strings non vides
+      const participantName = selectedRaceCrew.crew.club_name 
+        ? `${selectedRaceCrew.crew.club_name} - Couloir ${selectedRaceCrew.lane}`
+        : `Équipage - Couloir ${selectedRaceCrew.lane}`;
+      const affiliation = selectedRaceCrew.crew.club_code || "";
+      const classCode = selectedRaceCrew.crew.category?.code || "";
+
       const participant: any = {
-        id: crewId, // L'API exige un champ "id" non vide
+        id: String(crewId), // L'API exige un champ "id" non vide
         lane: selectedRaceCrew.lane,
         lane_number: selectedRaceCrew.lane,
-        participant: `${selectedRaceCrew.crew.club_name} - Couloir ${selectedRaceCrew.lane}`,
-        affiliation: selectedRaceCrew.crew.club_code || "",
-        class: selectedRaceCrew.crew.category?.code || "",
-        score: timeDisplay, // Le backend attend score comme string avec le temps
-        time: timeDisplay,  // Pour compatibilité avec ErgRace
+        participant: participantName,
+        affiliation: affiliation,
+        class: classCode,
+        score: String(timeDisplay), // Le backend attend score comme string avec le temps
+        time: String(timeDisplay),  // Pour compatibilité avec ErgRace
         distance: distanceNum,
-        avg_pace: avgPace,
+        avg_pace: String(avgPace), // S'assurer que c'est toujours une string
         spm: manualResultSpm ? parseInt(manualResultSpm, 10) : 0,
         calories: manualResultCalories ? parseInt(manualResultCalories, 10) : 0,
         machine_type: "Rameur",
         logged_time: new Date().toISOString(),
         // Ajouter crew_id pour que le backend puisse lier le résultat à l'équipage
-        crew_id: crewId,
+        crew_id: String(crewId),
       };
 
       // Vérifier que raceId est valide
