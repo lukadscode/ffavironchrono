@@ -244,6 +244,50 @@ const computeMatchScore = (
   return score;
 };
 
+// Helper pour vérifier la cohérence distance/catégorie d'un équipage
+const isCrewCompatibleWithDistance = (
+  crew: any,
+  targetDistance: Distance | undefined
+): boolean => {
+  if (!targetDistance) return true; // si on n'a pas de distance définie, ne filtre pas
+
+  if (!crew || !crew.category) return true;
+
+  const catDist = crew.category.distance || null;
+  const catDistanceId =
+    crew.category.distance_id || (catDist && catDist.id) || null;
+
+  // 1) distance_id strictement identique
+  if (catDistanceId && catDistanceId === targetDistance.id) {
+    return true;
+  }
+
+  if (!catDist) return false;
+
+  // 2) Sinon, comparer les caractéristiques brutes (mètres / temps)
+  const t = targetDistance;
+  // Courses distance (non temps)
+  if (!t.is_time_based && !catDist.is_time_based) {
+    if (t.meters != null && catDist.meters != null) {
+      return Number(t.meters) === Number(catDist.meters);
+    }
+  }
+
+  // Courses temps
+  if (t.is_time_based && catDist.is_time_based) {
+    if (
+      t.duration_seconds != null &&
+      catDist.duration_seconds != null
+    ) {
+      return (
+        Number(t.duration_seconds) === Number(catDist.duration_seconds)
+      );
+    }
+  }
+
+  return false;
+};
+
 export default function ImportErgRaceResultsWithRacePage() {
   const { eventId } = useParams();
   const navigate = useNavigate();
@@ -721,47 +765,6 @@ export default function ImportErgRaceResultsWithRacePage() {
 
       // Pour chaque ligne avec un participant FFA mappé, essayer de retrouver son équipage
       const laneCrewPairs: Array<{ lane: number; crew_id: string }> = [];
-      // Helper pour vérifier la cohérence distance/catégorie d'un équipage
-      const isCrewCompatibleWithDistance = (crewId: string): boolean => {
-        if (!targetDistance) return true; // si on n'a pas de distance définie, ne filtre pas
-
-        const crew = eventCrews.find((c: any) => c.id === crewId);
-        if (!crew || !crew.category) return true;
-
-        const catDist = crew.category.distance || null;
-        const catDistanceId =
-          crew.category.distance_id || (catDist && catDist.id) || null;
-
-        // 1) distance_id strictement identique
-        if (catDistanceId && catDistanceId === targetDistance.id) {
-          return true;
-        }
-
-        if (!catDist) return false;
-
-        // 2) Sinon, comparer les caractéristiques brutes (mètres / temps)
-        const t = targetDistance;
-        // Courses distance (non temps)
-        if (!t.is_time_based && !catDist.is_time_based) {
-          if (t.meters != null && catDist.meters != null) {
-            return Number(t.meters) === Number(catDist.meters);
-          }
-        }
-
-        // Courses temps
-        if (t.is_time_based && catDist.is_time_based) {
-          if (
-            t.duration_seconds != null &&
-            catDist.duration_seconds != null
-          ) {
-            return (
-              Number(t.duration_seconds) === Number(catDist.duration_seconds)
-            );
-          }
-        }
-
-        return false;
-      };
 
       includedParticipants.forEach((p: any, index: number) => {
         const mappedId: string | undefined = p.__mapped_participant_id;
@@ -773,8 +776,12 @@ export default function ImportErgRaceResultsWithRacePage() {
 
         // Filtrer les équipages du participant en fonction de la distance de la course
         const compatibleCrewIds = ep.crews
-          .map((c) => c.id)
-          .filter((id) => isCrewCompatibleWithDistance(id));
+          .map((c) => {
+            const crew = eventCrews.find((ec) => ec.id === c.id);
+            return crew;
+          })
+          .filter((crew) => crew && isCrewCompatibleWithDistance(crew, targetDistance))
+          .map((crew) => crew!.id);
         if (compatibleCrewIds.length === 0) {
           // Aucun équipage cohérent avec la distance => on n'affecte pas
           return;
@@ -1144,6 +1151,9 @@ export default function ImportErgRaceResultsWithRacePage() {
                       const mapped = eventParticipants.find(
                         (ep) => ep.id === p.__mapped_participant_id
                       );
+                      const targetDistance = selectedDistanceId
+                        ? distances.find((d) => d.id === selectedDistanceId)
+                        : undefined;
                       const participantCrews =
                         mapped && mapped.crews && mapped.crews.length > 0
                           ? mapped.crews
@@ -1151,6 +1161,9 @@ export default function ImportErgRaceResultsWithRacePage() {
                                 eventCrews.find((ec) => ec.id === c.id)
                               )
                               .filter(Boolean)
+                              .filter((crew: any) =>
+                                isCrewCompatibleWithDistance(crew, targetDistance)
+                              )
                           : [];
                       const score: number | undefined = p.__match_score;
                       const searchQuery =
