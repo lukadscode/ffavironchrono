@@ -774,7 +774,19 @@ export default function ImportErgRaceResultsWithRacePage() {
         const laneValue = p.lane_number ?? p.lane ?? index + 1;
         if (!ep || !ep.crews || ep.crews.length === 0) return;
 
-        // Filtrer les équipages du participant en fonction de la distance de la course
+        // Si un équipage a été choisi explicitement pour cette ligne, on l'utilise toujours
+        const explicitCrewId: string | undefined = p.__mapped_crew_id;
+        if (explicitCrewId) {
+          // Vérifier que l'équipage sélectionné appartient bien au participant
+          const explicitCrew = eventCrews.find((ec) => ec.id === explicitCrewId);
+          const crewBelongsToParticipant = ep.crews.some((c) => c.id === explicitCrewId);
+          if (explicitCrew && crewBelongsToParticipant) {
+            laneCrewPairs.push({ lane: laneValue, crew_id: explicitCrewId });
+            return;
+          }
+        }
+
+        // Sinon, filtrer les équipages du participant en fonction de la distance de la course
         const compatibleCrewIds = ep.crews
           .map((c) => {
             const crew = eventCrews.find((ec) => ec.id === c.id);
@@ -787,18 +799,8 @@ export default function ImportErgRaceResultsWithRacePage() {
           return;
         }
 
-        // Si un équipage a été choisi explicitement pour cette ligne, on le privilégie
-        const explicitCrewId: string | undefined = p.__mapped_crew_id;
-        const availableCrewIds = compatibleCrewIds;
-
-        let crewIdToUse: string | undefined = undefined;
-        if (explicitCrewId && availableCrewIds.includes(explicitCrewId)) {
-          crewIdToUse = explicitCrewId;
-        } else {
-          // Sinon, fallback sur le premier équipage connu pour ce participant
-          crewIdToUse = availableCrewIds[0];
-        }
-
+        // Fallback sur le premier équipage compatible
+        const crewIdToUse = compatibleCrewIds[0];
         if (!crewIdToUse) return;
 
         laneCrewPairs.push({ lane: laneValue, crew_id: crewIdToUse });
@@ -1154,17 +1156,25 @@ export default function ImportErgRaceResultsWithRacePage() {
                       const targetDistance = selectedDistanceId
                         ? distances.find((d) => d.id === selectedDistanceId)
                         : undefined;
-                      const participantCrews =
+                      // Récupérer tous les équipages du participant
+                      const allParticipantCrews =
                         mapped && mapped.crews && mapped.crews.length > 0
                           ? mapped.crews
                               .map((c) =>
                                 eventCrews.find((ec) => ec.id === c.id)
                               )
                               .filter(Boolean)
-                              .filter((crew: any) =>
-                                isCrewCompatibleWithDistance(crew, targetDistance)
-                              )
                           : [];
+                      // Filtrer par distance, mais inclure toujours l'équipage déjà sélectionné
+                      const selectedCrewId = p.__mapped_crew_id;
+                      const participantCrews = allParticipantCrews.filter((crew: any) => {
+                        // Toujours inclure l'équipage déjà sélectionné
+                        if (selectedCrewId && crew.id === selectedCrewId) {
+                          return true;
+                        }
+                        // Sinon, filtrer par compatibilité de distance
+                        return isCrewCompatibleWithDistance(crew, targetDistance);
+                      });
                       const score: number | undefined = p.__match_score;
                       const searchQuery =
                         participantSearchQueries[idx] || "";
