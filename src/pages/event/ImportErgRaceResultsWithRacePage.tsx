@@ -81,13 +81,31 @@ interface EventParticipant {
 }
 
 const getDistanceLabel = (distance: Distance): string => {
-  if (distance.label) return distance.label;
+  // Si un label existe et que ce n'est pas un relais, on le retourne tel quel
+  // Pour les relais, on va construire un label plus explicite
+  if (distance.label && !distance.is_relay) return distance.label;
+  
+  // Gestion des relais
+  if (distance.is_relay && distance.relay_count && distance.relay_count > 0) {
+    if (distance.is_time_based && distance.duration_seconds != null) {
+      return `${distance.relay_count}x${distance.duration_seconds}s`;
+    }
+    if (!distance.is_time_based && distance.meters != null) {
+      return `${distance.relay_count}x${distance.meters}m`;
+    }
+  }
+  
+  // Affichage standard (non-relais)
   if (distance.is_time_based && distance.duration_seconds != null) {
     return `${distance.duration_seconds}s`;
   }
   if (!distance.is_time_based && distance.meters != null) {
     return `${distance.meters}m`;
   }
+  
+  // Si label existe même pour un relais, on l'utilise comme fallback
+  if (distance.label) return distance.label;
+  
   return "Distance inconnue";
 };
 
