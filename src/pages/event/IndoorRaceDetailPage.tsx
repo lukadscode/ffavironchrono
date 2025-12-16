@@ -5,6 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
+import { Input } from "@/components/ui/input";
 import {
   Dialog,
   DialogContent,
@@ -200,6 +201,14 @@ export default function IndoorRaceDetailPage() {
   const isAdmin = user?.role === "admin" || user?.role === "superadmin";
   const [showInstructionsDialog, setShowInstructionsDialog] = useState(false);
   const [selectedParticipantForChart, setSelectedParticipantForChart] = useState<IndoorParticipantResult | null>(null);
+  const [showAddResultDialog, setShowAddResultDialog] = useState(false);
+  const [selectedRaceCrew, setSelectedRaceCrew] = useState<any | null>(null);
+  const [manualResultTime, setManualResultTime] = useState("");
+  const [manualResultDistance, setManualResultDistance] = useState("");
+  const [manualResultPace, setManualResultPace] = useState("");
+  const [manualResultSpm, setManualResultSpm] = useState("");
+  const [manualResultCalories, setManualResultCalories] = useState("");
+  const [isSavingManualResult, setIsSavingManualResult] = useState(false);
 
   useEffect(() => {
     if (raceId && eventId) {
@@ -822,6 +831,145 @@ export default function IndoorRaceDetailPage() {
     return `${minutes}:${seconds.toString().padStart(2, "0")}.${tenths}`;
   };
 
+  // Fonction pour parser le temps au format MM:SS.SS ou MM:SS.S en millisecondes
+  const parseTimeToMs = (timeString: string): number => {
+    if (!timeString || !timeString.trim()) return 0;
+    
+    // Format attendu: MM:SS.SS ou MM:SS.S
+    const parts = timeString.trim().split(':');
+    if (parts.length !== 2) return 0;
+    
+    const minutes = parseInt(parts[0], 10) || 0;
+    const secondsPart = parts[1];
+    const seconds = parseInt(secondsPart.split('.')[0], 10) || 0;
+    const milliseconds = secondsPart.includes('.') 
+      ? parseInt(secondsPart.split('.')[1].padEnd(3, '0').substring(0, 3), 10) || 0
+      : 0;
+    
+    return (minutes * 60 * 1000) + (seconds * 1000) + milliseconds;
+  };
+
+  // Fonction pour calculer l'allure moyenne à partir du temps et de la distance
+  const calculatePace = (timeMs: number, distance: number): string => {
+    if (!distance || distance === 0 || !timeMs || timeMs === 0) return "0:00.0";
+    
+    // Allure en secondes par 500m
+    const secondsPer500m = (timeMs / 1000) / (distance / 500);
+    const minutes = Math.floor(secondsPer500m / 60);
+    const seconds = Math.floor(secondsPer500m % 60);
+    const tenths = Math.floor((secondsPer500m % 1) * 10);
+    
+    return `${minutes}:${seconds.toString().padStart(2, "0")}.${tenths}`;
+  };
+
+  // Fonction pour ouvrir le dialogue d'ajout de résultat
+  const handleOpenAddResultDialog = (raceCrew: any) => {
+    setSelectedRaceCrew(raceCrew);
+    setManualResultTime("");
+    setManualResultDistance(raceDistance?.meters?.toString() || distance.toString());
+    setManualResultPace("");
+    setManualResultSpm("");
+    setManualResultCalories("");
+    setShowAddResultDialog(true);
+  };
+
+  // Fonction pour soumettre un résultat manuel
+  const handleSaveManualResult = async () => {
+    if (!raceId || !selectedRaceCrew || !manualResultTime || !manualResultDistance) {
+      toast({
+        title: "Erreur",
+        description: "Veuillez remplir au moins le temps et la distance",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    try {
+      setIsSavingManualResult(true);
+
+      const timeMs = parseTimeToMs(manualResultTime);
+      const distanceNum = parseFloat(manualResultDistance) || 0;
+      
+      if (timeMs === 0 || distanceNum === 0) {
+        toast({
+          title: "Erreur",
+          description: "Le temps et la distance doivent être valides",
+          variant: "destructive",
+        });
+        return;
+      }
+
+      // Calculer l'allure si elle n'est pas fournie
+      const avgPace = manualResultPace || calculatePace(timeMs, distanceNum);
+      
+      // Formater le temps pour l'affichage (format MM:SS.SS)
+      const timeDisplay = formatTime(timeMs);
+
+      // Utiliser l'endpoint d'import avec un format compatible ErgRace
+      const participant = {
+        id: selectedRaceCrew.crew.id,
+        lane: selectedRaceCrew.lane,
+        lane_number: selectedRaceCrew.lane,
+        participant: `${selectedRaceCrew.crew.club_name} - Couloir ${selectedRaceCrew.lane}`,
+        affiliation: selectedRaceCrew.crew.club_code || "",
+        class: selectedRaceCrew.crew.category?.code || "",
+        score: timeDisplay,
+        time: timeDisplay,
+        distance: distanceNum,
+        avg_pace: avgPace,
+        spm: manualResultSpm ? parseInt(manualResultSpm, 10) : 0,
+        calories: manualResultCalories ? parseInt(manualResultCalories, 10) : 0,
+        machine_type: "Rameur",
+        logged_time: new Date().toISOString(),
+      };
+
+      const payload = {
+        results: {
+          race_id: raceId,
+          c2_race_id: raceId,
+          race_name: race?.name || "Course indoor",
+          race_type: "individual",
+          race_duration_type: "distance",
+          duration: distanceNum,
+          race_start_time: race?.start_time || new Date().toISOString(),
+          race_end_time: new Date().toISOString(),
+          participants: [participant],
+        },
+      };
+
+      await api.post("/indoor-results/import", payload);
+
+      toast({
+        title: "Résultat ajouté",
+        description: `Résultat manuel ajouté pour ${selectedRaceCrew.crew.club_name}`,
+      });
+
+      // Recharger les résultats et la course
+      await fetchIndoorResults();
+      await fetchRace();
+      
+      setShowAddResultDialog(false);
+    } catch (err: any) {
+      console.error("Erreur ajout résultat manuel:", err);
+      const errorData = err?.response?.data;
+      if (errorData?.errors && Array.isArray(errorData.errors)) {
+        toast({
+          title: "Erreurs de validation",
+          description: errorData.errors.join("\n"),
+          variant: "destructive",
+        });
+      } else {
+        toast({
+          title: "Erreur",
+          description: errorData?.message || err?.message || "Impossible d'ajouter le résultat",
+          variant: "destructive",
+        });
+      }
+    } finally {
+      setIsSavingManualResult(false);
+    }
+  };
+
   const generateRac2File = async () => {
     if (!race || !event) {
       toast({
@@ -1405,12 +1553,13 @@ export default function IndoorRaceDetailPage() {
                   <th className="text-left py-2 px-4 font-semibold">Club</th>
                   <th className="text-left py-2 px-4 font-semibold">Catégorie</th>
                   <th className="text-left py-2 px-4 font-semibold">Participants</th>
+                  <th className="text-left py-2 px-4 font-semibold">Résultat</th>
                 </tr>
               </thead>
               <tbody>
                 {race.race_crews.length === 0 ? (
                   <tr>
-                    <td colSpan={5} className="py-6 text-center text-muted-foreground">
+                    <td colSpan={6} className="py-6 text-center text-muted-foreground">
                       Aucun équipage assigné à cette course
                     </td>
                   </tr>
@@ -1420,8 +1569,19 @@ export default function IndoorRaceDetailPage() {
                       .sort((a, b) => a.seat_position - b.seat_position)
                       .map((cp) => cp.participant);
 
+                    // Vérifier si un résultat existe déjà pour cet équipage
+                    const existingResult = indoorResults?.participants?.find(
+                      (p) => p.crew_id === raceCrew.crew.id
+                    );
+
                     return (
-                      <tr key={raceCrew.id} className="border-b hover:bg-slate-50">
+                      <tr 
+                        key={raceCrew.id} 
+                        className={`border-b hover:bg-slate-100 cursor-pointer transition-colors ${
+                          existingResult ? 'bg-green-50' : ''
+                        }`}
+                        onClick={() => handleOpenAddResultDialog(raceCrew)}
+                      >
                         <td className="py-3 px-4 font-bold text-lg">{raceCrew.lane}</td>
                         <td className="py-3 px-4 font-semibold">{getClubShortCodeSync(raceCrew.crew.club_code)}</td>
                         <td className="py-3 px-4">
@@ -1468,6 +1628,21 @@ export default function IndoorRaceDetailPage() {
                               );
                             })}
                           </div>
+                        </td>
+                        <td className="py-3 px-4">
+                          {existingResult ? (
+                            <div className="flex flex-col gap-1">
+                              <span className="font-bold text-blue-600">{existingResult.time_display}</span>
+                              {existingResult.avg_pace && (
+                                <span className="text-xs text-muted-foreground">Allure: {existingResult.avg_pace}</span>
+                              )}
+                              {existingResult.distance && (
+                                <span className="text-xs text-muted-foreground">Distance: {existingResult.distance}m</span>
+                              )}
+                            </div>
+                          ) : (
+                            <span className="text-sm text-muted-foreground italic">Cliquez pour ajouter</span>
+                          )}
                         </td>
                       </tr>
                     );
@@ -1857,6 +2032,131 @@ export default function IndoorRaceDetailPage() {
               </div>
             </div>
           )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Dialogue pour ajouter un résultat manuel */}
+      <Dialog open={showAddResultDialog} onOpenChange={setShowAddResultDialog}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>Ajouter un résultat manuel</DialogTitle>
+            <DialogDescription>
+              {selectedRaceCrew && (
+                <>
+                  Équipage: {selectedRaceCrew.crew.club_name} - Couloir {selectedRaceCrew.lane}
+                  {selectedRaceCrew.crew.category && ` (${selectedRaceCrew.crew.category.label})`}
+                </>
+              )}
+            </DialogDescription>
+          </DialogHeader>
+          
+          <div className="space-y-4 py-4">
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <Label htmlFor="time">Temps * (format: MM:SS.SS)</Label>
+                <Input
+                  id="time"
+                  placeholder="Ex: 2:21.0"
+                  value={manualResultTime}
+                  onChange={(e) => {
+                    setManualResultTime(e.target.value);
+                    // Calculer automatiquement l'allure si distance et temps sont remplis
+                    if (e.target.value && manualResultDistance) {
+                      const timeMs = parseTimeToMs(e.target.value);
+                      const distanceNum = parseFloat(manualResultDistance);
+                      if (timeMs > 0 && distanceNum > 0) {
+                        setManualResultPace(calculatePace(timeMs, distanceNum));
+                      }
+                    }
+                  }}
+                />
+                <p className="text-xs text-muted-foreground mt-1">
+                  Format: Minutes:Secondes.Centièmes (ex: 2:21.0 pour 2 minutes 21 secondes)
+                </p>
+              </div>
+              
+              <div>
+                <Label htmlFor="distance">Distance * (mètres)</Label>
+                <Input
+                  id="distance"
+                  type="number"
+                  placeholder="Ex: 500"
+                  value={manualResultDistance}
+                  onChange={(e) => {
+                    setManualResultDistance(e.target.value);
+                    // Calculer automatiquement l'allure si temps et distance sont remplis
+                    if (manualResultTime && e.target.value) {
+                      const timeMs = parseTimeToMs(manualResultTime);
+                      const distanceNum = parseFloat(e.target.value);
+                      if (timeMs > 0 && distanceNum > 0) {
+                        setManualResultPace(calculatePace(timeMs, distanceNum));
+                      }
+                    }
+                  }}
+                />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-3 gap-4">
+              <div>
+                <Label htmlFor="pace">Allure moyenne (MM:SS.S)</Label>
+                <Input
+                  id="pace"
+                  placeholder="Ex: 2:21.0"
+                  value={manualResultPace}
+                  onChange={(e) => setManualResultPace(e.target.value)}
+                />
+                <p className="text-xs text-muted-foreground mt-1">
+                  Calculée automatiquement si vide
+                </p>
+              </div>
+              
+              <div>
+                <Label htmlFor="spm">SPM (strokes/min)</Label>
+                <Input
+                  id="spm"
+                  type="number"
+                  placeholder="Ex: 30"
+                  value={manualResultSpm}
+                  onChange={(e) => setManualResultSpm(e.target.value)}
+                />
+              </div>
+              
+              <div>
+                <Label htmlFor="calories">Calories</Label>
+                <Input
+                  id="calories"
+                  type="number"
+                  placeholder="Ex: 150"
+                  value={manualResultCalories}
+                  onChange={(e) => setManualResultCalories(e.target.value)}
+                />
+              </div>
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setShowAddResultDialog(false)}
+              disabled={isSavingManualResult}
+            >
+              Annuler
+            </Button>
+            <Button
+              onClick={handleSaveManualResult}
+              disabled={isSavingManualResult || !manualResultTime || !manualResultDistance}
+            >
+              {isSavingManualResult ? (
+                <>
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  Enregistrement...
+                </>
+              ) : (
+                "Enregistrer"
+              )}
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
     </div>
