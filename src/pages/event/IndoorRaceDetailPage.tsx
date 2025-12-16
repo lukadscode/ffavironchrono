@@ -832,21 +832,55 @@ export default function IndoorRaceDetailPage() {
   };
 
   // Fonction pour parser le temps au format MM:SS.SS ou MM:SS.S en millisecondes
-  const parseTimeToMs = (timeString: string): number => {
-    if (!timeString || !timeString.trim()) return 0;
-    
-    // Format attendu: MM:SS.SS ou MM:SS.S
-    const parts = timeString.trim().split(':');
-    if (parts.length !== 2) return 0;
-    
-    const minutes = parseInt(parts[0], 10) || 0;
-    const secondsPart = parts[1];
-    const seconds = parseInt(secondsPart.split('.')[0], 10) || 0;
-    const milliseconds = secondsPart.includes('.') 
-      ? parseInt(secondsPart.split('.')[1].padEnd(3, '0').substring(0, 3), 10) || 0
-      : 0;
-    
-    return (minutes * 60 * 1000) + (seconds * 1000) + milliseconds;
+  const parseTimeToMs = (timeString: string | null | undefined): number => {
+    try {
+      if (!timeString || typeof timeString !== 'string') return 0;
+      
+      const trimmed = timeString.trim();
+      if (!trimmed) return 0;
+      
+      // Format attendu: MM:SS.SS ou MM:SS.S
+      const parts = trimmed.split(':');
+      if (parts.length !== 2 || !parts[0] || !parts[1]) return 0;
+      
+      const minutes = parseInt(parts[0], 10);
+      if (isNaN(minutes) || minutes < 0) return 0;
+      
+      const secondsPart = parts[1].trim();
+      if (!secondsPart) return 0;
+      
+      // Séparer les secondes et les centièmes/dixièmes
+      const secondsSplit = secondsPart.split('.');
+      if (secondsSplit.length === 0 || !secondsSplit[0]) return 0;
+      
+      const seconds = parseInt(secondsSplit[0], 10);
+      if (isNaN(seconds) || seconds < 0) return 0;
+      
+      let milliseconds = 0;
+      if (secondsSplit.length > 1 && secondsSplit[1]) {
+        // Support des formats : SS.S (dixièmes) ou SS.SS (centièmes)
+        // Exemple: "23.9" = 23 secondes et 9 dixièmes = 900ms
+        //          "23.09" = 23 secondes et 9 centièmes = 90ms
+        const fractionStr = secondsSplit[1];
+        const fractionDigits = fractionStr.length;
+        
+        if (fractionDigits === 1) {
+          // 1 chiffre = dixièmes (× 100 pour convertir en millisecondes)
+          milliseconds = parseInt(fractionStr, 10) * 100;
+        } else if (fractionDigits === 2) {
+          // 2 chiffres = centièmes (× 10 pour convertir en millisecondes)
+          milliseconds = parseInt(fractionStr, 10) * 10;
+        } else if (fractionDigits >= 3) {
+          // 3+ chiffres = millisecondes directs (on prend les 3 premiers)
+          milliseconds = parseInt(fractionStr.substring(0, 3), 10);
+        }
+      }
+      
+      return (minutes * 60 * 1000) + (seconds * 1000) + milliseconds;
+    } catch (error) {
+      console.error("Erreur parsing temps:", error, timeString);
+      return 0;
+    }
   };
 
   // Fonction pour calculer l'allure moyenne à partir du temps et de la distance
