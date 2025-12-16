@@ -936,31 +936,60 @@ export default function IndoorRaceDetailPage() {
       // Calculer l'allure si elle n'est pas fournie
       const avgPace = manualResultPace || calculatePace(timeMs, distanceNum);
       
-      // Formater le temps pour l'affichage (format MM:SS.SS)
-      const timeDisplay = formatTime(timeMs);
+      // Utiliser le format de temps saisi par l'utilisateur (format MM:SS.S ou MM:SS.SS)
+      // Si ce n'est pas dans le bon format, utiliser formatTime
+      let timeDisplay = manualResultTime.trim();
+      // S'assurer que le format est correct (au moins MM:SS.S)
+      if (!timeDisplay.match(/^\d+:\d{2}\.\d{1,2}$/)) {
+        timeDisplay = formatTime(timeMs);
+      }
 
       // Utiliser l'endpoint d'import avec un format compatible ErgRace
-      const participant = {
-        id: selectedRaceCrew.crew.id,
+      // Le format doit correspondre exactement à ce que l'API attend
+      // S'assurer que id et score sont non vides (requis par l'API)
+      const crewId = selectedRaceCrew.crew.id;
+      if (!crewId || String(crewId).trim().length === 0) {
+        toast({
+          title: "Erreur",
+          description: "ID d'équipage invalide",
+          variant: "destructive",
+        });
+        return;
+      }
+
+      const participant: any = {
+        id: crewId, // L'API exige un champ "id" non vide
         lane: selectedRaceCrew.lane,
         lane_number: selectedRaceCrew.lane,
         participant: `${selectedRaceCrew.crew.club_name} - Couloir ${selectedRaceCrew.lane}`,
         affiliation: selectedRaceCrew.crew.club_code || "",
         class: selectedRaceCrew.crew.category?.code || "",
-        score: timeDisplay,
-        time: timeDisplay,
+        score: timeDisplay, // Le backend attend score comme string avec le temps
+        time: timeDisplay,  // Pour compatibilité avec ErgRace
         distance: distanceNum,
         avg_pace: avgPace,
         spm: manualResultSpm ? parseInt(manualResultSpm, 10) : 0,
         calories: manualResultCalories ? parseInt(manualResultCalories, 10) : 0,
         machine_type: "Rameur",
         logged_time: new Date().toISOString(),
+        // Ajouter crew_id pour que le backend puisse lier le résultat à l'équipage
+        crew_id: crewId,
       };
+
+      // Vérifier que raceId est valide
+      if (!raceId || String(raceId).trim().length === 0) {
+        toast({
+          title: "Erreur",
+          description: "ID de course invalide",
+          variant: "destructive",
+        });
+        return;
+      }
 
       const payload = {
         results: {
           race_id: raceId,
-          c2_race_id: raceId,
+          c2_race_id: raceId, // ID de la course dans la plateforme
           race_name: race?.name || "Course indoor",
           race_type: "individual",
           race_duration_type: "distance",
@@ -971,7 +1000,9 @@ export default function IndoorRaceDetailPage() {
         },
       };
 
-      await api.post("/indoor-results/import", payload);
+      console.log("Payload envoyé:", JSON.stringify(payload, null, 2));
+      
+      const response = await api.post("/indoor-results/import", payload);
 
       toast({
         title: "Résultat ajouté",
@@ -985,6 +1016,7 @@ export default function IndoorRaceDetailPage() {
       setShowAddResultDialog(false);
     } catch (err: any) {
       console.error("Erreur ajout résultat manuel:", err);
+      console.error("Réponse du serveur:", err?.response?.data);
       const errorData = err?.response?.data;
       if (errorData?.errors && Array.isArray(errorData.errors)) {
         toast({
@@ -993,9 +1025,10 @@ export default function IndoorRaceDetailPage() {
           variant: "destructive",
         });
       } else {
+        const errorMessage = errorData?.message || errorData?.error || err?.message || "Impossible d'ajouter le résultat";
         toast({
           title: "Erreur",
-          description: errorData?.message || err?.message || "Impossible d'ajouter le résultat",
+          description: errorMessage,
           variant: "destructive",
         });
       }
