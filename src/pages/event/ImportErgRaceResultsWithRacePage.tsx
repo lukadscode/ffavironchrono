@@ -136,17 +136,16 @@ const parseErgRaceName = (name: string): { lastName: string; firstName: string; 
   cleaned = cleaned.replace(/\s+/g, " ").trim();
   
   // Détecter si le premier mot est un nombre (format "362 LACOFFRETTE EMMA")
+  // ATTENTION: ce nombre n'est PAS un numéro de licence (qui doit avoir 6 chiffres)
+  // C'est probablement un numéro de couloir ou autre identifiant, on le retire juste pour parser le nom
   const parts = cleaned.split(" ").filter(p => p.length > 0);
   let hasLeadingNumber = false;
   if (parts.length > 0) {
     const firstPart = parts[0];
-    // Vérifier si c'est un nombre (ex: "362")
-    if (/^\d+$/.test(firstPart)) {
-      // C'est un numéro au début, on le retire et on le garde comme numéro de licence potentiel
-      if (!licenseNumber) {
-        licenseNumber = firstPart;
-      }
-      // Retirer le premier mot (le numéro)
+    // Vérifier si c'est un nombre (ex: "362") mais PAS un numéro de licence (6 chiffres)
+    if (/^\d+$/.test(firstPart) && firstPart.length !== 6) {
+      // C'est un numéro au début (mais pas une licence), on le retire simplement
+      // On ne le garde PAS comme numéro de licence
       parts.shift();
       cleaned = parts.join(" ");
       hasLeadingNumber = true;
@@ -172,7 +171,7 @@ const parseErgRaceName = (name: string): { lastName: string; firstName: string; 
       return {
         lastName: finalParts[0] || "",
         firstName: finalParts.slice(1).join(" ") || "",
-        licenseNumber,
+        licenseNumber, // Pas de numéro de licence dans ce format
       };
     } else {
       // Format classique : le dernier mot = nom, le reste = prénom
@@ -229,19 +228,26 @@ const computeMatchScore = (
       score = 100;
     }
   } else if (ergLast === pLast) {
-    // Nom exact, prénom proche
+    // Nom exact, prénom proche ou partiel
     if (
       ergFirst &&
       pFirst &&
       (pFirst.startsWith(ergFirst) || ergFirst.startsWith(pFirst))
     ) {
-      score = 80;
+      score = 85; // Augmenté de 80 à 85 pour être plus permissif
       // Bonus si la licence correspond
       if (ergLicense && pLicense && ergLicense === pLicense) {
         score = 95;
       }
+    } else if (ergFirst && pFirst && (pFirst.includes(ergFirst) || ergFirst.includes(pFirst))) {
+      // Prénom partiellement inclus (ex: "EMMA" vs "EMMANUELLE")
+      score = 75; // Nouveau cas pour prénom partiel
+      // Bonus si la licence correspond
+      if (ergLicense && pLicense && ergLicense === pLicense) {
+        score = 90;
+      }
     } else {
-      score = 60;
+      score = 70; // Augmenté de 60 à 70 pour nom exact sans prénom correspondant
       // Bonus si la licence correspond
       if (ergLicense && pLicense && ergLicense === pLicense) {
         score = 85;
@@ -251,8 +257,8 @@ const computeMatchScore = (
     pLast.includes(ergLast) ||
     ergLast.includes(pLast)
   ) {
-    // Nom partiellement inclus
-    score = 40;
+    // Nom partiellement inclus (ex: "LACOFFRETTE" vs "LACOFFRET")
+    score = 50; // Augmenté de 40 à 50 pour être plus permissif
     // Bonus si la licence correspond
     if (ergLicense && pLicense && ergLicense === pLicense) {
       score = 75;
@@ -632,12 +638,12 @@ export default function ImportErgRaceResultsWithRacePage() {
             if (best && best.score > 0) {
               // Logique proche de l'import ErgRace des équipages :
               // on accepte si:
-              // - score >= 70, ou
-              // - score >= 40 et nettement meilleur que le second (écart >= 20)
+              // - score >= 60 (baissé de 70 pour être plus permissif), ou
+              // - score >= 40 et nettement meilleur que le second (écart >= 15, baissé de 20)
               const accept =
-                best.score >= 70 ||
+                best.score >= 60 ||
                 (best.score >= 40 &&
-                  (!second || best.score - second.score >= 20));
+                  (!second || best.score - second.score >= 15));
 
               if (accept) {
                 mappedId = String(best.participant.id);
