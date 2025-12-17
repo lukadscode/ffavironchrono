@@ -124,7 +124,7 @@ const parseErgRaceName = (name: string): { lastName: string; firstName: string; 
   
   // Extraire le numéro de licence entre parenthèses si présent
   const licenseMatch = normalized.match(/\((\d+)\)/);
-  const licenseNumber = licenseMatch ? licenseMatch[1] : undefined;
+  let licenseNumber = licenseMatch ? licenseMatch[1] : undefined;
   
   // Retirer le numéro de licence et les parties de catégorie (comme "jeune j11", "senior", etc.)
   let cleaned = normalized
@@ -133,6 +133,27 @@ const parseErgRaceName = (name: string): { lastName: string; firstName: string; 
     .trim();
   
   // Nettoyer les espaces multiples
+  cleaned = cleaned.replace(/\s+/g, " ").trim();
+  
+  // Détecter si le premier mot est un nombre (format "362 LACOFFRETTE EMMA")
+  const parts = cleaned.split(" ").filter(p => p.length > 0);
+  let hasLeadingNumber = false;
+  if (parts.length > 0) {
+    const firstPart = parts[0];
+    // Vérifier si c'est un nombre (ex: "362")
+    if (/^\d+$/.test(firstPart)) {
+      // C'est un numéro au début, on le retire et on le garde comme numéro de licence potentiel
+      if (!licenseNumber) {
+        licenseNumber = firstPart;
+      }
+      // Retirer le premier mot (le numéro)
+      parts.shift();
+      cleaned = parts.join(" ");
+      hasLeadingNumber = true;
+    }
+  }
+  
+  // Nettoyer à nouveau après retrait du numéro
   cleaned = cleaned.replace(/\s+/g, " ").trim();
   
   if (cleaned.includes(",")) {
@@ -144,14 +165,23 @@ const parseErgRaceName = (name: string): { lastName: string; firstName: string; 
     };
   }
   
-  const parts = cleaned.split(" ").filter(p => p.length > 0);
-  if (parts.length >= 2) {
-    // Prendre le dernier mot comme nom de famille, le reste comme prénom
-    return {
-      lastName: parts[parts.length - 1] || "",
-      firstName: parts.slice(0, -1).join(" ") || "",
-      licenseNumber,
-    };
+  const finalParts = cleaned.split(" ").filter(p => p.length > 0);
+  if (finalParts.length >= 2) {
+    if (hasLeadingNumber) {
+      // Format "362 NOM PRENOM" : le premier mot après le numéro = nom, le reste = prénom
+      return {
+        lastName: finalParts[0] || "",
+        firstName: finalParts.slice(1).join(" ") || "",
+        licenseNumber,
+      };
+    } else {
+      // Format classique : le dernier mot = nom, le reste = prénom
+      return {
+        lastName: finalParts[finalParts.length - 1] || "",
+        firstName: finalParts.slice(0, -1).join(" ") || "",
+        licenseNumber,
+      };
+    }
   }
   
   return { lastName: cleaned, firstName: "", licenseNumber };
