@@ -1036,7 +1036,17 @@ export default function IndoorRaceDetailPage() {
       setShowAddResultDialog(false);
     } catch (err: any) {
       console.error("Erreur ajout résultat manuel:", err);
-      console.error("Réponse du serveur:", err?.response?.data);
+      // Afficher le détail complet de l'erreur backend pour diagnostic
+      if (err?.response) {
+        try {
+          console.error(
+            "Réponse du serveur (détaillée):",
+            JSON.stringify(err.response.data, null, 2)
+          );
+        } catch {
+          console.error("Réponse du serveur (brute):", err.response.data);
+        }
+      }
       const errorData = err?.response?.data;
       if (errorData?.errors && Array.isArray(errorData.errors)) {
         toast({
