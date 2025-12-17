@@ -968,34 +968,6 @@ export default function IndoorRaceDetailPage() {
         return;
       }
 
-      // S'assurer que tous les champs string sont bien des strings non vides
-      const participantName = selectedRaceCrew.crew.club_name 
-        ? `${selectedRaceCrew.crew.club_name} - Couloir ${selectedRaceCrew.lane}`
-        : `Équipage - Couloir ${selectedRaceCrew.lane}`;
-      const affiliation = selectedRaceCrew.crew.club_code || "";
-      const classCode = selectedRaceCrew.crew.category?.code || "";
-
-      const participant: any = {
-        id: String(crewId), // L'API exige un champ "id" non vide
-        lane: selectedRaceCrew.lane,
-        lane_number: selectedRaceCrew.lane,
-        participant: participantName,
-        affiliation: affiliation,
-        class: classCode,
-        score: String(timeDisplay), // Le backend attend score comme string avec le temps
-        time: String(timeDisplay),  // Pour compatibilité avec ErgRace
-        distance: distanceNum,
-        avg_pace: String(avgPace), // S'assurer que c'est toujours une string
-        spm: manualResultSpm ? parseInt(manualResultSpm, 10) : 0,
-        calories: manualResultCalories ? parseInt(manualResultCalories, 10) : 0,
-        machine_type: "Rameur",
-        logged_time: new Date().toISOString(),
-        // Ajouter crew_id pour que le backend puisse lier le résultat à l'équipage
-        crew_id: String(crewId),
-        // IMPORTANT : forcer un tableau vide de splits pour éviter tout .split sur une valeur undefined côté backend
-        splits_data: [],
-      };
-
       // Vérifier que raceId est valide
       if (!raceId || String(raceId).trim().length === 0) {
         toast({
@@ -1006,30 +978,48 @@ export default function IndoorRaceDetailPage() {
         return;
       }
 
-      const payload = {
-        results: {
-          race_id: raceId,
-          c2_race_id: raceId, // ID de la course dans la plateforme
-          race_name: race?.name || "Course indoor",
-          race_type: "individual",
-          race_duration_type: "distance",
-          duration: distanceNum,
-          race_start_time: race?.start_time || new Date().toISOString(),
-          race_end_time: new Date().toISOString(),
-          participants: [participant],
-        },
+      // Construire le payload pour la route manuelle backend
+      const manualPayload: any = {
+        crew_id: String(crewId),
+        time_display: timeDisplay,
+        time_ms: timeMs,
+        distance: distanceNum,
       };
 
-      console.log("Payload envoyé:", JSON.stringify(payload, null, 2));
-      
-      const response = await api.post("/indoor-results/import", payload);
+      // Champs optionnels si présents
+      if (selectedRaceCrew.lane) {
+        manualPayload.lane = selectedRaceCrew.lane;
+      }
+      if (manualResultPace && manualResultPace.trim().length > 0) {
+        manualPayload.avg_pace = manualResultPace.trim();
+      } else if (avgPace && avgPace.trim().length > 0) {
+        manualPayload.avg_pace = avgPace.trim();
+      }
+      if (manualResultSpm) {
+        manualPayload.spm = parseInt(manualResultSpm, 10) || 0;
+      }
+      if (manualResultCalories) {
+        manualPayload.calories = parseInt(manualResultCalories, 10) || 0;
+      }
+      manualPayload.machine_type = "Rameur";
+      manualPayload.logged_time = new Date().toISOString();
+
+      console.log(
+        "Payload manuel envoyé à /indoor-results/race/:raceId/manual:",
+        JSON.stringify(manualPayload, null, 2)
+      );
+
+      const response = await api.post(
+        `/indoor-results/race/${raceId}/manual`,
+        manualPayload
+      );
 
       toast({
         title: "Résultat ajouté",
         description: `Résultat manuel ajouté pour ${selectedRaceCrew.crew.club_name}`,
       });
 
-      // Recharger les résultats et la course
+      // Recharger les résultats et la course (la route renvoie le même format que GET /indoor-results/race/:raceId)
       await fetchIndoorResults();
       await fetchRace();
       
