@@ -992,6 +992,8 @@ export default function IndoorRaceDetailPage() {
         logged_time: new Date().toISOString(),
         // Ajouter crew_id pour que le backend puisse lier le résultat à l'équipage
         crew_id: String(crewId),
+        // IMPORTANT : forcer un tableau vide de splits pour éviter tout .split sur une valeur undefined côté backend
+        splits_data: [],
       };
 
       // Vérifier que raceId est valide
