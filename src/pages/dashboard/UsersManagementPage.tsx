@@ -37,7 +37,7 @@ type User = {
   id: string;
   name: string;
   email: string;
-  role: "user" | "admin" | "superadmin";
+  role: "user" | "commission" | "admin" | "superadmin";
   status?: "active" | "inactive";
   num_license?: string;
   created_at?: string;
@@ -70,7 +70,7 @@ export default function UsersManagementPage() {
     name: "",
     email: "",
     num_license: "",
-    role: "user" as "user" | "admin" | "superadmin",
+    role: "user" as "user" | "commission" | "admin" | "superadmin",
   });
   
   // Dialog pour supprimer un utilisateur
@@ -305,6 +305,8 @@ export default function UsersManagementPage() {
         return "Super Admin";
       case "admin":
         return "Admin";
+      case "commission":
+        return "Commission";
       case "user":
         return "Utilisateur";
       default:
@@ -319,6 +321,8 @@ export default function UsersManagementPage() {
         return "bg-purple-100 text-purple-700 border-purple-200";
       case "admin":
         return "bg-blue-100 text-blue-700 border-blue-200";
+      case "commission":
+        return "bg-green-100 text-green-700 border-green-200";
       case "user":
         return "bg-gray-100 text-gray-700 border-gray-200";
       default:
@@ -402,7 +406,7 @@ export default function UsersManagementPage() {
                   onValueChange={(value) =>
                     setNewUser({
                       ...newUser,
-                      role: value as "user" | "admin" | "superadmin",
+                      role: value as "user" | "commission" | "admin" | "superadmin",
                     })
                   }
                   disabled={isCreating}
@@ -412,6 +416,7 @@ export default function UsersManagementPage() {
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="user">Utilisateur</SelectItem>
+                    <SelectItem value="commission">Commission</SelectItem>
                     <SelectItem value="admin">Admin</SelectItem>
                     {isSuperAdmin && (
                       <SelectItem value="superadmin">Super Admin</SelectItem>
@@ -471,6 +476,7 @@ export default function UsersManagementPage() {
               <SelectContent>
                 <SelectItem value="all">Tous les rôles</SelectItem>
                 <SelectItem value="user">Utilisateur</SelectItem>
+                <SelectItem value="commission">Commission</SelectItem>
                 <SelectItem value="admin">Admin</SelectItem>
                 <SelectItem value="superadmin">Super Admin</SelectItem>
               </SelectContent>
@@ -585,6 +591,7 @@ export default function UsersManagementPage() {
                             </SelectTrigger>
                             <SelectContent>
                               <SelectItem value="user">Utilisateur</SelectItem>
+                              <SelectItem value="commission">Commission</SelectItem>
                               <SelectItem value="admin">Admin</SelectItem>
                               {isSuperAdmin && (
                                 <SelectItem value="superadmin">

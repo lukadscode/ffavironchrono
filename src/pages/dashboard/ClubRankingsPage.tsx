@@ -1,4 +1,6 @@
 import { useEffect, useState, useMemo } from "react";
+import { useNavigate } from "react-router-dom";
+import { useAuth } from "@/context/AuthContext";
 import api from "@/lib/axios";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import {
@@ -45,11 +47,26 @@ interface EventRankings {
 }
 
 export default function ClubRankingsPage() {
+  const { user } = useAuth();
+  const navigate = useNavigate();
   const [eventType, setEventType] = useState<string>("indoor");
   const [data, setData] = useState<EventRankings[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<"global" | "by-event">("global");
+
+  // Vérifier les permissions : admin, superadmin ou commission
+  useEffect(() => {
+    const isAuthorized = 
+      user?.role === "admin" || 
+      user?.role === "superadmin" || 
+      user?.role === "commission";
+    
+    if (!isAuthorized) {
+      navigate("/dashboard");
+      return;
+    }
+  }, [user, navigate]);
 
   useEffect(() => {
     fetchRankings();

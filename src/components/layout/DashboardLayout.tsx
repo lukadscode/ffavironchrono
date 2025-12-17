@@ -11,6 +11,8 @@ export default function DashboardLayout() {
   // Vérifier si l'utilisateur est admin ou superadmin
   const isAdmin = user?.role === "admin" || user?.role === "superadmin";
   const isSuperAdmin = user?.role === "superadmin";
+  // Vérifier si l'utilisateur est commission (même droits que user + accès club-rankings)
+  const isCommission = user?.role === "commission";
 
   const navLinks = [
     { to: "/dashboard", label: "Accueil", icon: Home },
@@ -27,8 +29,8 @@ export default function DashboardLayout() {
     ...(isAdmin
       ? [{ to: "/dashboard/clubs-management", label: "Gestion clubs", icon: Building2 }]
       : []),
-    // Afficher le lien des classements des clubs seulement pour les admins
-    ...(isAdmin
+    // Afficher le lien des classements des clubs pour les admins et les commissions
+    ...(isAdmin || isCommission
       ? [{ to: "/dashboard/club-rankings", label: "Classements clubs", icon: Trophy }]
       : []),
     // Afficher le lien des statistiques seulement pour les admins
