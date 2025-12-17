@@ -1521,15 +1521,45 @@ export default function IndoorRaceDetailPage() {
             </div>
           </div>
         </div>
-        <Button 
-          onClick={generateRac2File} 
-          className="gap-2"
-          disabled={!hasDistance}
-          title={!hasDistance ? "Veuillez sélectionner une distance pour la course" : ""}
-        >
-          <Download className="w-4 h-4" />
-          Télécharger le fichier .rac2 (ErgRace)
-        </Button>
+        <div className="flex items-center gap-3">
+          <Button
+            variant="outline"
+            className="gap-2"
+            disabled={!raceId}
+            onClick={async () => {
+              if (!raceId) return;
+              try {
+                await api.put(`/races/${raceId}`, { status: "non_official" });
+                await fetchRace();
+                toast({
+                  title: "Statut mis à jour",
+                  description: "La course est maintenant en statut non officiel (en attente de validation arbitre).",
+                });
+              } catch (err: any) {
+                console.error("Erreur mise à jour statut non_official", err);
+                toast({
+                  title: "Erreur",
+                  description:
+                    err?.response?.data?.message ||
+                    "Impossible de mettre la course en statut non officiel",
+                  variant: "destructive",
+                });
+              }
+            }}
+          >
+            <Trophy className="w-4 h-4 mr-1" />
+            Marquer comme non officiel
+          </Button>
+          <Button 
+            onClick={generateRac2File} 
+            className="gap-2"
+            disabled={!hasDistance}
+            title={!hasDistance ? "Veuillez sélectionner une distance pour la course" : ""}
+          >
+            <Download className="w-4 h-4" />
+            Télécharger le fichier .rac2 (ErgRace)
+          </Button>
+        </div>
       </div>
 
       {/* Zones de dépôt de fichiers */}
