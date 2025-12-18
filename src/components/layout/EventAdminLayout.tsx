@@ -1,9 +1,10 @@
 import { useEffect, useState, useMemo } from "react";
-import { Outlet, useParams, NavLink, Link } from "react-router-dom";
+import { Outlet, useParams, NavLink, Link, Navigate } from "react-router-dom";
 import clsx from "clsx";
 import { useEventRole } from "@/hooks/useEventRole";
 import { ROLE_PERMISSIONS } from "@/router/EventProtectedRoute";
 import { useAuth } from "@/context/AuthContext";
+import { Loader2 } from "lucide-react";
 import {
   Home,
   Users,
@@ -70,8 +71,25 @@ export default function EventAdminLayout() {
   const [isIndoor, setIsIndoor] = useState<boolean>(false);
 
   // Vérifier si l'utilisateur est admin global
-  const { user } = useAuth();
+  const { user, loading } = useAuth();
   const isGlobalAdmin = user?.role === "admin" || user?.role === "superadmin";
+
+  // 🔒 Protection : Seuls les admins et superadmins peuvent accéder à la page d'administration de l'événement
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center min-h-screen">
+        <Loader2 className="w-8 h-8 animate-spin text-muted-foreground" />
+      </div>
+    );
+  }
+
+  if (!user) {
+    return <Navigate to="/admin/login" replace />;
+  }
+
+  if (!isGlobalAdmin) {
+    return <Navigate to="/dashboard" replace />;
+  }
 
   // Filtrer les éléments de navigation selon les permissions et le type d'événement
   const navItems = useMemo(() => {

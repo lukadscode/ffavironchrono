@@ -135,55 +135,73 @@ const parseErgRaceName = (name: string): { lastName: string; firstName: string; 
   // Nettoyer les espaces multiples
   cleaned = cleaned.replace(/\s+/g, " ").trim();
   
-  // Détecter si le premier mot est un nombre (format "362 LACOFFRETTE EMMA")
-  // ATTENTION: ce nombre n'est PAS un numéro de licence (qui doit avoir 6 chiffres)
-  // C'est probablement un numéro de couloir ou autre identifiant, on le retire juste pour parser le nom
+  // Séparer en mots pour analyser la structure
   const parts = cleaned.split(" ").filter(p => p.length > 0);
-  let hasLeadingNumber = false;
+  
+  if (parts.length === 0) {
+    return { lastName: "", firstName: "", licenseNumber };
+  }
+  
+  // Détecter et retirer les codes d'affiliation au début (format: lettres + chiffres, ex: "CAC4", "CNC3", "SRM1")
+  // Pattern: 2-4 lettres suivies de 1-3 chiffres
+  let startIndex = 0;
   if (parts.length > 0) {
     const firstPart = parts[0];
-    // Vérifier si c'est un nombre (ex: "362") mais PAS un numéro de licence (6 chiffres)
-    if (/^\d+$/.test(firstPart) && firstPart.length !== 6) {
-      // C'est un numéro au début (mais pas une licence), on le retire simplement
-      // On ne le garde PAS comme numéro de licence
-      parts.shift();
-      cleaned = parts.join(" ");
-      hasLeadingNumber = true;
+    // Vérifier si c'est un code d'affiliation (lettres + chiffres, ex: "cac4", "cnc3")
+    if (/^[a-z]{2,4}\d{1,3}$/i.test(firstPart)) {
+      startIndex = 1; // Retirer le code d'affiliation
+    }
+    // Sinon, vérifier si c'est un nombre pur (format "362 LACOFFRETTE EMMA")
+    // ATTENTION: ce nombre n'est PAS un numéro de licence (qui doit avoir 6 chiffres)
+    else if (/^\d+$/.test(firstPart) && firstPart.length !== 6) {
+      startIndex = 1; // Retirer le numéro
     }
   }
   
-  // Nettoyer à nouveau après retrait du numéro
-  cleaned = cleaned.replace(/\s+/g, " ").trim();
+  // Détecter et retirer les catégories à la fin (format: lettres + chiffres + lettres, ex: "OPEN500F", "500F", etc.)
+  let endIndex = parts.length;
+  if (parts.length > startIndex) {
+    const lastPart = parts[parts.length - 1];
+    // Vérifier si c'est une catégorie (contient des lettres et des chiffres, souvent en majuscules)
+    // Pattern: lettres + chiffres + lettres optionnelles (ex: "OPEN500F", "500F", "TAF1I_1000m")
+    if (/^[a-z]*\d+[a-z]*$/i.test(lastPart) && lastPart.length >= 3) {
+      endIndex = parts.length - 1; // Retirer la catégorie
+    }
+  }
   
-  if (cleaned.includes(",")) {
-    const parts = cleaned.split(",").map((p) => p.trim());
+  // Extraire la partie pertinente (nom et prénom)
+  const nameParts = parts.slice(startIndex, endIndex);
+  
+  // Si format avec virgule (ex: "NOM, PRENOM")
+  const nameString = nameParts.join(" ");
+  if (nameString.includes(",")) {
+    const commaParts = nameString.split(",").map((p) => p.trim());
     return {
-      lastName: parts[0] || "",
-      firstName: parts[1] || "",
+      lastName: commaParts[0] || "",
+      firstName: commaParts[1] || "",
       licenseNumber,
     };
   }
   
-  const finalParts = cleaned.split(" ").filter(p => p.length > 0);
-  if (finalParts.length >= 2) {
-    if (hasLeadingNumber) {
-      // Format "362 NOM PRENOM" : le premier mot après le numéro = nom, le reste = prénom
-      return {
-        lastName: finalParts[0] || "",
-        firstName: finalParts.slice(1).join(" ") || "",
-        licenseNumber, // Pas de numéro de licence dans ce format
-      };
-    } else {
-      // Format classique : le dernier mot = nom, le reste = prénom
-      return {
-        lastName: finalParts[finalParts.length - 1] || "",
-        firstName: finalParts.slice(0, -1).join(" ") || "",
-        licenseNumber,
-      };
-    }
+  // Si on a retiré un code d'affiliation ou un numéro au début, on assume format "NOM PRENOM"
+  if (startIndex > 0 && nameParts.length >= 2) {
+    return {
+      lastName: nameParts[0] || "",
+      firstName: nameParts.slice(1).join(" ") || "",
+      licenseNumber,
+    };
   }
   
-  return { lastName: cleaned, firstName: "", licenseNumber };
+  // Format classique : le dernier mot = nom, le reste = prénom
+  if (nameParts.length >= 2) {
+    return {
+      lastName: nameParts[nameParts.length - 1] || "",
+      firstName: nameParts.slice(0, -1).join(" ") || "",
+      licenseNumber,
+    };
+  }
+  
+  return { lastName: nameString, firstName: "", licenseNumber };
 };
 
 const computeMatchScore = (
