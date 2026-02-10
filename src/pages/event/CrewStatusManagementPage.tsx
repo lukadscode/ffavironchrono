@@ -130,8 +130,6 @@ export default function CrewStatusManagementPage() {
     seat_position: number;
     is_coxswain: boolean;
   }>>([]);
-  const [allCrewsWithParticipants, setAllCrewsWithParticipants] = useState<Crew[]>([]);
-  const [hasLoadedAllCrews, setHasLoadedAllCrews] = useState(false);
 
   // Changement de catégorie
   const [eventCategories, setEventCategories] = useState<EventCategory[]>([]);
@@ -147,111 +145,95 @@ export default function CrewStatusManagementPage() {
     { raceId: string; raceName: string; lane: number; raceCrewId: string }[]
   >([]);
 
+  // Recherche multi-phase : mode équipages vs participants
+  const [searchMode, setSearchMode] = useState<"crews" | "participants">("crews");
+  const [participantSearchQuery, setParticipantSearchQuery] = useState("");
+  const participantSearchDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [participantResults, setParticipantResults] = useState<any[]>([]);
+  const [loadingParticipants, setLoadingParticipants] = useState(false);
+  const [selectedSearchParticipant, setSelectedSearchParticipant] = useState<any | null>(null);
+
   useEffect(() => {
     if (!eventId) return;
     fetchAvailableParticipants();
     // Ne pas charger les équipages au démarrage, seulement après recherche
   }, [eventId]);
 
-  const fetchCrews = useCallback(async (searchQuery: string = "") => {
-    if (!eventId) return;
-    
-    // Si la recherche est vide ou trop courte, ne pas charger
-    if (!searchQuery.trim() || searchQuery.trim().length < 2) {
-      setCrews([]);
-      return;
-    }
-    
-    setLoading(true);
-    try {
-      const query = searchQuery.toLowerCase().trim();
-      
-      let sourceCrews: Crew[] = allCrewsWithParticipants;
+  const fetchCrews = useCallback(
+    async (searchQuery: string = "") => {
+      if (!eventId) return;
 
-      // Charger une seule fois tous les équipages avec leurs participants,
-      // puis réutiliser ce cache pour les recherches suivantes
-      if (!hasLoadedAllCrews) {
-        const res = await api.get(`/crews/event/${eventId}`);
-        const crewsData = res.data.data || [];
+      const trimmed = searchQuery.trim();
 
-        const crewsWithParticipants = await Promise.all(
-          crewsData.map(async (crew: any) => {
-            try {
-              // Récupérer les détails complets du crew (incluant les participants)
-              const crewDetailRes = await api.get(`/crews/${crew.id}`);
-              const crewDetail = crewDetailRes.data.data || crewDetailRes.data;
-              
-              const participants = crewDetail.crew_participants || 
-                                 crewDetail.CrewParticipants || 
-                                 crewDetail.crewParticipants || 
-                                 crew.crew_participants || 
-                                 [];
-              
-              return {
-                ...crew,
-                crew_participants: participants,
-              };
-            } catch (err) {
-              console.error(`Erreur chargement participants pour crew ${crew.id}:`, err);
-              return {
-                ...crew,
-                crew_participants: crew.crew_participants || [],
-              };
-            }
-          })
-        );
-
-        sourceCrews = crewsWithParticipants as Crew[];
-        setAllCrewsWithParticipants(sourceCrews);
-        setHasLoadedAllCrews(true);
+      // Si la recherche est vide ou trop courte, ne pas charger
+      if (!trimmed || trimmed.length < 2) {
+        setCrews([]);
+        return;
       }
-      
-      // Filtrer après avoir chargé tous les participants (recherche sur tous les critères)
-      const finalFiltered = (sourceCrews || []).filter((crew: Crew) => {
-        const club = (crew.club_name || "").toLowerCase();
-        const clubCode = (crew.club_code || "").toLowerCase();
-        const categoryCode = (crew.category?.code || "").toLowerCase();
-        const categoryLabel = (crew.category?.label || "").toLowerCase();
-        
-        const hasMatchingParticipant = crew.crew_participants?.some((cp) => {
-          const firstName = (cp.participant?.first_name || "").toLowerCase();
-          const lastName = (cp.participant?.last_name || "").toLowerCase();
-          const licenseNumber = (cp.participant?.license_number || "").toLowerCase();
-          return (
-            firstName.includes(query) ||
-            lastName.includes(query) ||
-            `${firstName} ${lastName}`.includes(query) ||
-            licenseNumber.includes(query)
-          );
-        }) || false;
-        
-        return (
-          club.includes(query) ||
-          clubCode.includes(query) ||
-          categoryCode.includes(query) ||
-          categoryLabel.includes(query) ||
-          hasMatchingParticipant
-        );
-      });
-      
-      // Trier par statut (registered en premier) puis par club
-      const sorted = finalFiltered.sort((a: Crew, b: Crew) => {
-        if (a.status === CrewStatus.REGISTERED && b.status !== CrewStatus.REGISTERED) return -1;
-        if (a.status !== CrewStatus.REGISTERED && b.status === CrewStatus.REGISTERED) return 1;
-        return (a.club_name || "").localeCompare(b.club_name || "");
-      });
-      setCrews(sorted);
-    } catch (err: any) {
-      console.error("Erreur chargement équipages:", err);
-      toast({
-        title: "Erreur",
-        description: "Impossible de charger les équipages",
-        variant: "destructive",
-      });
-    } finally {
-      setLoading(false);
-    }
-  }, [eventId, toast]);
+
+      setLoading(true);
+      try {
+        const res = await api.get(`/crews/event/${eventId}/with-participants`, {
+          params: {
+            search: trimmed,
+            page: 1,
+            pageSize: 200, // on laisse le backend paginer, limite max 200
+          },
+        });
+
+        const crewsData: Crew[] = res.data?.data || res.data || [];
+
+        // Trier par statut (registered en premier) puis par club
+        const sorted = (crewsData || []).sort((a: Crew, b: Crew) => {
+          if (a.status === CrewStatus.REGISTERED && b.status !== CrewStatus.REGISTERED) return -1;
+          if (a.status !== CrewStatus.REGISTERED && b.status === CrewStatus.REGISTERED) return 1;
+          return (a.club_name || "").localeCompare(b.club_name || "");
+        });
+
+        setCrews(sorted);
+      } catch (err: any) {
+        console.error("Erreur chargement équipages (with-participants):", err);
+        toast({
+          title: "Erreur",
+          description: err.response?.data?.message || "Impossible de charger les équipages",
+          variant: "destructive",
+        });
+      } finally {
+        setLoading(false);
+      }
+    },
+    [eventId, toast]
+  );
+
+  // Charger les équipages pour un participant spécifique (phase 2)
+  const fetchCrewsForParticipant = useCallback(
+    async (participantId: string) => {
+      if (!participantId) return;
+      setLoading(true);
+      try {
+        const res = await api.get(`/participants/${participantId}/crews`);
+        const crewsData: Crew[] = res.data?.data || res.data || [];
+
+        const sorted = (crewsData || []).sort((a: Crew, b: Crew) => {
+          if (a.status === CrewStatus.REGISTERED && b.status !== CrewStatus.REGISTERED) return -1;
+          if (a.status !== CrewStatus.REGISTERED && b.status === CrewStatus.REGISTERED) return 1;
+          return (a.club_name || "").localeCompare(b.club_name || "");
+        });
+
+        setCrews(sorted);
+      } catch (err: any) {
+        console.error("Erreur chargement équipages pour le participant:", err);
+        toast({
+          title: "Erreur",
+          description: err.response?.data?.message || "Impossible de charger les équipages du participant",
+          variant: "destructive",
+        });
+      } finally {
+        setLoading(false);
+      }
+    },
+    [toast]
+  );
   
   // Debounce pour la recherche
   useEffect(() => {
@@ -260,19 +242,21 @@ export default function CrewStatusManagementPage() {
       clearTimeout(searchDebounceTimerRef.current);
       searchDebounceTimerRef.current = null;
     }
-    
+
     const trimmedQuery = crewSearchQuery.trim();
-    
+
     // Si la recherche est vide ou trop courte, ne rien faire (garder les résultats précédents)
     if (!trimmedQuery || trimmedQuery.length < 2) {
       return;
     }
-    
+
     // Créer un nouveau timer pour déclencher la recherche après 500ms
     searchDebounceTimerRef.current = setTimeout(() => {
-      fetchCrews(trimmedQuery);
+      if (searchMode === "crews") {
+        fetchCrews(trimmedQuery);
+      }
     }, 500);
-    
+
     // Cleanup
     return () => {
       if (searchDebounceTimerRef.current) {
@@ -280,7 +264,58 @@ export default function CrewStatusManagementPage() {
         searchDebounceTimerRef.current = null;
       }
     };
-  }, [crewSearchQuery, fetchCrews]);
+  }, [crewSearchQuery, fetchCrews, searchMode]);
+
+  // Debounce pour la recherche de participants (phase 1 multi-phase)
+  useEffect(() => {
+    if (participantSearchDebounceRef.current) {
+      clearTimeout(participantSearchDebounceRef.current);
+      participantSearchDebounceRef.current = null;
+    }
+
+    const trimmedQuery = participantSearchQuery.trim();
+
+    if (searchMode !== "participants") {
+      return;
+    }
+
+    if (!trimmedQuery || trimmedQuery.length < 2) {
+      setParticipantResults([]);
+      return;
+    }
+
+    participantSearchDebounceRef.current = setTimeout(async () => {
+      if (!eventId) return;
+      setLoadingParticipants(true);
+      try {
+        const res = await api.get(`/participants/event/${eventId}`, {
+          params: {
+            search: trimmedQuery,
+            page: 1,
+            pageSize: 50,
+          },
+        });
+        const data = res.data?.data || res.data || [];
+        setParticipantResults(data);
+      } catch (err: any) {
+        console.error("Erreur recherche participants pour crew-status:", err);
+        toast({
+          title: "Erreur",
+          description: err.response?.data?.message || "Impossible de rechercher les participants",
+          variant: "destructive",
+        });
+      } finally {
+        setLoadingParticipants(false);
+      }
+    }, 500);
+
+    return () => {
+      if (participantSearchDebounceRef.current) {
+        clearTimeout(participantSearchDebounceRef.current);
+        participantSearchDebounceRef.current = null;
+      }
+    };
+  }, [participantSearchQuery, eventId, searchMode, toast]);
 
   const fetchAvailableParticipants = async () => {
     if (!eventId) return;
@@ -325,6 +360,12 @@ export default function CrewStatusManagementPage() {
 
   // Les équipages sont déjà filtrés dans fetchCrews, on les retourne directement
   const filteredCrews = crews;
+
+  const handleSelectSearchParticipant = (participant: any) => {
+    setSelectedSearchParticipant(participant);
+    // Charger uniquement les équipages de ce participant (phase 2)
+    fetchCrewsForParticipant(participant.id);
+  };
 
   const handleSelectCrew = (crew: Crew) => {
     setSelectedCrew(crew);
@@ -856,107 +897,277 @@ export default function CrewStatusManagementPage() {
         </div>
       </div>
 
-      {/* Étape 1: Sélection de l'équipage */}
+      {/* Étape 1: Sélection de l'équipage (ou du participant en multi-phase) */}
       {step === 1 && (
         <Card>
           <CardHeader>
             <CardTitle>Étape 1 : Sélectionner un équipage</CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
-            <div className="relative">
-              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-              <Input
-                placeholder="Rechercher par club, code club, catégorie ou participant (min. 2 caractères)..."
-                value={crewSearchQuery}
-                onChange={(e) => setCrewSearchQuery(e.target.value)}
-                className="pl-10"
-              />
+            {/* Toggle de mode de recherche */}
+            <div className="flex gap-2">
+              <Button
+                variant={searchMode === "crews" ? "default" : "outline"}
+                size="sm"
+                onClick={() => {
+                  setSearchMode("crews");
+                  setParticipantSearchQuery("");
+                  setParticipantResults([]);
+                  setSelectedSearchParticipant(null);
+                }}
+              >
+                Rechercher par équipage / club
+              </Button>
+              <Button
+                variant={searchMode === "participants" ? "default" : "outline"}
+                size="sm"
+                onClick={() => {
+                  setSearchMode("participants");
+                  setCrewSearchQuery("");
+                  setCrews([]);
+                  setSelectedSearchParticipant(null);
+                }}
+              >
+                Rechercher par participant
+              </Button>
             </div>
 
-            {loading && (
-              <div className="flex items-center justify-center py-8">
-                <Loader2 className="w-6 h-6 animate-spin text-muted-foreground mr-2" />
-                <span className="text-sm text-muted-foreground">Recherche en cours...</span>
-              </div>
-            )}
-            
-            <div className="space-y-2 max-h-[600px] overflow-y-auto">
-              {!loading && filteredCrews.length === 0 && crewSearchQuery.trim().length < 2 ? (
-                <div className="text-center py-8 text-muted-foreground">
-                  <Search className="w-12 h-12 mx-auto mb-4 opacity-50" />
-                  <p className="text-sm font-medium mb-2">Rechercher un équipage</p>
-                  <p className="text-xs">Tapez au moins 2 caractères pour commencer la recherche</p>
+            {searchMode === "crews" ? (
+              <>
+                <div className="relative">
+                  <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                  <Input
+                    placeholder="Rechercher par club, code club, catégorie ou participant (min. 2 caractères)..."
+                    value={crewSearchQuery}
+                    onChange={(e) => setCrewSearchQuery(e.target.value)}
+                    className="pl-10"
+                  />
                 </div>
-              ) : !loading && filteredCrews.length === 0 && crewSearchQuery.trim().length >= 2 ? (
-                <div className="text-center py-8 text-muted-foreground">
-                  <AlertCircle className="w-12 h-12 mx-auto mb-4 opacity-50" />
-                  <p className="text-sm font-medium">Aucun équipage trouvé</p>
-                  <p className="text-xs mt-1">Essayez avec d'autres mots-clés</p>
-                </div>
-              ) : !loading ? (
-                filteredCrews.map((crew) => (
-                  <Card
-                    key={crew.id}
-                    className="cursor-pointer hover:shadow-md transition-shadow"
-                    onClick={() => handleSelectCrew(crew)}
-                  >
-                    <CardContent className="p-4">
-                      <div className="flex items-center justify-between">
-                        <div className="flex-1">
-                          <div className="flex items-center gap-3 mb-2">
-                            <Building2 className="w-5 h-5 text-muted-foreground" />
-                            <h3 className="font-semibold text-lg">
-                              {crew.club_name}
-                            </h3>
-                            {crew.club_code && (
-                              <span className="text-sm text-muted-foreground font-mono">
-                                ({crew.club_code})
-                              </span>
-                            )}
-                          </div>
-                          {crew.category && (
-                            <div className="flex items-center gap-2 mb-2">
-                              <Award className="w-4 h-4 text-muted-foreground" />
-                              <span className="text-sm">
-                                {crew.category.label} ({crew.category.code})
-                              </span>
-                            </div>
-                          )}
-                          <div className="flex items-center gap-2 flex-wrap">
-                            <Users className="w-4 h-4 text-muted-foreground" />
-                            <span className="text-sm text-muted-foreground">
-                              {crew.crew_participants?.length || 0} participant
-                              {(crew.crew_participants?.length || 0) > 1 ? "s" : ""}
-                            </span>
-                            {crew.crew_participants && crew.crew_participants.length > 0 && (
-                              <div className="flex flex-wrap gap-1 mt-1">
-                                {crew.crew_participants.slice(0, 3).map((cp, idx) => (
-                                  <span
-                                    key={cp.id || idx}
-                                    className="text-xs px-2 py-0.5 bg-blue-50 text-blue-700 rounded-full border border-blue-200"
-                                  >
-                                    {cp.participant?.first_name} {cp.participant?.last_name}
-                                  </span>
-                                ))}
-                                {crew.crew_participants.length > 3 && (
-                                  <span className="text-xs px-2 py-0.5 bg-gray-100 text-gray-600 rounded-full">
-                                    +{crew.crew_participants.length - 3}
+
+                {loading && (
+                  <div className="flex items-center justify-center py-8">
+                    <Loader2 className="w-6 h-6 animate-spin text-muted-foreground mr-2" />
+                    <span className="text-sm text-muted-foreground">Recherche en cours...</span>
+                  </div>
+                )}
+                
+                <div className="space-y-2 max-h-[600px] overflow-y-auto">
+                  {!loading && filteredCrews.length === 0 && crewSearchQuery.trim().length < 2 ? (
+                    <div className="text-center py-8 text-muted-foreground">
+                      <Search className="w-12 h-12 mx-auto mb-4 opacity-50" />
+                      <p className="text-sm font-medium mb-2">Rechercher un équipage</p>
+                      <p className="text-xs">Tapez au moins 2 caractères pour commencer la recherche</p>
+                    </div>
+                  ) : !loading && filteredCrews.length === 0 && crewSearchQuery.trim().length >= 2 ? (
+                    <div className="text-center py-8 text-muted-foreground">
+                      <AlertCircle className="w-12 h-12 mx-auto mb-4 opacity-50" />
+                      <p className="text-sm font-medium">Aucun équipage trouvé</p>
+                      <p className="text-xs mt-1">Essayez avec d'autres mots-clés</p>
+                    </div>
+                  ) : !loading ? (
+                    filteredCrews.map((crew) => (
+                      <Card
+                        key={crew.id}
+                        className="cursor-pointer hover:shadow-md transition-shadow"
+                        onClick={() => handleSelectCrew(crew)}
+                      >
+                        <CardContent className="p-4">
+                          <div className="flex items-center justify-between">
+                            <div className="flex-1">
+                              <div className="flex items-center gap-3 mb-2">
+                                <Building2 className="w-5 h-5 text-muted-foreground" />
+                                <h3 className="font-semibold text-lg">
+                                  {crew.club_name}
+                                </h3>
+                                {crew.club_code && (
+                                  <span className="text-sm text-muted-foreground font-mono">
+                                    ({crew.club_code})
                                   </span>
                                 )}
                               </div>
-                            )}
+                              {crew.category && (
+                                <div className="flex items-center gap-2 mb-2">
+                                  <Award className="w-4 h-4 text-muted-foreground" />
+                                  <span className="text-sm">
+                                    {crew.category.label} ({crew.category.code})
+                                  </span>
+                                </div>
+                              )}
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <Users className="w-4 h-4 text-muted-foreground" />
+                                <span className="text-sm text-muted-foreground">
+                                  {crew.crew_participants?.length || 0} participant
+                                  {(crew.crew_participants?.length || 0) > 1 ? "s" : ""}
+                                </span>
+                                {crew.crew_participants && crew.crew_participants.length > 0 && (
+                                  <div className="flex flex-wrap gap-1 mt-1">
+                                    {crew.crew_participants.slice(0, 3).map((cp, idx) => (
+                                      <span
+                                        key={cp.id || idx}
+                                        className="text-xs px-2 py-0.5 bg-blue-50 text-blue-700 rounded-full border border-blue-200"
+                                      >
+                                        {cp.participant?.first_name} {cp.participant?.last_name}
+                                      </span>
+                                    ))}
+                                    {crew.crew_participants.length > 3 && (
+                                      <span className="text-xs px-2 py-0.5 bg-gray-100 text-gray-600 rounded-full">
+                                        +{crew.crew_participants.length - 3}
+                                      </span>
+                                    )}
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                            <div className="flex items-center gap-3">
+                              <CrewStatusBadge status={crew.status} />
+                              <ChevronRight className="w-5 h-5 text-muted-foreground" />
+                            </div>
+                          </div>
+                        </CardContent>
+                      </Card>
+                    ))
+                  ) : null}
+                </div>
+              </>
+            ) : (
+              <>
+                {/* Mode recherche par participant (multi-phase) */}
+                <div className="relative">
+                  <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                  <Input
+                    placeholder="Rechercher un participant par nom, licence ou club (min. 2 caractères)..."
+                    value={participantSearchQuery}
+                    onChange={(e) => setParticipantSearchQuery(e.target.value)}
+                    className="pl-10"
+                  />
+                </div>
+
+                {loadingParticipants && (
+                  <div className="flex items-center justify-center py-6">
+                    <Loader2 className="w-5 h-5 animate-spin text-muted-foreground mr-2" />
+                    <span className="text-sm text-muted-foreground">Recherche de participants...</span>
+                  </div>
+                )}
+
+                <div className="space-y-4 max-h-[300px] overflow-y-auto">
+                  {!loadingParticipants &&
+                    participantResults.length === 0 &&
+                    participantSearchQuery.trim().length < 2 && (
+                      <div className="text-center py-8 text-muted-foreground">
+                        <Search className="w-12 h-12 mx-auto mb-4 opacity-50" />
+                        <p className="text-sm font-medium mb-2">Rechercher un participant</p>
+                        <p className="text-xs">Tapez au moins 2 caractères pour lancer la recherche</p>
+                      </div>
+                    )}
+
+                  {!loadingParticipants &&
+                    participantResults.length === 0 &&
+                    participantSearchQuery.trim().length >= 2 && (
+                      <div className="text-center py-8 text-muted-foreground">
+                        <AlertCircle className="w-12 h-12 mx-auto mb-4 opacity-50" />
+                        <p className="text-sm font-medium">Aucun participant trouvé</p>
+                        <p className="text-xs mt-1">Essayez avec d'autres mots-clés</p>
+                      </div>
+                    )}
+
+                  {participantResults.map((p) => (
+                    <Card
+                      key={p.id}
+                      className={`cursor-pointer hover:shadow-md transition-shadow ${
+                        selectedSearchParticipant?.id === p.id ? "ring-2 ring-blue-500" : ""
+                      }`}
+                      onClick={() => handleSelectSearchParticipant(p)}
+                    >
+                      <CardContent className="p-4 flex items-center justify-between">
+                        <div>
+                          <div className="font-semibold">
+                            {p.first_name} {p.last_name}
+                          </div>
+                          <div className="text-sm text-muted-foreground">
+                            {p.license_number && `Licence : ${p.license_number}`}
+                            {p.club_name && (p.license_number ? " • " : "")}
+                            {p.club_name}
                           </div>
                         </div>
-                        <div className="flex items-center gap-3">
-                          <CrewStatusBadge status={crew.status} />
-                          <ChevronRight className="w-5 h-5 text-muted-foreground" />
-                        </div>
+                        <ChevronRight className="w-5 h-5 text-muted-foreground" />
+                      </CardContent>
+                    </Card>
+                  ))}
+                </div>
+
+                {/* Liste des équipages du participant sélectionné */}
+                {selectedSearchParticipant && (
+                  <div className="space-y-2">
+                    <p className="text-sm text-muted-foreground">
+                      Équipages pour{" "}
+                      <span className="font-semibold">
+                        {selectedSearchParticipant.first_name} {selectedSearchParticipant.last_name}
+                      </span>
+                    </p>
+
+                    {loading && (
+                      <div className="flex items-center justify-center py-4">
+                        <Loader2 className="w-5 h-5 animate-spin text-muted-foreground mr-2" />
+                        <span className="text-sm text-muted-foreground">Chargement des équipages...</span>
                       </div>
-                    </CardContent>
-                  </Card>
-                ))
-              ) : null}
-            </div>
+                    )}
+
+                    <div className="space-y-2 max-h-[300px] overflow-y-auto">
+                      {!loading && filteredCrews.length === 0 ? (
+                        <div className="text-center py-4 text-muted-foreground text-xs">
+                          Aucun équipage trouvé pour ce participant.
+                        </div>
+                      ) : (
+                        filteredCrews.map((crew) => (
+                          <Card
+                            key={crew.id}
+                            className="cursor-pointer hover:shadow-md transition-shadow"
+                            onClick={() => handleSelectCrew(crew)}
+                          >
+                            <CardContent className="p-4">
+                              <div className="flex items-center justify-between">
+                                <div className="flex-1">
+                                  <div className="flex items-center gap-3 mb-2">
+                                    <Building2 className="w-5 h-5 text-muted-foreground" />
+                                    <h3 className="font-semibold text-lg">
+                                      {crew.club_name}
+                                    </h3>
+                                    {crew.club_code && (
+                                      <span className="text-sm text-muted-foreground font-mono">
+                                        ({crew.club_code})
+                                      </span>
+                                    )}
+                                  </div>
+                                  {crew.category && (
+                                    <div className="flex items-center gap-2 mb-2">
+                                      <Award className="w-4 h-4 text-muted-foreground" />
+                                      <span className="text-sm">
+                                        {crew.category.label} ({crew.category.code})
+                                      </span>
+                                    </div>
+                                  )}
+                                  <div className="flex items-center gap-2 flex-wrap">
+                                    <Users className="w-4 h-4 text-muted-foreground" />
+                                    <span className="text-sm text-muted-foreground">
+                                      {crew.crew_participants?.length || 0} participant
+                                      {(crew.crew_participants?.length || 0) > 1 ? "s" : ""}
+                                    </span>
+                                  </div>
+                                </div>
+                                <div className="flex items-center gap-3">
+                                  <CrewStatusBadge status={crew.status} />
+                                  <ChevronRight className="w-5 h-5 text-muted-foreground" />
+                                </div>
+                              </div>
+                            </CardContent>
+                          </Card>
+                        ))
+                      )}
+                    </div>
+                  </div>
+                )}
+              </>
+            )}
           </CardContent>
         </Card>
       )}
