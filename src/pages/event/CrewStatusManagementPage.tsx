@@ -358,6 +358,25 @@ export default function CrewStatusManagementPage() {
     });
   }, [availableParticipants, searchQuery]);
 
+  // Résultats de recherche participants (mode multi-phase) filtrés côté front
+  const displayedParticipantResults = useMemo(() => {
+    const q = participantSearchQuery.trim().toLowerCase();
+    if (!q) return participantResults;
+    return participantResults.filter((p) => {
+      const first = (p.first_name || "").toLowerCase();
+      const last = (p.last_name || "").toLowerCase();
+      const license = (p.license_number || "").toLowerCase();
+      const club = (p.club_name || "").toLowerCase();
+      return (
+        first.includes(q) ||
+        last.includes(q) ||
+        `${first} ${last}`.includes(q) ||
+        license.includes(q) ||
+        club.includes(q)
+      );
+    });
+  }, [participantResults, participantSearchQuery]);
+
   // Les équipages sont déjà filtrés dans fetchCrews, on les retourne directement
   const filteredCrews = crews;
 
@@ -1070,7 +1089,7 @@ export default function CrewStatusManagementPage() {
                       </div>
                     )}
 
-                  {participantResults.map((p) => (
+                  {displayedParticipantResults.map((p) => (
                     <Card
                       key={p.id}
                       className={`cursor-pointer hover:shadow-md transition-shadow ${
