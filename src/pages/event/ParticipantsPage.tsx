@@ -22,6 +22,7 @@ import {
   ArrowRight,
   LayoutGrid,
   Table as TableIcon,
+  FileUp,
 } from "lucide-react";
 import {
   Table,
@@ -204,37 +205,49 @@ export default function ParticipantsPage() {
         </div>
       </div>
 
-      {/* Barre de recherche et toggle d'affichage */}
+      {/* Barre de recherche, import et toggle d'affichage */}
       <Card>
         <CardContent className="pt-6">
-          <div className="flex flex-col sm:flex-row gap-4">
-            <div className="relative flex-1">
-              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground w-5 h-5" />
-              <Input
-                placeholder="Rechercher par nom, club ou numéro de licence..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="pl-10"
-              />
+          <div className="flex flex-col gap-4">
+            <div className="flex flex-col sm:flex-row gap-4">
+              <div className="relative flex-1">
+                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground w-5 h-5" />
+                <Input
+                  placeholder="Rechercher par nom, club ou numéro de licence..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="pl-10"
+                />
+              </div>
+              <div className="flex gap-2 border rounded-lg p-1 bg-muted">
+                <Button
+                  variant={viewMode === "cards" ? "default" : "ghost"}
+                  size="sm"
+                  onClick={() => setViewMode("cards")}
+                  className="flex-1"
+                >
+                  <LayoutGrid className="w-4 h-4 mr-2" />
+                  Cartes
+                </Button>
+                <Button
+                  variant={viewMode === "table" ? "default" : "ghost"}
+                  size="sm"
+                  onClick={() => setViewMode("table")}
+                  className="flex-1"
+                >
+                  <TableIcon className="w-4 h-4 mr-2" />
+                  Tableau
+                </Button>
+              </div>
             </div>
-            <div className="flex gap-2 border rounded-lg p-1 bg-muted">
+            <div className="flex flex-wrap gap-2">
               <Button
-                variant={viewMode === "cards" ? "default" : "ghost"}
+                variant="outline"
                 size="sm"
-                onClick={() => setViewMode("cards")}
-                className="flex-1"
+                onClick={() => navigate(`/event/${eventId}/participants/import`)}
               >
-                <LayoutGrid className="w-4 h-4 mr-2" />
-                Cartes
-              </Button>
-              <Button
-                variant={viewMode === "table" ? "default" : "ghost"}
-                size="sm"
-                onClick={() => setViewMode("table")}
-                className="flex-1"
-              >
-                <TableIcon className="w-4 h-4 mr-2" />
-                Tableau
+                <FileUp className="w-4 h-4 mr-2" />
+                Importer des participants / équipages
               </Button>
             </div>
           </div>
