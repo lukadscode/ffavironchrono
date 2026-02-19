@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef, useCallback } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import dayjs from "dayjs";
 import api from "@/lib/axios";
@@ -19,7 +19,7 @@ import {
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { ScrollArea } from "@/components/ui/scroll-area";
 
-import { AlertCircle, ArrowLeft, CheckCircle2, Loader2, Upload, X, Search } from "lucide-react";
+import { AlertCircle, ArrowLeft, CheckCircle2, Loader2, Upload, X, Search, UserPlus } from "lucide-react";
 
 interface Distance {
   id: string;
@@ -374,15 +374,32 @@ export default function ImportErgRaceResultsWithRacePage() {
   const [nonEmptyParticipantsCount, setNonEmptyParticipantsCount] = useState(0);
   const [laneCount, setLaneCount] = useState<number | null>(null);
 
-  // Participants de l'événement pour mapping
+  // Participants de l'événement pour mapping (maintenant chargés à la demande)
   const [eventParticipants, setEventParticipants] = useState<EventParticipant[]>([]);
   const [mappingLoaded, setMappingLoaded] = useState(false);
+  // Cache global des participants sélectionnés (pour éviter de les perdre)
+  const [selectedParticipantsCache, setSelectedParticipantsCache] = useState<Record<string, EventParticipant>>({});
   // Recherche / ouverture par ligne pour le select de participants
   const [participantSearchQueries, setParticipantSearchQueries] = useState<Record<number, string>>({});
   const [openParticipantSelects, setOpenParticipantSelects] = useState<Record<number, boolean>>({});
-
-  // Équipages de l'événement (avec participants) pour pouvoir retrouver l'équipage d'un participant
-  const [eventCrews, setEventCrews] = useState<any[]>([]);
+  // Résultats de recherche par ligne (optimisation : recherche à la demande)
+  const [participantSearchResults, setParticipantSearchResults] = useState<Record<number, EventParticipant[]>>({});
+  const [loadingParticipantSearch, setLoadingParticipantSearch] = useState<Record<number, boolean>>({});
+  // Debounce timers par ligne
+  const participantSearchDebounceRefs = useRef<Record<number, ReturnType<typeof setTimeout>>>({});
+  // Équipages par participant (chargés à la demande)
+  const [participantCrewsCache, setParticipantCrewsCache] = useState<Record<string, any[]>>({});
+  const [loadingParticipantCrews, setLoadingParticipantCrews] = useState<Record<string, boolean>>({});
+  // Formulaire pour créer un nouveau participant
+  const [showNewParticipantForm, setShowNewParticipantForm] = useState<Record<number, boolean>>({});
+  const [newParticipantData, setNewParticipantData] = useState<Record<number, {
+    first_name: string;
+    last_name: string;
+    license_number: string;
+    club_name: string;
+    gender: string;
+    email: string;
+  }>>({});
 
   useEffect(() => {
     if (!isAdmin) {
@@ -404,9 +421,27 @@ export default function ImportErgRaceResultsWithRacePage() {
       fetchDistances();
       fetchPhases();
       fetchNextRaceNumber();
-      fetchEventParticipants();
+      // Ne plus charger tous les participants au démarrage - recherche à la demande
+      setMappingLoaded(true);
     }
   }, [eventId]);
+
+  // Déclencher la recherche quand participantSearchQueries change
+  useEffect(() => {
+    Object.entries(participantSearchQueries).forEach(([lineIndexStr, query]) => {
+      const lineIndex = parseInt(lineIndexStr, 10);
+      if (!isNaN(lineIndex)) {
+        searchParticipants(lineIndex, query);
+      }
+    });
+
+    // Cleanup des timers au unmount
+    return () => {
+      Object.values(participantSearchDebounceRefs.current).forEach((timer) => {
+        if (timer) clearTimeout(timer);
+      });
+    };
+  }, [participantSearchQueries, searchParticipants]);
 
   const fetchDistances = async () => {
     try {
@@ -448,71 +483,183 @@ export default function ImportErgRaceResultsWithRacePage() {
     }
   };
 
-  const fetchEventParticipants = async () => {
-    try {
-      // Récupérer d'abord les équipages avec leurs participants
-      const crewsRes = await api.get(`/crews/event/${eventId}`);
-      const crewsData = crewsRes.data.data || [];
-
-      // Enrichir chaque équipage avec ses participants détaillés
-      const crewsWithParticipants = await Promise.all(
-        crewsData.map(async (crew: any) => {
-          try {
-            const crewDetailRes = await api.get(`/crews/${crew.id}`);
-            const crewDetail = crewDetailRes.data.data || crewDetailRes.data;
-            return {
-              ...crew,
-              crew_participants: crewDetail.crew_participants || [],
-            };
-          } catch (err) {
-            console.error(`Erreur chargement participants pour crew ${crew.id}:`, err);
-            return {
-              ...crew,
-              crew_participants: crew.crew_participants || [],
-            };
-          }
-        })
-      );
-
-      setEventCrews(crewsWithParticipants);
-
-      // Construire une map participant -> liste d'équipages
-      const participantMap = new Map<string, { id: string }[]>();
-      crewsWithParticipants.forEach((crew: any) => {
-        (crew.crew_participants || []).forEach((cp: any) => {
-          const pid = cp.participant?.id;
-          if (!pid) return;
-          if (!participantMap.has(pid)) {
-            participantMap.set(pid, []);
-          }
-          participantMap.get(pid)!.push({ id: crew.id });
-        });
+  // Recherche de participants avec debounce (optimisé)
+  const searchParticipants = useCallback(async (lineIndex: number, query: string) => {
+    if (!eventId || !query.trim() || query.trim().length < 2) {
+      setParticipantSearchResults((prev) => {
+        const updated = { ...prev };
+        delete updated[lineIndex];
+        return updated;
       });
+      return;
+    }
 
-      // Récupérer les participants de l'événement
-      const res = await api.get(`/participants/event/${eventId}`);
-      const data = res.data.data || [];
-      const normalized: EventParticipant[] = data.map((p: any) => {
-        const pid = String(p.id);
-        return {
-          id: pid,
+    // Nettoyer le timer précédent pour cette ligne
+    if (participantSearchDebounceRefs.current[lineIndex]) {
+      clearTimeout(participantSearchDebounceRefs.current[lineIndex]);
+    }
+
+    participantSearchDebounceRefs.current[lineIndex] = setTimeout(async () => {
+      setLoadingParticipantSearch((prev) => ({ ...prev, [lineIndex]: true }));
+      try {
+        const res = await api.get(`/participants/event/${eventId}`, {
+          params: {
+            search: query.trim(),
+            page: 1,
+            pageSize: 50,
+          },
+        });
+        const data = res.data?.data || res.data || [];
+        const normalized: EventParticipant[] = data.map((p: any) => ({
+          id: String(p.id),
           first_name: p.first_name,
           last_name: p.last_name,
           club_name: p.club_name,
           license_number: p.license_number,
-          crews: participantMap.get(pid) || [],
-        };
+          crews: [], // Sera chargé à la demande si le participant est sélectionné
+        }));
+        setParticipantSearchResults((prev) => ({
+          ...prev,
+          [lineIndex]: normalized,
+        }));
+      } catch (err: any) {
+        console.error("Erreur recherche participants:", err);
+        toast({
+          title: "Erreur",
+          description: err.response?.data?.message || "Impossible de rechercher les participants",
+          variant: "destructive",
+        });
+        setParticipantSearchResults((prev) => {
+          const updated = { ...prev };
+          delete updated[lineIndex];
+          return updated;
+        });
+      } finally {
+        setLoadingParticipantSearch((prev) => {
+          const updated = { ...prev };
+          delete updated[lineIndex];
+          return updated;
+        });
+      }
+    }, 500);
+  }, [eventId, toast]);
+
+  // Charger les équipages d'un participant à la demande
+  const fetchParticipantCrews = useCallback(async (participantId: string) => {
+    if (!participantId || participantCrewsCache[participantId]) {
+      return participantCrewsCache[participantId] || [];
+    }
+
+    setLoadingParticipantCrews((prev) => ({ ...prev, [participantId]: true }));
+    try {
+      const res = await api.get(`/participants/${participantId}/crews`);
+      const crewsData = res.data?.data || res.data || [];
+      setParticipantCrewsCache((prev) => ({
+        ...prev,
+        [participantId]: crewsData,
+      }));
+      return crewsData;
+    } catch (err: any) {
+      console.error("Erreur chargement équipages participant:", err);
+      toast({
+        title: "Erreur",
+        description: err.response?.data?.message || "Impossible de charger les équipages du participant",
+        variant: "destructive",
+      });
+      return [];
+    } finally {
+      setLoadingParticipantCrews((prev) => {
+        const updated = { ...prev };
+        delete updated[participantId];
+        return updated;
+      });
+    }
+  }, [participantCrewsCache, toast]);
+
+  // Créer un nouveau participant
+  const createNewParticipant = useCallback(async (lineIndex: number) => {
+    if (!eventId) return;
+    const data = newParticipantData[lineIndex];
+    if (!data || !data.first_name || !data.last_name) {
+      toast({
+        title: "Erreur",
+        description: "Le prénom et le nom sont requis",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    try {
+      const res = await api.post("/participants", {
+        event_id: eventId,
+        first_name: data.first_name,
+        last_name: data.last_name,
+        license_number: data.license_number || undefined,
+        club_name: data.club_name || undefined,
+        gender: data.gender || undefined,
+        email: data.email || undefined,
+      });
+      const newParticipant: EventParticipant = {
+        id: String(res.data.data?.id || res.data.id),
+        first_name: data.first_name,
+        last_name: data.last_name,
+        club_name: data.club_name,
+        license_number: data.license_number,
+        crews: [],
+      };
+
+      // Ajouter le nouveau participant aux résultats de recherche pour cette ligne et au cache global
+      setParticipantSearchResults((prev) => ({
+        ...prev,
+        [lineIndex]: [...(prev[lineIndex] || []), newParticipant],
+      }));
+      setSelectedParticipantsCache((prev) => ({
+        ...prev,
+        [newParticipant.id]: newParticipant,
+      }));
+
+      // Affecter automatiquement ce participant à la ligne
+      if (ergResults) {
+        const updated = ergResults.participants.map((pp: any, i: number) =>
+          i === lineIndex
+            ? {
+                ...pp,
+                __mapped_participant_id: newParticipant.id,
+                __mapped_crew_id: undefined,
+              }
+            : pp
+        );
+        setErgResults({
+          ...ergResults,
+          participants: updated,
+        });
+      }
+
+      // Fermer le formulaire et réinitialiser
+      setShowNewParticipantForm((prev) => {
+        const updated = { ...prev };
+        delete updated[lineIndex];
+        return updated;
+      });
+      setNewParticipantData((prev) => {
+        const updated = { ...prev };
+        delete updated[lineIndex];
+        return updated;
       });
 
-      setEventParticipants(normalized);
-      return { participants: normalized, crews: crewsWithParticipants };
-    } catch (err) {
-      console.error("Erreur chargement participants événement", err);
-      setEventParticipants([]);
-    } finally {
-      setMappingLoaded(true);
+      toast({
+        title: "Participant créé",
+        description: `${data.first_name} ${data.last_name} a été créé et affecté à cette ligne.`,
+      });
+    } catch (err: any) {
+      console.error("Erreur création participant:", err);
+      toast({
+        title: "Erreur",
+        description: err.response?.data?.message || "Impossible de créer le participant",
+        variant: "destructive",
+      });
     }
-  };
+  }, [eventId, newParticipantData, ergResults, toast]);
 
   const handleFileSelect = async (
     event: React.ChangeEvent<HTMLInputElement>
@@ -615,18 +762,8 @@ export default function ImportErgRaceResultsWithRacePage() {
       }
 
       // Statistiques sur les participants / couloirs
-      // S'assurer que les participants d'événement sont chargés pour l'auto-matching
-      let participantsForMatching = eventParticipants;
-      if (!participantsForMatching || participantsForMatching.length === 0) {
-        try {
-          const loaded = await fetchEventParticipants();
-          if (loaded?.participants) {
-            participantsForMatching = loaded.participants;
-          }
-        } catch (e) {
-          console.error("Erreur chargement participants pour matching:", e);
-        }
-      }
+      // Auto-matching désactivé pour l'instant (sera fait à la demande lors de la recherche)
+      const participantsForMatching: EventParticipant[] = [];
 
       // On ajoute des champs internes :
       // - "__include" pour exclure certaines lignes
@@ -820,41 +957,46 @@ export default function ImportErgRaceResultsWithRacePage() {
       // Pour chaque ligne avec un participant FFA mappé, essayer de retrouver son équipage
       const laneCrewPairs: Array<{ lane: number; crew_id: string }> = [];
 
+      // S'assurer que tous les équipages nécessaires sont chargés
+      for (const p of includedParticipants) {
+        const mappedId: string | undefined = p.__mapped_participant_id;
+        if (mappedId && !participantCrewsCache[mappedId]) {
+          await fetchParticipantCrews(mappedId);
+        }
+      }
+
       includedParticipants.forEach((p: any, index: number) => {
         const mappedId: string | undefined = p.__mapped_participant_id;
         if (!mappedId) return;
 
-        const ep = eventParticipants.find((e) => e.id === mappedId);
         const laneValue = p.lane_number ?? p.lane ?? index + 1;
-        if (!ep || !ep.crews || ep.crews.length === 0) return;
+        const participantCrews = participantCrewsCache[mappedId] || [];
+        
+        if (participantCrews.length === 0) return;
 
         // Si un équipage a été choisi explicitement pour cette ligne, on l'utilise toujours
         const explicitCrewId: string | undefined = p.__mapped_crew_id;
         if (explicitCrewId) {
           // Vérifier que l'équipage sélectionné appartient bien au participant
-          const explicitCrew = eventCrews.find((ec) => ec.id === explicitCrewId);
-          const crewBelongsToParticipant = ep.crews.some((c) => c.id === explicitCrewId);
-          if (explicitCrew && crewBelongsToParticipant) {
+          const explicitCrew = participantCrews.find((ec: any) => ec.id === explicitCrewId);
+          if (explicitCrew) {
             laneCrewPairs.push({ lane: laneValue, crew_id: explicitCrewId });
             return;
           }
         }
 
         // Sinon, filtrer les équipages du participant en fonction de la distance de la course
-        const compatibleCrewIds = ep.crews
-          .map((c) => {
-            const crew = eventCrews.find((ec) => ec.id === c.id);
-            return crew;
-          })
-          .filter((crew) => crew && isCrewCompatibleWithDistance(crew, targetDistance))
-          .map((crew) => crew!.id);
-        if (compatibleCrewIds.length === 0) {
+        const compatibleCrews = participantCrews.filter((crew: any) => 
+          isCrewCompatibleWithDistance(crew, targetDistance)
+        );
+        
+        if (compatibleCrews.length === 0) {
           // Aucun équipage cohérent avec la distance => on n'affecte pas
           return;
         }
 
         // Fallback sur le premier équipage compatible
-        const crewIdToUse = compatibleCrewIds[0];
+        const crewIdToUse = compatibleCrews[0].id;
         if (!crewIdToUse) return;
 
         laneCrewPairs.push({ lane: laneValue, crew_id: crewIdToUse });
@@ -1204,21 +1346,18 @@ export default function ImportErgRaceResultsWithRacePage() {
                     {ergResults.participants.map((p: any, idx: number) => {
                       if (p.__include === false) return null;
 
-                      const mapped = eventParticipants.find(
-                        (ep) => ep.id === p.__mapped_participant_id
-                      );
+                      const mappedId = p.__mapped_participant_id;
+                      const mapped = mappedId
+                        ? (participantSearchResults[idx] || []).find((ep) => ep.id === mappedId) ||
+                          selectedParticipantsCache[mappedId]
+                        : undefined;
                       const targetDistance = selectedDistanceId
                         ? distances.find((d) => d.id === selectedDistanceId)
                         : undefined;
-                      // Récupérer tous les équipages du participant
-                      const allParticipantCrews =
-                        mapped && mapped.crews && mapped.crews.length > 0
-                          ? mapped.crews
-                              .map((c) =>
-                                eventCrews.find((ec) => ec.id === c.id)
-                              )
-                              .filter(Boolean)
-                          : [];
+                      // Charger les équipages du participant à la demande
+                      const allParticipantCrews = mappedId
+                        ? (participantCrewsCache[mappedId] || [])
+                        : [];
                       // Filtrer par distance, mais inclure toujours l'équipage déjà sélectionné
                       const selectedCrewId = p.__mapped_crew_id;
                       const participantCrews = allParticipantCrews.filter((crew: any) => {
@@ -1318,18 +1457,34 @@ export default function ImportErgRaceResultsWithRacePage() {
                                     }));
                                   }
                                 }}
-                                onValueChange={(value) => {
+                                onValueChange={async (value) => {
                                   if (!ergResults) return;
+                                  const participantId = value === "__none__" ? undefined : value;
+                                  
+                                  // Si un participant est sélectionné, charger ses équipages et le mettre en cache
+                                  if (participantId) {
+                                    // Trouver le participant dans les résultats de recherche
+                                    const foundParticipant = (participantSearchResults[idx] || []).find(
+                                      (ep) => ep.id === participantId
+                                    );
+                                    if (foundParticipant) {
+                                      // Mettre en cache global
+                                      setSelectedParticipantsCache((prev) => ({
+                                        ...prev,
+                                        [participantId]: foundParticipant,
+                                      }));
+                                    }
+                                    // Charger les équipages
+                                    await fetchParticipantCrews(participantId);
+                                  }
+
                                   const updated =
                                     ergResults.participants.map(
                                       (pp: any, i: number) =>
                                         i === idx
                                           ? {
                                               ...pp,
-                                              __mapped_participant_id:
-                                                value === "__none__"
-                                                  ? undefined
-                                                  : value,
+                                              __mapped_participant_id: participantId,
                                               __mapped_crew_id: undefined,
                                             }
                                           : pp
@@ -1366,6 +1521,7 @@ export default function ImportErgRaceResultsWithRacePage() {
                                             ...prev,
                                             [idx]: q,
                                           }));
+                                          // La recherche sera déclenchée par le useEffect
                                         }}
                                         onClick={(e) => e.stopPropagation()}
                                       />
@@ -1375,44 +1531,229 @@ export default function ImportErgRaceResultsWithRacePage() {
                                     <SelectItem value="__none__">
                                       Aucun participant lié
                                     </SelectItem>
-                                    {eventParticipants
-                                      .filter((ep) => {
-                                        const q = searchQuery
-                                          .toLowerCase()
-                                          .trim();
-                                        if (!q) return true;
-                                        const fullName = `${ep.last_name} ${ep.first_name}`
-                                          .toLowerCase()
-                                          .trim();
-                                        const club = (
-                                          ep.club_name || ""
-                                        ).toLowerCase();
-                                        const license = (
-                                          ep.license_number || ""
-                                        ).toLowerCase();
-                                        return (
-                                          fullName.includes(q) ||
-                                          club.includes(q) ||
-                                          license.includes(q)
-                                        );
-                                      })
-                                      .map((ep) => (
-                                        <SelectItem key={ep.id} value={ep.id} className="text-sm py-2">
-                                          {ep.last_name.toUpperCase()}{" "}
-                                          {ep.first_name}
-                                          {ep.club_name
-                                            ? ` – ${ep.club_name}`
-                                            : ""}
-                                          {ep.license_number
-                                            ? ` (${ep.license_number})`
-                                            : ""}
-                                        </SelectItem>
-                                      ))}
+                                    {loadingParticipantSearch[idx] ? (
+                                      <div className="flex items-center justify-center py-4">
+                                        <Loader2 className="w-4 h-4 animate-spin mr-2" />
+                                        <span className="text-sm text-muted-foreground">Recherche...</span>
+                                      </div>
+                                    ) : (
+                                      <>
+                                        {/* Afficher le participant sélectionné même s'il n'est pas dans les résultats de recherche */}
+                                        {p.__mapped_participant_id && selectedParticipantsCache[p.__mapped_participant_id] && 
+                                         !(participantSearchResults[idx] || []).some(ep => ep.id === p.__mapped_participant_id) && (
+                                          <SelectItem 
+                                            key={p.__mapped_participant_id} 
+                                            value={p.__mapped_participant_id} 
+                                            className="text-sm py-2"
+                                          >
+                                            {selectedParticipantsCache[p.__mapped_participant_id].last_name.toUpperCase()}{" "}
+                                            {selectedParticipantsCache[p.__mapped_participant_id].first_name}
+                                            {selectedParticipantsCache[p.__mapped_participant_id].club_name
+                                              ? ` – ${selectedParticipantsCache[p.__mapped_participant_id].club_name}`
+                                              : ""}
+                                            {selectedParticipantsCache[p.__mapped_participant_id].license_number
+                                              ? ` (${selectedParticipantsCache[p.__mapped_participant_id].license_number})`
+                                              : ""}
+                                          </SelectItem>
+                                        )}
+                                        {(participantSearchResults[idx] || []).map((ep) => (
+                                          <SelectItem key={ep.id} value={ep.id} className="text-sm py-2">
+                                            {ep.last_name.toUpperCase()}{" "}
+                                            {ep.first_name}
+                                            {ep.club_name
+                                              ? ` – ${ep.club_name}`
+                                              : ""}
+                                            {ep.license_number
+                                              ? ` (${ep.license_number})`
+                                              : ""}
+                                          </SelectItem>
+                                        ))}
+                                        {searchQuery.trim().length >= 2 && 
+                                         (!participantSearchResults[idx] || participantSearchResults[idx].length === 0) && 
+                                         !loadingParticipantSearch[idx] && (
+                                          <div className="p-3 border-t">
+                                            <Button
+                                              type="button"
+                                              variant="outline"
+                                              size="sm"
+                                              className="w-full"
+                                              onClick={(e) => {
+                                                e.stopPropagation();
+                                                setShowNewParticipantForm((prev) => ({
+                                                  ...prev,
+                                                  [idx]: true,
+                                                }));
+                                                // Pré-remplir avec les données du participant ErgRace si possible
+                                                const parsed = p.participant ? parseErgRaceName(p.participant) : null;
+                                                setNewParticipantData((prev) => ({
+                                                  ...prev,
+                                                  [idx]: {
+                                                    first_name: parsed?.firstName || "",
+                                                    last_name: parsed?.lastName || "",
+                                                    license_number: parsed?.licenseNumber || "",
+                                                    club_name: p.affiliation || "",
+                                                    gender: "",
+                                                    email: "",
+                                                  },
+                                                }));
+                                              }}
+                                            >
+                                              <UserPlus className="w-4 h-4 mr-2" />
+                                              Créer un nouveau participant
+                                            </Button>
+                                          </div>
+                                        )}
+                                      </>
+                                    )}
                                   </ScrollArea>
+                                  {showNewParticipantForm[idx] && (
+                                    <div className="border-t p-3 bg-muted/50">
+                                      <div className="space-y-3">
+                                        <div className="text-sm font-semibold">Créer un nouveau participant</div>
+                                        <div className="grid grid-cols-2 gap-2">
+                                          <div>
+                                            <Label className="text-xs">Prénom *</Label>
+                                            <Input
+                                              className="h-8 text-sm"
+                                              value={newParticipantData[idx]?.first_name || ""}
+                                              onChange={(e) => {
+                                                setNewParticipantData((prev) => ({
+                                                  ...prev,
+                                                  [idx]: {
+                                                    ...(prev[idx] || {
+                                                      first_name: "",
+                                                      last_name: "",
+                                                      license_number: "",
+                                                      club_name: "",
+                                                      gender: "",
+                                                      email: "",
+                                                    }),
+                                                    first_name: e.target.value,
+                                                  },
+                                                }));
+                                              }}
+                                              placeholder="Prénom"
+                                            />
+                                          </div>
+                                          <div>
+                                            <Label className="text-xs">Nom *</Label>
+                                            <Input
+                                              className="h-8 text-sm"
+                                              value={newParticipantData[idx]?.last_name || ""}
+                                              onChange={(e) => {
+                                                setNewParticipantData((prev) => ({
+                                                  ...prev,
+                                                  [idx]: {
+                                                    ...(prev[idx] || {
+                                                      first_name: "",
+                                                      last_name: "",
+                                                      license_number: "",
+                                                      club_name: "",
+                                                      gender: "",
+                                                      email: "",
+                                                    }),
+                                                    last_name: e.target.value,
+                                                  },
+                                                }));
+                                              }}
+                                              placeholder="Nom"
+                                            />
+                                          </div>
+                                          <div>
+                                            <Label className="text-xs">Licence</Label>
+                                            <Input
+                                              className="h-8 text-sm"
+                                              value={newParticipantData[idx]?.license_number || ""}
+                                              onChange={(e) => {
+                                                setNewParticipantData((prev) => ({
+                                                  ...prev,
+                                                  [idx]: {
+                                                    ...(prev[idx] || {
+                                                      first_name: "",
+                                                      last_name: "",
+                                                      license_number: "",
+                                                      club_name: "",
+                                                      gender: "",
+                                                      email: "",
+                                                    }),
+                                                    license_number: e.target.value,
+                                                  },
+                                                }));
+                                              }}
+                                              placeholder="Numéro de licence"
+                                            />
+                                          </div>
+                                          <div>
+                                            <Label className="text-xs">Club</Label>
+                                            <Input
+                                              className="h-8 text-sm"
+                                              value={newParticipantData[idx]?.club_name || ""}
+                                              onChange={(e) => {
+                                                setNewParticipantData((prev) => ({
+                                                  ...prev,
+                                                  [idx]: {
+                                                    ...(prev[idx] || {
+                                                      first_name: "",
+                                                      last_name: "",
+                                                      license_number: "",
+                                                      club_name: "",
+                                                      gender: "",
+                                                      email: "",
+                                                    }),
+                                                    club_name: e.target.value,
+                                                  },
+                                                }));
+                                              }}
+                                              placeholder="Club"
+                                            />
+                                          </div>
+                                        </div>
+                                        <div className="flex gap-2">
+                                          <Button
+                                            type="button"
+                                            size="sm"
+                                            onClick={() => createNewParticipant(idx)}
+                                            disabled={
+                                              !newParticipantData[idx]?.first_name ||
+                                              !newParticipantData[idx]?.last_name
+                                            }
+                                            className="flex-1"
+                                          >
+                                            <UserPlus className="w-3 h-3 mr-2" />
+                                            Créer
+                                          </Button>
+                                          <Button
+                                            type="button"
+                                            variant="outline"
+                                            size="sm"
+                                            onClick={() => {
+                                              setShowNewParticipantForm((prev) => {
+                                                const updated = { ...prev };
+                                                delete updated[idx];
+                                                return updated;
+                                              });
+                                            }}
+                                          >
+                                            Annuler
+                                          </Button>
+                                        </div>
+                                      </div>
+                                    </div>
+                                  )}
                                 </SelectContent>
                               </Select>
                             </div>
-                            {mapped && (
+                            {mapped && (() => {
+                              // Charger les équipages si nécessaire
+                              const mappedId = p.__mapped_participant_id;
+                              const participantCrews = mappedId ? (participantCrewsCache[mappedId] || []) : [];
+                              
+                              // Charger les équipages si le participant est sélectionné mais pas encore chargé
+                              if (mappedId && !participantCrewsCache[mappedId] && !loadingParticipantCrews[mappedId]) {
+                                fetchParticipantCrews(mappedId);
+                              }
+
+                              return (
                               <div className="flex flex-col gap-2 text-sm text-gray-600 bg-gray-50 rounded-md p-3 border border-gray-200">
                                 <div>
                                   <span className="font-semibold text-gray-700">Lié à :</span>{" "}
@@ -1424,7 +1765,12 @@ export default function ImportErgRaceResultsWithRacePage() {
                                     <span className="text-gray-600"> – {mapped.club_name}</span>
                                   )}
                                 </div>
-                                {participantCrews.length > 0 && (
+                                {loadingParticipantCrews[mappedId || ""] ? (
+                                  <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                                    <Loader2 className="w-3 h-3 animate-spin" />
+                                    Chargement des équipages...
+                                  </div>
+                                ) : participantCrews.length > 0 && (
                                   <div className="flex items-center gap-3">
                                     <span className="font-semibold text-gray-700 whitespace-nowrap">Équipage :</span>
                                     <Select
@@ -1549,7 +1895,8 @@ export default function ImportErgRaceResultsWithRacePage() {
                                   </div>
                                 )}
                               </div>
-                            )}
+                              );
+                            })()}
                           </div>
                         );
                     })}
