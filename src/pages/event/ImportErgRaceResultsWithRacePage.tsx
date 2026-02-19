@@ -770,38 +770,103 @@ export default function ImportErgRaceResultsWithRacePage() {
         }
       });
 
+      // Charger un échantillon initial de participants pour l'auto-matching (fallback)
+      let fallbackParticipants: EventParticipant[] = [];
+      try {
+        const fallbackRes = await api.get(`/participants/event/${eventId}`, {
+          params: {
+            page: 1,
+            pageSize: 500, // Charger les 500 premiers participants comme fallback
+          },
+        });
+        const fallbackData = fallbackRes.data?.data || fallbackRes.data || [];
+        fallbackParticipants = fallbackData.map((p: any) => ({
+          id: String(p.id),
+          first_name: p.first_name,
+          last_name: p.last_name,
+          club_name: p.club_name,
+          license_number: p.license_number,
+          crews: [],
+        }));
+        console.log(`Chargé ${fallbackParticipants.length} participants pour auto-matching (fallback)`);
+      } catch (err) {
+        console.error("Erreur chargement participants fallback:", err);
+      }
+
       // Faire une recherche pour chaque participant ErgRace unique
       const participantsForMatchingMap = new Map<string, EventParticipant[]>();
       await Promise.all(
         Array.from(uniqueErgRaceParticipants).map(async (ergraceName) => {
           try {
             const parsed = parseErgRaceName(ergraceName);
-            // Construire une requête de recherche à partir du nom parsé
-            const searchTerms: string[] = [];
-            if (parsed.lastName) searchTerms.push(parsed.lastName);
-            if (parsed.firstName) searchTerms.push(parsed.firstName);
-            if (parsed.licenseNumber) searchTerms.push(parsed.licenseNumber);
+            // Construire plusieurs requêtes de recherche pour maximiser les chances de trouver
+            const searchQueries: string[] = [];
             
-            if (searchTerms.length === 0) return;
-
-            const searchQuery = searchTerms.join(" ");
-            const res = await api.get(`/participants/event/${eventId}`, {
-              params: {
-                search: searchQuery,
-                page: 1,
-                pageSize: 50, // Limiter à 50 résultats par recherche
-              },
-            });
-            const data = res.data?.data || res.data || [];
-            const normalized: EventParticipant[] = data.map((p: any) => ({
-              id: String(p.id),
-              first_name: p.first_name,
-              last_name: p.last_name,
-              club_name: p.club_name,
-              license_number: p.license_number,
-              crews: [],
-            }));
+            // 1. Nom complet avec prénom
+            if (parsed.lastName && parsed.firstName) {
+              searchQueries.push(`${parsed.lastName} ${parsed.firstName}`);
+            }
+            // 2. Nom seul (plus large)
+            if (parsed.lastName) {
+              searchQueries.push(parsed.lastName);
+            }
+            // 3. Prénom seul (si assez long)
+            if (parsed.firstName && parsed.firstName.length >= 3) {
+              searchQueries.push(parsed.firstName);
+            }
+            // 4. Numéro de licence si présent
+            if (parsed.licenseNumber) {
+              searchQueries.push(parsed.licenseNumber);
+            }
+            
+            // Faire plusieurs recherches et combiner les résultats
+            const allResults = new Map<string, EventParticipant>();
+            
+            for (const searchQuery of searchQueries) {
+              if (!searchQuery || searchQuery.trim().length < 2) continue;
+              
+              try {
+                const res = await api.get(`/participants/event/${eventId}`, {
+                  params: {
+                    search: searchQuery.trim(),
+                    page: 1,
+                    pageSize: 100, // Augmenter pour avoir plus de résultats
+                  },
+                });
+                const data = res.data?.data || res.data || [];
+                data.forEach((p: any) => {
+                  const id = String(p.id);
+                  if (!allResults.has(id)) {
+                    allResults.set(id, {
+                      id,
+                      first_name: p.first_name,
+                      last_name: p.last_name,
+                      club_name: p.club_name,
+                      license_number: p.license_number,
+                      crews: [],
+                    });
+                  }
+                });
+              } catch (searchErr) {
+                console.error(`Erreur recherche "${searchQuery}" pour ${ergraceName}:`, searchErr);
+              }
+            }
+            
+            let normalized = Array.from(allResults.values());
+            
+            // Si aucune recherche ciblée n'a trouvé de résultats, utiliser le fallback
+            if (normalized.length === 0 && fallbackParticipants.length > 0) {
+              console.log(`Aucun résultat pour "${ergraceName}", utilisation du fallback (${fallbackParticipants.length} participants)`);
+              normalized = fallbackParticipants;
+            }
+            
             participantsForMatchingMap.set(ergraceName, normalized);
+            
+            if (normalized.length === 0) {
+              console.warn(`Aucun participant trouvé pour ErgRace: ${ergraceName} (parsed: ${JSON.stringify(parsed)})`);
+            } else {
+              console.log(`Trouvé ${normalized.length} candidats pour "${ergraceName}"`);
+            }
           } catch (err) {
             console.error(`Erreur recherche auto-matching pour ${ergraceName}:`, err);
             participantsForMatchingMap.set(ergraceName, []);
@@ -839,14 +904,14 @@ export default function ImportErgRaceResultsWithRacePage() {
               const second = scored[1];
 
               if (best && best.score > 0) {
-                // Logique proche de l'import ErgRace des équipages :
+                // Logique assouplie pour l'auto-matching :
                 // on accepte si:
-                // - score >= 60 (baissé de 70 pour être plus permissif), ou
-                // - score >= 40 et nettement meilleur que le second (écart >= 15, baissé de 20)
+                // - score >= 50 (baissé de 60 pour être plus permissif), ou
+                // - score >= 30 et nettement meilleur que le second (écart >= 10)
                 const accept =
-                  best.score >= 60 ||
-                  (best.score >= 40 &&
-                    (!second || best.score - second.score >= 15));
+                  best.score >= 50 ||
+                  (best.score >= 30 &&
+                    (!second || best.score - second.score >= 10));
 
                 if (accept) {
                   mappedId = String(best.participant.id);
@@ -857,7 +922,13 @@ export default function ImportErgRaceResultsWithRacePage() {
                     ...prev,
                     [mappedId!]: best.participant,
                   }));
+                  
+                  console.log(`Auto-match: ${p.participant} → ${best.participant.last_name} ${best.participant.first_name} (score: ${best.score})`);
+                } else {
+                  console.log(`Auto-match refusé: ${p.participant} → meilleur score: ${best.score}, second: ${second?.score || 0}`);
                 }
+              } else {
+                console.log(`Aucun match trouvé pour: ${p.participant} (${participantsForMatching.length} candidats)`);
               }
             }
           }
