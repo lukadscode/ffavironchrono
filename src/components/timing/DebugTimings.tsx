@@ -1,5 +1,6 @@
 import { Button } from "@/components/ui/button";
 import dayjs from "dayjs";
+import { formatTimestamp } from "@/utils/formatTime";
 
 type Props = {
   hiddenTimings: {
@@ -45,7 +46,7 @@ export default function DebugTimings({ hiddenTimings, setTimings, toast }: Props
           {hiddenTimings.map((timing) => (
             <tr key={timing.id} className="border-t hover:bg-accent transition">
               <td className="p-2 font-mono whitespace-nowrap">
-                {dayjs(timing.timestamp).format("HH:mm:ss.SSS")}
+                {formatTimestamp(timing.timestamp)}
               </td>
               <td className="p-2">{timing.status}</td>
               <td className="p-2 text-center">

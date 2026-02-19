@@ -7,6 +7,7 @@ import { getSocket } from "@/lib/socket";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { formatTimestamp, formatDuration, formatTimeDifference } from "@/utils/formatTime";
 
 type TimingPoint = {
   id: string;
@@ -157,33 +158,7 @@ export default function TimingTable({
   };
 
   // Plus besoin de charger les timings de départ, l'API fournit directement relative_time_ms
-
-  const formatRelativeTime = (relativeTimeMs: number | null | undefined): string | null => {
-    if (relativeTimeMs === null || relativeTimeMs === undefined) return null;
-    
-    const totalSeconds = Math.floor(relativeTimeMs / 1000);
-    const minutes = Math.floor(totalSeconds / 60);
-    const seconds = totalSeconds % 60;
-    const ms = relativeTimeMs % 1000;
-
-    return `${minutes}:${seconds.toString().padStart(2, '0')}.${ms.toString().padStart(3, '0')}`;
-  };
-
-  const formatTimeDifference = (ms: number) => {
-    if (ms === 0) return "0.000";
-    const absMs = Math.abs(ms);
-    const totalSeconds = Math.floor(absMs / 1000);
-    const seconds = totalSeconds % 60;
-    const minutes = Math.floor(totalSeconds / 60);
-    const milliseconds = absMs % 1000;
-    
-    const sign = ms < 0 ? "-" : "+";
-    
-    if (minutes > 0) {
-      return `${sign}${minutes}:${seconds.toString().padStart(2, "0")}.${milliseconds.toString().padStart(3, "0")}`;
-    }
-    return `${sign}${seconds}.${milliseconds.toString().padStart(3, "0")}`;
-  };
+  // Utilisation des fonctions utilitaires centralisées pour le formatage
 
   // Calculer le leader (meilleur temps) pour ce timing point
   const getLeaderTime = React.useMemo(() => {
@@ -369,12 +344,12 @@ export default function TimingTable({
                     <div className="flex items-center justify-between">
                       <div>
                         <span className="font-mono text-sm">
-                          {dayjs(timing.timestamp).format("HH:mm:ss.SSS")}
+                          {formatTimestamp(timing.timestamp)}
                         </span>
                         {!isStartPoint && timing.relative_time_ms !== null && timing.relative_time_ms !== undefined && (
                           <div>
                             <p className={`font-bold text-lg ${isFinishPoint ? 'text-red-600' : 'text-blue-600'}`}>
-                              {formatRelativeTime(timing.relative_time_ms) || '-'}
+                              {formatDuration(timing.relative_time_ms)}
                             </p>
                             {getLeaderTime !== null && (
                               <p className="text-xs text-muted-foreground mt-1 font-mono">
@@ -486,14 +461,14 @@ export default function TimingTable({
                 <td className="p-2 font-mono whitespace-nowrap">
                   <div className="flex flex-col gap-1">
                     <span className="text-xs text-muted-foreground">
-                      {dayjs(timing.timestamp).format("HH:mm:ss.SSS")}
+                      {formatTimestamp(timing.timestamp)}
                     </span>
                     {!isStartPoint && (
                       <>
                         {timing.relative_time_ms !== null && timing.relative_time_ms !== undefined ? (
                           <div className="flex flex-col gap-1">
                             <span className={`text-sm font-bold ${isFinishPoint ? 'text-red-600' : 'text-blue-600'}`}>
-                              {formatRelativeTime(timing.relative_time_ms) || '-'}
+                              {formatDuration(timing.relative_time_ms)}
                             </span>
                             {getLeaderTime !== null && (
                               <span className="text-xs text-muted-foreground font-mono">

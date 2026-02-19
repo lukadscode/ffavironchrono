@@ -16,6 +16,7 @@ import { useToast } from "@/hooks/use-toast";
 import dayjs from "dayjs";
 import TimingTable from "@/components/timing/TimingTable";
 import DebugTimings from "@/components/timing/DebugTimings";
+import { formatTimestamp } from "@/utils/formatTime";
 import {
   Timer,
   Clock,
@@ -249,7 +250,7 @@ export default function TimingPage() {
   useEffect(() => {
     const interval = setInterval(() => {
       const now = Date.now() + serverTimeOffset;
-      setLiveTime(dayjs(now).format("HH:mm:ss.SSS"));
+      setLiveTime(formatTimestamp(now));
     }, 50);
     return () => clearInterval(interval);
   }, [serverTimeOffset]);
@@ -389,7 +390,7 @@ export default function TimingPage() {
       });
       toast({
         title: "Timing enregistré",
-        description: `Timing manuel ajouté à ${dayjs(timestamp).format("HH:mm:ss.SSS")}`,
+        description: `Timing manuel ajouté à ${formatTimestamp(timestamp)}`,
       });
     } catch (err: any) {
       console.error("Erreur ajout timing:", err);

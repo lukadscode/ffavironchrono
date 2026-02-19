@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from "recharts";
 import { BarChart3 } from "lucide-react";
 import dayjs from "dayjs";
+import { formatTimeDifference } from "@/utils/formatTime";
 
 type IntermediateTime = {
   timing_point_id: string;
@@ -790,21 +791,7 @@ export default function Live() {
     return `${minutes}:${seconds.toString().padStart(2, "0")}.${tenths}`;
   };
 
-  const formatTimeDifference = (ms: number) => {
-    if (ms === 0) return "0.000";
-    const absMs = Math.abs(ms);
-    const totalSeconds = Math.floor(absMs / 1000);
-    const seconds = totalSeconds % 60;
-    const minutes = Math.floor(totalSeconds / 60);
-    const milliseconds = absMs % 1000;
-    
-    const sign = ms < 0 ? "-" : "+";
-    
-    if (minutes > 0) {
-      return `${sign}${minutes}:${seconds.toString().padStart(2, "0")}.${milliseconds.toString().padStart(3, "0")}`;
-    }
-    return `${sign}${seconds}.${milliseconds.toString().padStart(3, "0")}`;
-  };
+  // Utilisation de la fonction utilitaire centralisée formatTimeDifference
 
   const getStatusBadge = (status: string) => {
     switch (status) {

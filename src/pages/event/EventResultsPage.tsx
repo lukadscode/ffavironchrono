@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
 import * as XLSX from "xlsx";
 import dayjs from "dayjs";
+import { formatDuration } from "@/utils/formatTime";
 
 // Types basés sur la documentation API
 interface Category {
@@ -78,6 +79,7 @@ interface ClubResult {
 
 /**
  * Convertit un temps en millisecondes (string ou number) en format lisible
+ * Utilise la fonction utilitaire centralisée formatDuration
  */
 function formatTime(finalTime: string | number | null | undefined): string | null {
   if (finalTime === null || finalTime === undefined) return null;
@@ -85,16 +87,8 @@ function formatTime(finalTime: string | number | null | undefined): string | nul
   const ms = typeof finalTime === "string" ? parseInt(finalTime, 10) : finalTime;
   if (isNaN(ms)) return null;
   
-  const totalSeconds = Math.floor(ms / 1000);
-  const minutes = Math.floor(totalSeconds / 60);
-  const seconds = totalSeconds % 60;
-  const milliseconds = ms % 1000;
-  
-  if (minutes > 0) {
-    return `${minutes}:${seconds.toString().padStart(2, "0")}.${milliseconds.toString().padStart(3, "0")}`;
-  }
-  
-  return `${seconds}.${milliseconds.toString().padStart(3, "0")}`;
+  const formatted = formatDuration(ms);
+  return formatted === "--:--.---" ? null : formatted;
 }
 
 export default function EventResultsPage() {

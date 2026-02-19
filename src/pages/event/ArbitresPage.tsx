@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
 import dayjs from "dayjs";
 import { CheckCircle2, Clock, Trophy, TrendingUp } from "lucide-react";
+import { formatDuration, formatTimeDifference } from "@/utils/formatTime";
 
 type Category = {
   id: string;
@@ -285,32 +286,11 @@ export default function ArbitresPage() {
     }
   };
 
+  // Utilisation des fonctions utilitaires centralisées formatDuration et formatTimeDifference
   const formatTime = (ms: number | null) => {
     if (ms === null || ms === undefined) return "N/A";
     if (isNaN(ms)) return "N/A";
-
-    const totalSeconds = Math.floor(ms / 1000);
-    const minutes = Math.floor(totalSeconds / 60);
-    const seconds = totalSeconds % 60;
-    const milliseconds = ms % 1000;
-
-    return `${minutes}:${seconds.toString().padStart(2, "0")}.${milliseconds.toString().padStart(3, "0")}`;
-  };
-
-  const formatTimeDifference = (ms: number) => {
-    if (ms === 0) return "0.000";
-    const absMs = Math.abs(ms);
-    const totalSeconds = Math.floor(absMs / 1000);
-    const seconds = totalSeconds % 60;
-    const minutes = Math.floor(totalSeconds / 60);
-    const milliseconds = absMs % 1000;
-    
-    const sign = ms < 0 ? "-" : "+";
-    
-    if (minutes > 0) {
-      return `${sign}${minutes}:${seconds.toString().padStart(2, "0")}.${milliseconds.toString().padStart(3, "0")}`;
-    }
-    return `${sign}${seconds}.${milliseconds.toString().padStart(3, "0")}`;
+    return formatDuration(ms);
   };
 
   const selectedRace = races.find((r) => r.id === selectedRaceId);
