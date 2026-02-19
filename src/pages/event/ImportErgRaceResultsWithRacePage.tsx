@@ -762,8 +762,52 @@ export default function ImportErgRaceResultsWithRacePage() {
       }
 
       // Statistiques sur les participants / couloirs
-      // Auto-matching désactivé pour l'instant (sera fait à la demande lors de la recherche)
-      const participantsForMatching: EventParticipant[] = [];
+      // Auto-matching optimisé : recherche par participant ErgRace unique
+      const uniqueErgRaceParticipants = new Set<string>();
+      results.participants.forEach((p: ErgRaceParticipant) => {
+        if (p.participant && p.participant !== "EMPTY") {
+          uniqueErgRaceParticipants.add(p.participant);
+        }
+      });
+
+      // Faire une recherche pour chaque participant ErgRace unique
+      const participantsForMatchingMap = new Map<string, EventParticipant[]>();
+      await Promise.all(
+        Array.from(uniqueErgRaceParticipants).map(async (ergraceName) => {
+          try {
+            const parsed = parseErgRaceName(ergraceName);
+            // Construire une requête de recherche à partir du nom parsé
+            const searchTerms: string[] = [];
+            if (parsed.lastName) searchTerms.push(parsed.lastName);
+            if (parsed.firstName) searchTerms.push(parsed.firstName);
+            if (parsed.licenseNumber) searchTerms.push(parsed.licenseNumber);
+            
+            if (searchTerms.length === 0) return;
+
+            const searchQuery = searchTerms.join(" ");
+            const res = await api.get(`/participants/event/${eventId}`, {
+              params: {
+                search: searchQuery,
+                page: 1,
+                pageSize: 50, // Limiter à 50 résultats par recherche
+              },
+            });
+            const data = res.data?.data || res.data || [];
+            const normalized: EventParticipant[] = data.map((p: any) => ({
+              id: String(p.id),
+              first_name: p.first_name,
+              last_name: p.last_name,
+              club_name: p.club_name,
+              license_number: p.license_number,
+              crews: [],
+            }));
+            participantsForMatchingMap.set(ergraceName, normalized);
+          } catch (err) {
+            console.error(`Erreur recherche auto-matching pour ${ergraceName}:`, err);
+            participantsForMatchingMap.set(ergraceName, []);
+          }
+        })
+      );
 
       // On ajoute des champs internes :
       // - "__include" pour exclure certaines lignes
@@ -777,32 +821,43 @@ export default function ImportErgRaceResultsWithRacePage() {
           let mappedId: string | undefined = undefined;
           let matchScore: number | undefined = undefined;
 
-          if (include && participantsForMatching.length > 0 && p.participant) {
-            // Calculer un score pour chaque participant événement
-            const scored = participantsForMatching.map((ep) => ({
-              participant: ep,
-              score: computeMatchScore(p.participant!, p.affiliation, ep),
-            }));
+          if (include && p.participant) {
+            // Récupérer les participants candidats pour ce participant ErgRace
+            const participantsForMatching = participantsForMatchingMap.get(p.participant) || [];
+            
+            if (participantsForMatching.length > 0) {
+              // Calculer un score pour chaque participant événement
+              const scored = participantsForMatching.map((ep) => ({
+                participant: ep,
+                score: computeMatchScore(p.participant!, p.affiliation, ep),
+              }));
 
-            // Trier par score décroissant
-            scored.sort((a, b) => b.score - a.score);
+              // Trier par score décroissant
+              scored.sort((a, b) => b.score - a.score);
 
-            const best = scored[0];
-            const second = scored[1];
+              const best = scored[0];
+              const second = scored[1];
 
-            if (best && best.score > 0) {
-              // Logique proche de l'import ErgRace des équipages :
-              // on accepte si:
-              // - score >= 60 (baissé de 70 pour être plus permissif), ou
-              // - score >= 40 et nettement meilleur que le second (écart >= 15, baissé de 20)
-              const accept =
-                best.score >= 60 ||
-                (best.score >= 40 &&
-                  (!second || best.score - second.score >= 15));
+              if (best && best.score > 0) {
+                // Logique proche de l'import ErgRace des équipages :
+                // on accepte si:
+                // - score >= 60 (baissé de 70 pour être plus permissif), ou
+                // - score >= 40 et nettement meilleur que le second (écart >= 15, baissé de 20)
+                const accept =
+                  best.score >= 60 ||
+                  (best.score >= 40 &&
+                    (!second || best.score - second.score >= 15));
 
-              if (accept) {
-                mappedId = String(best.participant.id);
-                matchScore = best.score;
+                if (accept) {
+                  mappedId = String(best.participant.id);
+                  matchScore = best.score;
+                  
+                  // Mettre en cache le participant sélectionné
+                  setSelectedParticipantsCache((prev) => ({
+                    ...prev,
+                    [mappedId!]: best.participant,
+                  }));
+                }
               }
             }
           }
