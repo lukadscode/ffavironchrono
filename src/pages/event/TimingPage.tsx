@@ -250,7 +250,7 @@ export default function TimingPage() {
   useEffect(() => {
     const interval = setInterval(() => {
       const now = Date.now() + serverTimeOffset;
-      setLiveTime(formatTimestamp(now));
+      setLiveTime(formatTimestamp(new Date(now)));
     }, 50);
     return () => clearInterval(interval);
   }, [serverTimeOffset]);

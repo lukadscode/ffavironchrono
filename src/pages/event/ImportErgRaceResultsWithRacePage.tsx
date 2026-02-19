@@ -426,23 +426,6 @@ export default function ImportErgRaceResultsWithRacePage() {
     }
   }, [eventId]);
 
-  // Déclencher la recherche quand participantSearchQueries change
-  useEffect(() => {
-    Object.entries(participantSearchQueries).forEach(([lineIndexStr, query]) => {
-      const lineIndex = parseInt(lineIndexStr, 10);
-      if (!isNaN(lineIndex)) {
-        searchParticipants(lineIndex, query);
-      }
-    });
-
-    // Cleanup des timers au unmount
-    return () => {
-      Object.values(participantSearchDebounceRefs.current).forEach((timer) => {
-        if (timer) clearTimeout(timer);
-      });
-    };
-  }, [participantSearchQueries, searchParticipants]);
-
   const fetchDistances = async () => {
     try {
       const res = await api.get(`/distances/event/${eventId}`);
@@ -543,6 +526,23 @@ export default function ImportErgRaceResultsWithRacePage() {
       }
     }, 500);
   }, [eventId, toast]);
+
+  // Déclencher la recherche quand participantSearchQueries change
+  useEffect(() => {
+    Object.entries(participantSearchQueries).forEach(([lineIndexStr, query]) => {
+      const lineIndex = parseInt(lineIndexStr, 10);
+      if (!isNaN(lineIndex)) {
+        searchParticipants(lineIndex, query);
+      }
+    });
+
+    // Cleanup des timers au unmount
+    return () => {
+      Object.values(participantSearchDebounceRefs.current).forEach((timer) => {
+        if (timer) clearTimeout(timer);
+      });
+    };
+  }, [participantSearchQueries, searchParticipants]);
 
   // Charger les équipages d'un participant à la demande
   const fetchParticipantCrews = useCallback(async (participantId: string) => {
