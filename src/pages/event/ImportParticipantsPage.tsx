@@ -31,8 +31,8 @@ export default function ImportParticipantsPage() {
       const categories = categoriesRes.data?.data || categoriesRes.data || [];
 
       // Feuille Participants : en-têtes + quelques lignes d'exemple
+      // Note: crew_external_id est optionnel - s'il est absent, un ID sera généré automatiquement
       const participantsHeaders = [
-        "crew_external_id",
         "category_code",
         "club_name",
         "club_code",
@@ -45,12 +45,12 @@ export default function ImportParticipantsPage() {
         "participant_email",
         "participant_club_name",
         "temps_pronostique",
+        "crew_external_id", // Optionnel : pour regrouper manuellement les participants d'un même équipage
       ];
 
       const participantsExamples = [
         participantsHeaders,
         [
-          "EQUIPAGE-001",
           "J18H2x",
           "Club de Test",
           "ABC",
@@ -63,9 +63,9 @@ export default function ImportParticipantsPage() {
           "jean.dupont@example.com",
           "",
           "420",
+          "EQUIPAGE-001", // Optionnel : même ID pour regrouper les participants d'un équipage
         ],
         [
-          "EQUIPAGE-001",
           "J18H2x",
           "Club de Test",
           "ABC",
@@ -78,6 +78,7 @@ export default function ImportParticipantsPage() {
           "pierre.martin@example.com",
           "",
           "420",
+          "EQUIPAGE-001", // Même ID = même équipage
         ],
       ];
 
@@ -217,6 +218,10 @@ export default function ImportParticipantsPage() {
               <p>
                 Le modèle Excel contient deux onglets : <strong>Participants</strong> (à remplir) et{" "}
                 <strong>Categories</strong> (liste des catégories disponibles pour l'événement).
+              </p>
+              <p className="text-xs mt-2">
+                <strong>Note :</strong> La colonne <code>crew_external_id</code> est optionnelle. Si elle est absente,
+                les équipages seront automatiquement regroupés par catégorie, club et ordre de saisie.
               </p>
             </div>
           </div>

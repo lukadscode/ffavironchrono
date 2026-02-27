@@ -25,10 +25,6 @@ Objectif : permettre à un organisateur d’un événement d’importer en masse
 Nom des colonnes et rôle :
 
 - **Colonnes obligatoires**
-  - `crew_external_id`  
-    - Identifiant texte de l’équipage dans le fichier (permet de regrouper les lignes).
-    - Exemple : `Bateau 1`, `EQUIPAGE-001`, etc.
-    - Toutes les lignes avec le même `crew_external_id` décrivent **le même équipage**.
   - `category_code`  
     - Code de catégorie, doit correspondre à une catégorie de l’événement (voir onglet `Categories`).
     - Exemple : `J18H2x`, `SH4-`, etc.
@@ -48,6 +44,11 @@ Nom des colonnes et rôle :
     - Numéro de licence FFA (clé principale pour retrouver un participant existant).
 
 - **Colonnes optionnelles**
+  - `crew_external_id`  
+    - Identifiant texte de l'équipage dans le fichier (permet de regrouper manuellement les lignes).
+    - Exemple : `Bateau 1`, `EQUIPAGE-001`, etc.
+    - Toutes les lignes avec le même `crew_external_id` décrivent **le même équipage**.
+    - **Si absent** : le système génère automatiquement un ID basé sur `category_code + club_name + numéro séquentiel`.
   - `participant_gender`
   - `participant_email`
   - `participant_club_name`  
@@ -107,9 +108,11 @@ Pour chaque ligne :
 
 Les lignes sont regroupées par :
 
-- `crew_external_id`
-- + `category_code`
-- + `club_name` / `club_code`
+- Si `crew_external_id` est présent : regroupement par `crew_external_id` (toutes les lignes avec le même ID = même équipage).
+- Si `crew_external_id` est absent : regroupement automatique par **ordre séquentiel de `seat_position`** :
+  - Les lignes consécutives avec des `seat_position` qui se suivent (1, 2, 3, ...) forment un équipage.
+  - Un nouvel équipage commence quand `seat_position` revient à `1` ou quand `category_code` change.
+  - **Note :** Le `club_name` et `club_code` ne sont **pas** utilisés pour le regroupement automatique.
 
 Pour chaque groupe :
 
