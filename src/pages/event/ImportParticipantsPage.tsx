@@ -234,6 +234,12 @@ export default function ImportParticipantsPage() {
                 Le modèle Excel contient deux onglets : <strong>Participants</strong> (à remplir) et{" "}
                 <strong>Categories</strong> (liste des catégories disponibles pour l'événement).
               </p>
+              <p className="text-xs mt-2">
+                <strong>Catégorie acceptée :</strong> dans ton fichier d'import, tu peux renseigner soit{" "}
+                <code>category_code</code>, soit <code>category_name</code>. Le backend lit{" "}
+                <code>row["category_code"] ?? row["category_name"]</code>. Si les deux sont vides, la ligne est en
+                erreur (<code>category_code ou category_name manquant</code>).
+              </p>
               <p className="text-xs mt-2 space-y-1">
                 <strong>Colonnes optionnelles :</strong>
                 <ul className="list-disc list-inside ml-2 space-y-0.5">
