@@ -80,6 +80,21 @@ export default function ImportParticipantsPage() {
           "420",
           "EQUIPAGE-001", // Même ID = même équipage
         ],
+        [
+          "SH4-",
+          "", // club_name vide (optionnel)
+          "", // club_code vide (optionnel)
+          "1",
+          "0",
+          "Marie",
+          "Durand",
+          "345678",
+          "Femme",
+          "marie.durand@example.com",
+          "Club Alternatif", // participant_club_name utilisé comme fallback pour le club
+          "",
+          "", // crew_external_id vide = regroupement automatique par seat_position
+        ],
       ];
 
       const wsParticipants = XLSX.utils.aoa_to_sheet(participantsExamples);
@@ -219,9 +234,19 @@ export default function ImportParticipantsPage() {
                 Le modèle Excel contient deux onglets : <strong>Participants</strong> (à remplir) et{" "}
                 <strong>Categories</strong> (liste des catégories disponibles pour l'événement).
               </p>
-              <p className="text-xs mt-2">
-                <strong>Note :</strong> La colonne <code>crew_external_id</code> est optionnelle. Si elle est absente,
-                les équipages seront automatiquement regroupés par catégorie, club et ordre de saisie.
+              <p className="text-xs mt-2 space-y-1">
+                <strong>Colonnes optionnelles :</strong>
+                <ul className="list-disc list-inside ml-2 space-y-0.5">
+                  <li>
+                    <code>crew_external_id</code> : Si absente, les équipages seront automatiquement regroupés par
+                    ordre séquentiel de <code>seat_position</code> (1, 2, 3... puis nouveau 1, 2, 3...).
+                  </li>
+                  <li>
+                    <code>club_name</code> et <code>club_code</code> : Optionnels. Si absents,{" "}
+                    <code>participant_club_name</code> sera utilisé comme fallback. Si aucune info club n'est fournie,
+                    l'import continuera sans club.
+                  </li>
+                </ul>
               </p>
             </div>
           </div>

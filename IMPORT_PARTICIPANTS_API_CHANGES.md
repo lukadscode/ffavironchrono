@@ -225,3 +225,106 @@ SH4-,Club A,1,Marc,Lefebvre
 Ces modifications sont **rétrocompatibles** :
 - Les fichiers existants avec `crew_external_id` continueront de fonctionner normalement
 - Les nouveaux fichiers sans `crew_external_id` bénéficieront du regroupement automatique
+
+---
+
+## 9. Support des fichiers Excel (`.xlsx`) en plus du CSV
+
+### 9.1. Entrée API (rappel)
+
+- Route : `POST /events/:event_id/import-participants`
+- Payload : `multipart/form-data`
+  - `file` : fichier d’import
+  - `mode` : `"create_only"` (défaut) ou `"update_or_create"`
+  - `dry_run` : `true/false`
+
+### 9.2. Types de fichiers acceptés
+
+L’API doit maintenant accepter **à la fois** :
+
+- **CSV** :
+  - mimetype : `text/csv`
+  - extensions : `.csv`
+- **Excel** :
+  - mimetype : `application/vnd.openxmlformats-officedocument.spreadsheetml.sheet`
+  - extensions : `.xlsx`
+
+### 9.3. Parsing côté backend
+
+- Si le fichier est un CSV → parsing actuel inchangé.
+- Si le fichier est un Excel (`.xlsx`) :
+  - utiliser une librairie type `xlsx` ou `exceljs` ;
+  - ouvrir le classeur ;
+  - lire **uniquement l’onglet** `Participants` (ou, à défaut, le premier onglet) ;
+  - considérer la première ligne comme en‑têtes, les suivantes comme données ;
+  - produire un tableau d’objets avec les mêmes clés que pour le CSV :
+    `category_code`, `club_name`, `club_code`, `seat_position`, `is_coxswain`,
+    `participant_first_name`, `participant_last_name`, etc.
+
+Pseudo‑code :
+
+```ts
+if (isXlsx(file)) {
+  const workbook = xlsx.read(file.buffer, { type: "buffer" });
+  const sheet =
+    workbook.Sheets["Participants"] ?? workbook.Sheets[workbook.SheetNames[0]];
+  const rows = xlsx.utils.sheet_to_json(sheet, { defval: null });
+  // rows → pipeline existant (validation + regroupement)
+} else {
+  // Parsing CSV existant
+}
+```
+
+---
+
+## 10. `club_name` et `club_code` deviennent optionnels
+
+### 10.1. Colonnes du fichier
+
+Adapter la section de spécification principale (« Onglet 1 – Participants ») ainsi :
+
+- **Colonnes obligatoires** :
+  - `category_code`
+  - `seat_position`
+  - `is_coxswain`
+  - `participant_first_name`
+  - `participant_last_name`
+
+- **Colonnes recommandées / optionnelles** :
+  - `club_code` (recommandé)
+  - `club_name` (recommandé)
+  - `participant_license_number`
+  - `participant_gender`
+  - `participant_email`
+  - `participant_club_name`
+  - `temps_pronostique`
+  - `crew_external_id`
+
+Conséquence : l’API ne doit plus retourner d’erreur **bloquante** du type  
+`champ 'club_name' manquant` ou `champ 'club_code' manquant`.
+
+### 10.2. Nouvelle règle de résolution des clubs
+
+Adapter la section « Résolution des clubs » comme suit :
+
+1. Si `club_code` est présent :
+   - chercher un club existant via `club_code` ;
+   - si trouvé → utiliser ce club ;
+   - si non trouvé → ligne en erreur (comme aujourd’hui).
+
+2. Sinon, si `club_name` est présent :
+   - recherche tolérante par nom (`ILIKE`, trim, insensible à la casse) ;
+   - si non trouvé → au choix :
+     - ligne en erreur, **ou**
+     - création d’un club « libre » (selon la politique actuelle).
+
+3. Sinon, si `participant_club_name` est présent :
+   - appliquer la même logique que pour `club_name`.
+
+4. Sinon (aucune info club) :
+   - **ne pas bloquer l’import** :
+     - autoriser un équipage / participant avec `club_id = NULL`, **ou**
+     - rattacher à un club générique de type `INCONNU`, selon vos règles.
+
+L’objectif est de rendre `club_name` et `club_code` réellement optionnels, tout en continuant
+à les exploiter lorsqu’ils sont fournis.
