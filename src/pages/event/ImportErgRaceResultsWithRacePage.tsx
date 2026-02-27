@@ -762,25 +762,18 @@ export default function ImportErgRaceResultsWithRacePage() {
       }
 
       // Statistiques sur les participants / couloirs
-      // Auto-matching optimisé : recherche par participant ErgRace unique
-      const uniqueErgRaceParticipants = new Set<string>();
-      results.participants.forEach((p: ErgRaceParticipant) => {
-        if (p.participant && p.participant !== "EMPTY") {
-          uniqueErgRaceParticipants.add(p.participant);
-        }
-      });
-
-      // Charger un échantillon initial de participants pour l'auto-matching (fallback)
-      let fallbackParticipants: EventParticipant[] = [];
+      // Auto-matching optimisé : on charge une seule fois une grosse liste de participants,
+      // puis on fait tout le scoring côté front (beaucoup plus rapide que des dizaines d'appels API).
+      let allParticipantsForMatching: EventParticipant[] = [];
       try {
-        const fallbackRes = await api.get(`/participants/event/${eventId}`, {
+        const allRes = await api.get(`/participants/event/${eventId}`, {
           params: {
             page: 1,
-            pageSize: 500, // Charger les 500 premiers participants comme fallback
+            pageSize: 5000, // charger un gros lot de participants pour l'auto-matching
           },
         });
-        const fallbackData = fallbackRes.data?.data || fallbackRes.data || [];
-        fallbackParticipants = fallbackData.map((p: any) => ({
+        const allData = allRes.data?.data || allRes.data || [];
+        allParticipantsForMatching = allData.map((p: any) => ({
           id: String(p.id),
           first_name: p.first_name,
           last_name: p.last_name,
@@ -788,91 +781,12 @@ export default function ImportErgRaceResultsWithRacePage() {
           license_number: p.license_number,
           crews: [],
         }));
-        console.log(`Chargé ${fallbackParticipants.length} participants pour auto-matching (fallback)`);
+        console.log(
+          `Chargé ${allParticipantsForMatching.length} participants pour auto-matching (liste unique)`
+        );
       } catch (err) {
-        console.error("Erreur chargement participants fallback:", err);
+        console.error("Erreur chargement participants pour auto-matching:", err);
       }
-
-      // Faire une recherche pour chaque participant ErgRace unique
-      const participantsForMatchingMap = new Map<string, EventParticipant[]>();
-      await Promise.all(
-        Array.from(uniqueErgRaceParticipants).map(async (ergraceName) => {
-          try {
-            const parsed = parseErgRaceName(ergraceName);
-            // Construire plusieurs requêtes de recherche pour maximiser les chances de trouver
-            const searchQueries: string[] = [];
-            
-            // 1. Nom complet avec prénom
-            if (parsed.lastName && parsed.firstName) {
-              searchQueries.push(`${parsed.lastName} ${parsed.firstName}`);
-            }
-            // 2. Nom seul (plus large)
-            if (parsed.lastName) {
-              searchQueries.push(parsed.lastName);
-            }
-            // 3. Prénom seul (si assez long)
-            if (parsed.firstName && parsed.firstName.length >= 3) {
-              searchQueries.push(parsed.firstName);
-            }
-            // 4. Numéro de licence si présent
-            if (parsed.licenseNumber) {
-              searchQueries.push(parsed.licenseNumber);
-            }
-            
-            // Faire plusieurs recherches et combiner les résultats
-            const allResults = new Map<string, EventParticipant>();
-            
-            for (const searchQuery of searchQueries) {
-              if (!searchQuery || searchQuery.trim().length < 2) continue;
-              
-              try {
-                const res = await api.get(`/participants/event/${eventId}`, {
-                  params: {
-                    search: searchQuery.trim(),
-                    page: 1,
-                    pageSize: 100, // Augmenter pour avoir plus de résultats
-                  },
-                });
-                const data = res.data?.data || res.data || [];
-                data.forEach((p: any) => {
-                  const id = String(p.id);
-                  if (!allResults.has(id)) {
-                    allResults.set(id, {
-                      id,
-                      first_name: p.first_name,
-                      last_name: p.last_name,
-                      club_name: p.club_name,
-                      license_number: p.license_number,
-                      crews: [],
-                    });
-                  }
-                });
-              } catch (searchErr) {
-                console.error(`Erreur recherche "${searchQuery}" pour ${ergraceName}:`, searchErr);
-              }
-            }
-            
-            let normalized = Array.from(allResults.values());
-            
-            // Si aucune recherche ciblée n'a trouvé de résultats, utiliser le fallback
-            if (normalized.length === 0 && fallbackParticipants.length > 0) {
-              console.log(`Aucun résultat pour "${ergraceName}", utilisation du fallback (${fallbackParticipants.length} participants)`);
-              normalized = fallbackParticipants;
-            }
-            
-            participantsForMatchingMap.set(ergraceName, normalized);
-            
-            if (normalized.length === 0) {
-              console.warn(`Aucun participant trouvé pour ErgRace: ${ergraceName} (parsed: ${JSON.stringify(parsed)})`);
-            } else {
-              console.log(`Trouvé ${normalized.length} candidats pour "${ergraceName}"`);
-            }
-          } catch (err) {
-            console.error(`Erreur recherche auto-matching pour ${ergraceName}:`, err);
-            participantsForMatchingMap.set(ergraceName, []);
-          }
-        })
-      );
 
       // On ajoute des champs internes :
       // - "__include" pour exclure certaines lignes
@@ -886,50 +800,51 @@ export default function ImportErgRaceResultsWithRacePage() {
           let mappedId: string | undefined = undefined;
           let matchScore: number | undefined = undefined;
 
-          if (include && p.participant) {
-            // Récupérer les participants candidats pour ce participant ErgRace
-            const participantsForMatching = participantsForMatchingMap.get(p.participant) || [];
-            
-            if (participantsForMatching.length > 0) {
-              // Calculer un score pour chaque participant événement
-              const scored = participantsForMatching.map((ep) => ({
-                participant: ep,
-                score: computeMatchScore(p.participant!, p.affiliation, ep),
-              }));
+          if (include && p.participant && allParticipantsForMatching.length > 0) {
+            // Calculer un score pour chaque participant de la liste globale
+            const scored = allParticipantsForMatching.map((ep) => ({
+              participant: ep,
+              score: computeMatchScore(p.participant!, p.affiliation, ep),
+            }));
 
-              // Trier par score décroissant
-              scored.sort((a, b) => b.score - a.score);
+            // Trier par score décroissant
+            scored.sort((a, b) => b.score - a.score);
 
-              const best = scored[0];
-              const second = scored[1];
+            const best = scored[0];
+            const second = scored[1];
 
-              if (best && best.score > 0) {
-                // Logique assouplie pour l'auto-matching :
-                // on accepte si:
-                // - score >= 50 (baissé de 60 pour être plus permissif), ou
-                // - score >= 30 et nettement meilleur que le second (écart >= 10)
-                const accept =
-                  best.score >= 50 ||
-                  (best.score >= 30 &&
-                    (!second || best.score - second.score >= 10));
+            if (best && best.score > 0) {
+              // Logique assouplie pour l'auto-matching :
+              // on accepte si :
+              // - score >= 50, ou
+              // - score >= 30 et nettement meilleur que le second (écart >= 10)
+              const accept =
+                best.score >= 50 ||
+                (best.score >= 30 &&
+                  (!second || best.score - second.score >= 10));
 
-                if (accept) {
-                  mappedId = String(best.participant.id);
-                  matchScore = best.score;
-                  
-                  // Mettre en cache le participant sélectionné
-                  setSelectedParticipantsCache((prev) => ({
-                    ...prev,
-                    [mappedId!]: best.participant,
-                  }));
-                  
-                  console.log(`Auto-match: ${p.participant} → ${best.participant.last_name} ${best.participant.first_name} (score: ${best.score})`);
-                } else {
-                  console.log(`Auto-match refusé: ${p.participant} → meilleur score: ${best.score}, second: ${second?.score || 0}`);
-                }
+              if (accept) {
+                mappedId = String(best.participant.id);
+                matchScore = best.score;
+
+                // Mettre en cache le participant sélectionné
+                setSelectedParticipantsCache((prev) => ({
+                  ...prev,
+                  [mappedId!]: best.participant,
+                }));
+
+                console.log(
+                  `Auto-match: ${p.participant} → ${best.participant.last_name} ${best.participant.first_name} (score: ${best.score})`
+                );
               } else {
-                console.log(`Aucun match trouvé pour: ${p.participant} (${participantsForMatching.length} candidats)`);
+                console.log(
+                  `Auto-match refusé: ${p.participant} → meilleur score: ${best.score}, second: ${second?.score || 0}`
+                );
               }
+            } else {
+              console.log(
+                `Aucun match trouvé pour: ${p.participant} (${allParticipantsForMatching.length} candidats)`
+              );
             }
           }
 
@@ -1426,7 +1341,58 @@ export default function ImportErgRaceResultsWithRacePage() {
                   <Label htmlFor="distance">Distance *</Label>
                   <Select
                     value={selectedDistanceId}
-                    onValueChange={setSelectedDistanceId}
+                    onValueChange={(value) => {
+                      setSelectedDistanceId(value);
+
+                      // Auto-ajuster les équipages sélectionnés en fonction de la nouvelle distance
+                      const target = distances.find((d) => d.id === value);
+                      if (!ergResults || !target) return;
+
+                      const updatedParticipants = ergResults.participants.map((p: any) => {
+                        // Si aucun participant mappé ou ligne exclue, ne rien changer
+                        if (p.__include === false || !p.__mapped_participant_id) {
+                          return p;
+                        }
+
+                        const pid = p.__mapped_participant_id as string;
+                        const crews = participantCrewsCache[pid] || [];
+                        if (crews.length === 0) {
+                          return p;
+                        }
+
+                        const compatible = crews.filter((crew: any) =>
+                          isCrewCompatibleWithDistance(crew, target)
+                        );
+
+                        // Si aucun équipage compatible : on efface l'équipage sélectionné
+                        if (compatible.length === 0) {
+                          if (!p.__mapped_crew_id) return p;
+                          return {
+                            ...p,
+                            __mapped_crew_id: undefined,
+                          };
+                        }
+
+                        // Si l'équipage actuel est encore compatible, on le garde
+                        if (
+                          p.__mapped_crew_id &&
+                          compatible.some((c: any) => c.id === p.__mapped_crew_id)
+                        ) {
+                          return p;
+                        }
+
+                        // Sinon, on choisit automatiquement le premier équipage compatible
+                        return {
+                          ...p,
+                          __mapped_crew_id: compatible[0].id,
+                        };
+                      });
+
+                      setErgResults({
+                        ...ergResults,
+                        participants: updatedParticipants,
+                      });
+                    }}
                   >
                     <SelectTrigger id="distance">
                       <SelectValue placeholder="Sélectionner une distance" />
