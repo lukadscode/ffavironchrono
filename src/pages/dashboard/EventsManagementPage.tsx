@@ -105,6 +105,18 @@ export default function EventsManagementPage() {
       return;
     }
 
+    // Vérifier que l'utilisateur est authentifié
+    const stored = localStorage.getItem("authTokens");
+    if (!stored) {
+      toast({
+        title: "Erreur d'authentification",
+        description: "Vous n'êtes pas connecté. Veuillez vous reconnecter.",
+        variant: "destructive",
+      });
+      navigate("/admin/login");
+      return;
+    }
+
     setIsImporting(true);
     try {
       const res = await api.post(`/import/manifestation/${manifestationId.trim()}`);
@@ -122,10 +134,25 @@ export default function EventsManagementPage() {
       await fetchAllEvents();
     } catch (err: any) {
       console.error("Erreur import événement", err);
-      const errorMessage =
-        err?.response?.data?.message ||
-        err?.response?.data?.error ||
-        "Impossible d'importer l'événement";
+      
+      let errorMessage = "Impossible d'importer l'événement";
+      
+      // Gestion spécifique des erreurs d'authentification
+      if (err?.response?.status === 401 || err?.response?.status === 403) {
+        errorMessage = "Vous n'êtes pas autorisé à importer un événement. Veuillez vous reconnecter.";
+        // Vérifier si le token existe toujours
+        const tokens = localStorage.getItem("authTokens");
+        if (!tokens) {
+          navigate("/admin/login");
+          return;
+        }
+      } else if (err?.response?.data?.message) {
+        errorMessage = err.response.data.message;
+      } else if (err?.response?.data?.error) {
+        errorMessage = err.response.data.error;
+      } else if (err?.message) {
+        errorMessage = err.message;
+      }
       
       toast({
         title: "Erreur",
