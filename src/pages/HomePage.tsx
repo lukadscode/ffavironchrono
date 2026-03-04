@@ -159,8 +159,8 @@ export default function HomePage() {
     <div className="min-h-screen flex flex-col bg-gradient-to-br from-slate-50 via-blue-50/20 to-slate-50">
       <PublicHeader />
 
-      {/* Hero Section */}
-      <section className="relative overflow-hidden min-h-[400px] sm:min-h-[500px] md:min-h-[600px] flex items-center text-white">
+      {/* Hero Section (image + texte central aligné à gauche, style maquette) */}
+      <section className="relative overflow-hidden min-h-[380px] sm:min-h-[460px] md:min-h-[520px] lg:min-h-[560px] flex items-center text-white">
         {/* Image de fond */}
         <div className="absolute inset-0">
           <img
@@ -168,51 +168,40 @@ export default function HomePage() {
             alt="Compétition d'aviron"
             className="w-full h-full object-cover"
           />
-          {/* Overlay avec dégradé */}
-          <div className="absolute inset-0 bg-gradient-to-b from-blue-900/85 via-blue-800/80 to-blue-900/85"></div>
+          {/* Overlay avec dégradé sombre à droite */}
+          <div className="absolute inset-0 bg-gradient-to-r from-slate-950/85 via-slate-900/60 to-transparent" />
         </div>
-        
-        <div className="container mx-auto px-4 sm:px-6 py-8 sm:py-12 md:py-16 relative z-10">
-          <div className="max-w-4xl mx-auto text-center">
-            <div className="inline-flex items-center gap-2 px-3 sm:px-4 py-2 rounded-full bg-white/10 backdrop-blur-md border border-white/20 mb-4 sm:mb-6 text-xs sm:text-sm">
-              <Timer className="w-4 h-4 sm:w-5 sm:h-5" />
-              <span className="font-medium">FFAviron - Résultats des compétitions</span>
-            </div>
-            
-            <h1 className="text-3xl sm:text-4xl md:text-5xl lg:text-6xl xl:text-7xl font-bold mb-4 sm:mb-6 leading-tight break-words">
-              Suivez les résultats
-              <span className="block bg-gradient-to-r from-blue-200 to-cyan-200 bg-clip-text text-transparent">
-                des compétitions
-              </span>
-            </h1>
-            
-            <p className="text-base sm:text-lg md:text-xl lg:text-2xl text-blue-100 mb-6 sm:mb-8 max-w-2xl mx-auto leading-relaxed px-4">
-              Consultez les résultats, les classements et suivez en direct toutes les compétitions d'aviron organisées 
-              par la Fédération Française d'Aviron.
-            </p>
 
-            <div className="flex flex-wrap items-center justify-center gap-3 sm:gap-4 md:gap-6 mt-8 sm:mt-12 px-4">
-              <div className="flex items-center gap-2 sm:gap-3 px-4 sm:px-6 py-2 sm:py-3 rounded-lg bg-white/10 backdrop-blur-md border border-white/20">
-                <Clock className="w-5 h-5 sm:w-6 sm:h-6 text-cyan-300 flex-shrink-0" />
-                <div className="text-left">
-                  <div className="text-xs sm:text-sm text-blue-200">Temps réel</div>
-                  <div className="text-base sm:text-lg font-bold">0.001s</div>
+        <div className="relative z-10 w-full">
+          <div className="max-w-6xl mx-auto px-4 lg:px-6">
+            <div className="max-w-xl lg:max-w-2xl ml-0 lg:ml-10 space-y-5 sm:space-y-6">
+              <p className="text-[11px] sm:text-xs font-semibold tracking-[0.28em] uppercase text-emerald-300">
+                Officiel de la
+              </p>
+
+              <h1 className="text-3xl sm:text-4xl md:text-5xl lg:text-[46px] leading-tight font-semibold tracking-wide">
+                <span className="block">Fédération française</span>
+                <span className="block">d&apos;aviron</span>
+              </h1>
+
+              <p className="text-sm sm:text-base md:text-lg text-slate-100/85 max-w-lg">
+                Suivez les résultats des compétitions, consultez les classements
+                et accédez aux lives des événements officiels FFAviron.
+              </p>
+
+              <div className="flex flex-wrap items-center gap-3 pt-2">
+                <div className="flex items-center gap-2 px-4 py-2 rounded-full bg-slate-950/70 border border-emerald-400/70 shadow-sm">
+                  <Clock className="w-4 h-4 text-emerald-300" />
+                  <span className="text-[11px] uppercase tracking-[0.18em] text-emerald-200 font-medium">
+                    Temps réel 0.001s
+                  </span>
                 </div>
-              </div>
-              
-              <div className="flex items-center gap-2 sm:gap-3 px-4 sm:px-6 py-2 sm:py-3 rounded-lg bg-white/10 backdrop-blur-md border border-white/20">
-                <TrendingUp className="w-5 h-5 sm:w-6 sm:h-6 text-cyan-300 flex-shrink-0" />
-                <div className="text-left">
-                  <div className="text-xs sm:text-sm text-blue-200">Précision</div>
-                  <div className="text-base sm:text-lg font-bold">100%</div>
-                </div>
-              </div>
-              
-              <div className="flex items-center gap-2 sm:gap-3 px-4 sm:px-6 py-2 sm:py-3 rounded-lg bg-white/10 backdrop-blur-md border border-white/20">
-                <Award className="w-5 h-5 sm:w-6 sm:h-6 text-cyan-300 flex-shrink-0" />
-                <div className="text-left">
-                  <div className="text-xs sm:text-sm text-blue-200">Compétitions</div>
-                  <div className="text-base sm:text-lg font-bold">{events.length}</div>
+
+                <div className="hidden sm:flex items-center gap-2 px-4 py-2 rounded-full bg-slate-950/60 border border-slate-700/80">
+                  <TrendingUp className="w-4 h-4 text-emerald-200" />
+                  <span className="text-[11px] uppercase tracking-[0.18em] text-slate-100 font-medium">
+                    {events.length} compétitions
+                  </span>
                 </div>
               </div>
             </div>
