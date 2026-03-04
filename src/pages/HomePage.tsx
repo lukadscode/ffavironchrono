@@ -674,53 +674,55 @@ function EventCard({ event, status }: { event: Event; status: "today" | "ongoing
 }
 
 function LiveEventCard({ event }: { event: Event }) {
+  const hasImage = Boolean(event.cover_url || event.image_url);
+
   return (
-    <Link to={`/public/event/${event.id}`} className="min-w-[220px] max-w-[260px] flex-1">
-      <Card className="group relative h-full overflow-hidden border-0 rounded-xl shadow-md bg-slate-950">
-        {/* Image */}
-        <div className="relative h-40">
-          {event.cover_url || event.image_url ? (
-            <>
-              <img
-                src={event.cover_url || event.image_url}
-                alt={event.name}
-                className="w-full h-full object-cover"
-              />
-              <div className="absolute inset-0 bg-gradient-to-b from-slate-950/10 via-slate-950/40 to-slate-950/90" />
-            </>
-          ) : (
-            <div className="absolute inset-0 bg-gradient-to-br from-emerald-500 via-teal-500 to-slate-900" />
-          )}
+    <Link to={`/public/event/${event.id}`} className="min-w-[210px] max-w-[220px] flex-1">
+      <Card className="group relative h-[320px] overflow-hidden border-0 rounded-xl shadow-md bg-white">
+        {/* Image pleine hauteur ou fond blanc */}
+        {hasImage ? (
+          <>
+            <img
+              src={event.cover_url || event.image_url}
+              alt={event.name}
+              className="w-full h-full object-cover"
+            />
+            <div className="absolute inset-0 bg-gradient-to-b from-slate-950/10 via-slate-950/35 to-slate-950/90" />
+          </>
+        ) : (
+          <div className="absolute inset-0 bg-white" />
+        )}
 
-          <div className="absolute top-2 left-2 flex items-center gap-2">
-            <span className="px-2 py-0.5 rounded-full bg-emerald-500 text-slate-950 text-[10px] font-semibold uppercase tracking-[0.18em]">
-              Live
-            </span>
-            {event.race_type && (
-              <span className="px-2 py-0.5 rounded-full bg-slate-950/80 text-emerald-50 text-[10px] font-medium capitalize">
-                {event.race_type}
-              </span>
-            )}
-          </div>
-        </div>
-
-        <CardContent className="px-4 pb-4 pt-3 flex flex-col justify-between h-[140px] bg-emerald-500/95">
-          <div className="space-y-1.5">
-            <p className="text-[11px] font-semibold tracking-[0.18em] uppercase text-emerald-50 leading-snug line-clamp-3">
+        {/* Contenu texte en bas */}
+        <div className="absolute inset-x-0 bottom-0 p-4 space-y-3">
+          <div className="space-y-1">
+            <p
+              className={`text-[11px] font-semibold tracking-[0.18em] uppercase leading-snug line-clamp-3 ${
+                hasImage ? "text-white" : "text-slate-900"
+              }`}
+            >
               {event.name}
+            </p>
+            <p
+              className={`text-[11px] ${
+                hasImage ? "text-slate-100" : "text-slate-600"
+              }`}
+            >
+              {dayjs(event.start_date).format("DD - DD MMMM")}
             </p>
           </div>
 
-          <div className="flex items-center justify-between text-[11px] text-emerald-50/90">
-            <span>
-              {dayjs(event.start_date).format("DD MMM")} -{" "}
-              {dayjs(event.end_date).format("DD MMM")}
-            </span>
-            <span className="inline-flex items-center justify-center px-2.5 h-5 rounded-full bg-slate-950/90 text-[10px] font-medium tracking-wide text-emerald-50">
-              En direct
-            </span>
-          </div>
-        </CardContent>
+          <button
+            type="button"
+            className={`w-full h-7 rounded-full border text-[11px] font-medium uppercase tracking-[0.16em] ${
+              hasImage
+                ? "border-white/80 text-white/90 bg-transparent hover:bg-white/10"
+                : "border-emerald-500 text-emerald-600 hover:bg-emerald-50"
+            }`}
+          >
+            En direct
+          </button>
+        </div>
       </Card>
     </Link>
   );
