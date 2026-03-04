@@ -485,6 +485,12 @@ export default function HomePage() {
                   status = "upcoming";
                 }
 
+                if (status === "past") {
+                  return (
+                    <PastEventCard key={event.id} event={event} />
+                  );
+                }
+
                 return <EventCard key={event.id} event={event} status={status} />;
               })}
             </div>
@@ -558,20 +564,20 @@ function EventCard({ event, status }: { event: Event; status: "today" | "ongoing
   const statusConfig = {
     today: {
       badge: "Aujourd'hui",
-      badgeColor: "bg-orange-100 text-orange-700 border-orange-200",
-      accent: "border-orange-500",
+      badgeColor: "bg-emerald-100 text-emerald-800 border-emerald-200",
+      accent: "border-emerald-500",
       pulse: true,
     },
     ongoing: {
       badge: "En cours",
-      badgeColor: "bg-green-100 text-green-700 border-green-200",
-      accent: "border-green-500",
+      badgeColor: "bg-emerald-100 text-emerald-800 border-emerald-200",
+      accent: "border-emerald-500",
       pulse: true,
     },
     upcoming: {
       badge: "À venir",
-      badgeColor: "bg-blue-100 text-blue-700 border-blue-200",
-      accent: "border-blue-500",
+      badgeColor: "bg-teal-100 text-teal-800 border-teal-200",
+      accent: "border-teal-500",
       pulse: false,
     },
     past: {
@@ -588,8 +594,8 @@ function EventCard({ event, status }: { event: Event; status: "today" | "ongoing
   return (
     <Link to={`/public/event/${event.id}`}>
       <Card
-        className={`group relative overflow-hidden h-full transition-all duration-300 hover:shadow-2xl hover:-translate-y-1 border-2 ${config.accent} ${
-          config.pulse ? "ring-2 ring-green-500/20" : ""
+        className={`group relative overflow-hidden h-full transition-all duration-300 hover:shadow-xl hover:-translate-y-1 border-2 rounded-xl ${config.accent} ${
+          config.pulse ? "ring-2 ring-emerald-400/25" : ""
         }`}
       >
         {/* Badges de statut et type */}
@@ -609,7 +615,7 @@ function EventCard({ event, status }: { event: Event; status: "today" | "ongoing
         </div>
 
         {/* Image/Header avec gradient */}
-        <div className="relative h-24 sm:h-28 bg-gradient-to-br from-blue-600 via-blue-700 to-blue-800 overflow-hidden">
+        <div className="relative h-24 sm:h-28 bg-gradient-to-br from-emerald-500 via-teal-600 to-slate-900 overflow-hidden">
           {event.cover_url || event.image_url ? (
             <>
               <img
@@ -621,7 +627,7 @@ function EventCard({ event, status }: { event: Event; status: "today" | "ongoing
                   (e.target as HTMLImageElement).style.display = "none";
                 }}
               />
-              <div className="absolute inset-0 bg-blue-900/40"></div>
+              <div className="absolute inset-0 bg-slate-950/50"></div>
             </>
           ) : (
             <>
@@ -629,19 +635,19 @@ function EventCard({ event, status }: { event: Event; status: "today" | "ongoing
               
               {/* Icône Timer au centre */}
               <div className="absolute inset-0 flex items-center justify-center">
-                <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-full bg-white/10 backdrop-blur-md border border-white/20 flex items-center justify-center group-hover:scale-110 transition-transform">
-                  <Timer className="w-5 h-5 sm:w-6 sm:h-6 text-white" />
+                <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-full bg-emerald-500/15 backdrop-blur-md border border-emerald-300/80 flex items-center justify-center group-hover:scale-110 transition-transform">
+                  <Timer className="w-5 h-5 sm:w-6 sm:h-6 text-emerald-100" />
                 </div>
               </div>
             </>
           )}
 
           {/* Overlay au hover */}
-          <div className="absolute inset-0 bg-blue-900/0 group-hover:bg-blue-900/20 transition-colors"></div>
+        <div className="absolute inset-0 bg-slate-950/0 group-hover:bg-slate-950/15 transition-colors"></div>
         </div>
 
         <CardHeader className="pb-2 px-3 pt-3">
-          <CardTitle className="text-sm font-bold text-slate-900 line-clamp-2 group-hover:text-blue-600 transition-colors leading-tight">
+          <CardTitle className="text-sm font-bold text-slate-900 line-clamp-2 group-hover:text-emerald-700 transition-colors leading-tight">
             {event.name}
           </CardTitle>
         </CardHeader>
@@ -650,15 +656,15 @@ function EventCard({ event, status }: { event: Event; status: "today" | "ongoing
           {/* Informations */}
           <div className="space-y-1.5">
             <div className="flex items-start gap-1.5">
-              <Calendar className="w-3 h-3 text-blue-600 mt-0.5 flex-shrink-0" />
+              <Calendar className="w-3 h-3 text-emerald-600 mt-0.5 flex-shrink-0" />
               <div className="flex-1 min-w-0">
                 <div className="text-xs font-semibold text-slate-700">Dates</div>
-                <div className="text-xs text-muted-foreground leading-tight">
+                <div className="text-xs text-slate-500 leading-tight">
                   {dayjs(event.start_date).format("DD MMM")} -{" "}
                   {dayjs(event.end_date).format("DD MMM YYYY")}
                 </div>
                 {daysUntil !== null && daysUntil >= 0 && (
-                  <div className="text-xs text-blue-600 font-medium mt-0.5">
+                  <div className="text-xs text-emerald-600 font-medium mt-0.5">
                     Dans {daysUntil === 0 ? "aujourd'hui" : `${daysUntil}j`}
                   </div>
                 )}
@@ -666,7 +672,7 @@ function EventCard({ event, status }: { event: Event; status: "today" | "ongoing
             </div>
 
             <div className="flex items-start gap-1.5">
-              <MapPin className="w-3 h-3 text-blue-600 mt-0.5 flex-shrink-0" />
+              <MapPin className="w-3 h-3 text-emerald-600 mt-0.5 flex-shrink-0" />
               <div className="flex-1 min-w-0">
                 <div className="text-xs font-semibold text-slate-700">Lieu</div>
                 <div className="text-xs text-muted-foreground line-clamp-2 leading-tight">{event.location}</div>
@@ -676,8 +682,8 @@ function EventCard({ event, status }: { event: Event; status: "today" | "ongoing
 
           {/* Bouton d'action */}
           <Button
-            className="w-full mt-2 h-7 text-xs group-hover:bg-blue-600 group-hover:text-white transition-colors"
-            variant={isToday || isOngoing ? "default" : "outline"}
+            className="w-full mt-2 h-7 text-xs bg-slate-950 text-emerald-200 hover:bg-emerald-500 hover:text-slate-950 border border-transparent group-hover:bg-emerald-500 group-hover:text-slate-950 transition-colors"
+            variant="outline"
             size="sm"
           >
             {isToday && "En direct"}
@@ -692,6 +698,34 @@ function EventCard({ event, status }: { event: Event; status: "today" | "ongoing
         <div className="absolute inset-0 pointer-events-none opacity-0 group-hover:opacity-100 transition-opacity">
           <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/10 to-transparent transform -skew-x-12 translate-x-[-200%] group-hover:translate-x-[200%] transition-transform duration-1000"></div>
         </div>
+      </Card>
+    </Link>
+  );
+}
+
+function PastEventCard({ event }: { event: Event }) {
+  return (
+    <Link to={`/public/event/${event.id}`}>
+      <Card className="group h-full border-slate-200/80 bg-white hover:border-emerald-400 hover:shadow-md transition-all rounded-xl">
+        <CardContent className="py-4 px-4 flex flex-col justify-between h-full gap-4">
+          <div className="space-y-1.5">
+            <p className="text-[11px] font-semibold tracking-[0.18em] uppercase text-slate-500 group-hover:text-slate-700">
+              2021 World Rowing
+              <br />
+              Indoor Championships
+            </p>
+            <p className="text-[11px] text-slate-500 line-clamp-2">
+              {event.name}
+            </p>
+          </div>
+
+          <div className="flex items-center justify-between text-[11px] text-slate-500">
+            <span>{dayjs(event.start_date).format("DD - DD MMMM")}</span>
+            <span className="inline-flex h-3 w-3 items-center justify-center rounded-full border border-emerald-400/70 bg-emerald-500/10 group-hover:bg-emerald-400/80 group-hover:border-emerald-400 transition-colors">
+              <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 group-hover:bg-emerald-50" />
+            </span>
+          </div>
+        </CardContent>
       </Card>
     </Link>
   );
