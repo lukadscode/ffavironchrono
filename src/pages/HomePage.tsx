@@ -99,12 +99,14 @@ export default function HomePage() {
       const startDate = dayjs(e.start_date).startOf("day");
       const endDate = dayjs(e.end_date).startOf("day");
       // Événement qui a lieu aujourd'hui
-      return (startDate.isBefore(today) || startDate.isSame(today)) && 
-             (endDate.isAfter(today) || endDate.isSame(today));
+      return (
+        (startDate.isBefore(today) || startDate.isSame(today)) &&
+        (endDate.isAfter(today) || endDate.isSame(today))
+      );
     });
   }, [filteredEvents]);
 
-  // Événements en cours (mais pas aujourd'hui)
+  // Événements en cours (mais pas uniquement aujourd'hui)
   const ongoingEvents = useMemo(() => {
     const today = dayjs();
     const todayStart = dayjs().startOf("day");
@@ -112,13 +114,13 @@ export default function HomePage() {
       if (e.is_finished) return false;
       const startDate = dayjs(e.start_date);
       const endDate = dayjs(e.end_date);
-      const startDateStart = dayjs(e.start_date).startOf("day");
-      const endDateStart = dayjs(e.end_date).startOf("day");
+      const startDateStart = startDate.startOf("day");
+      const endDateStart = endDate.startOf("day");
       // Vérifier si c'est aujourd'hui
-      const isToday = startDateStart.isSame(todayStart) ||
-                     (startDateStart.isBefore(todayStart) || startDateStart.isSame(todayStart)) &&
-                     (endDateStart.isAfter(todayStart) || endDateStart.isSame(todayStart));
-      // En cours mais pas aujourd'hui
+      const isToday =
+        (startDateStart.isBefore(todayStart) || startDateStart.isSame(todayStart)) &&
+        (endDateStart.isAfter(todayStart) || endDateStart.isSame(todayStart));
+      // En cours mais pas aujourd'hui uniquement
       return startDate.isBefore(today) && endDate.isAfter(today) && !isToday;
     });
   }, [filteredEvents]);
@@ -139,11 +141,9 @@ export default function HomePage() {
     return filteredEvents.filter((e) => {
       // Si l'événement est marqué comme terminé, il est dans les archives
       if (e.is_finished) return true;
-      
+
       const endDate = dayjs(e.end_date).startOf("day");
       // Un événement est passé si sa date de fin est avant aujourd'hui
-      // (si l'événement s'est terminé hier ou avant, il apparaît dans les archives)
-      // On utilise isBefore pour exclure les événements qui se terminent aujourd'hui
       return endDate.isBefore(today);
     });
   }, [filteredEvents]);
@@ -220,161 +220,328 @@ export default function HomePage() {
         </div>
       </section>
 
-      <main className="flex-1 container mx-auto px-4 sm:px-6 py-8 sm:py-12 md:py-16">
-        {/* Barre de recherche et filtres */}
-        <Card className="mb-8">
-          <CardHeader>
-            <div className="flex items-center gap-2">
-              <Filter className="w-5 h-5 text-slate-600" />
-              <CardTitle className="text-lg">Rechercher et filtrer</CardTitle>
-            </div>
-          </CardHeader>
-          <CardContent>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              {/* Barre de recherche */}
-              <div className="space-y-2">
-                <Label htmlFor="search">Recherche</Label>
+      <main className="flex-1 container mx-auto px-4 sm:px-6 py-10 md:py-14 space-y-10 md:space-y-14">
+        {/* Barre de recherche inspirée du bandeau de navigation intermédiaire */}
+        <section className="flex flex-col md:flex-row md:items-end gap-4 md:gap-8">
+          <div className="flex-1 space-y-2">
+            <p className="text-xs uppercase tracking-[0.18em] text-emerald-500 font-semibold">
+              Live results
+            </p>
+            <h2 className="text-2xl md:text-3xl font-semibold text-slate-900">
+              Compétitions d&apos;aviron
+            </h2>
+            <p className="text-sm text-slate-500 max-w-xl">
+              Recherchez une compétition, filtrez par type d&apos;événement et
+              accédez aux lives, aux prochaines courses et aux archives.
+            </p>
+          </div>
+          <Card className="w-full md:w-[420px] shadow-sm border-slate-200/70">
+            <CardContent className="pt-4 pb-4 space-y-3">
+              <div className="space-y-1.5">
+                <Label htmlFor="search" className="text-xs font-medium text-slate-600">
+                  Recherche
+                </Label>
                 <div className="relative">
-                  <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-slate-400" />
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
                   <Input
                     id="search"
                     placeholder="Nom de l'événement, lieu..."
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
-                    className="pl-9"
+                    className="pl-9 text-sm"
                   />
                 </div>
               </div>
-
-              {/* Filtre par type */}
-              <div className="space-y-2">
-                <Label htmlFor="type">Type d'événement</Label>
-                <Select value={selectedType} onValueChange={setSelectedType}>
-                  <SelectTrigger id="type">
-                    <SelectValue placeholder="Tous les types" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">Tous les types</SelectItem>
-                    <SelectItem value="indoor">Indoor</SelectItem>
-                    <SelectItem value="aviron">Aviron</SelectItem>
-                    <SelectItem value="mer">Mer</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-
-            {/* Bouton réinitialiser */}
-            {hasActiveFilters && (
-              <div className="mt-4">
+              <div className="flex items-center gap-2">
+                <div className="flex-1 space-y-1.5">
+                  <Label htmlFor="type" className="text-xs font-medium text-slate-600">
+                    Type
+                  </Label>
+                  <Select value={selectedType} onValueChange={setSelectedType}>
+                    <SelectTrigger id="type" className="h-9 text-xs">
+                      <SelectValue placeholder="Tous les types" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">Tous</SelectItem>
+                      <SelectItem value="indoor">Indoor</SelectItem>
+                      <SelectItem value="aviron">Aviron</SelectItem>
+                      <SelectItem value="mer">Mer</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
                 <Button
                   variant="outline"
                   size="sm"
                   onClick={clearFilters}
-                  className="gap-2"
+                  disabled={!hasActiveFilters}
+                  className="mt-4 md:mt-6 h-9 text-xs gap-1"
                 >
-                  <X className="w-4 h-4" />
-                  Réinitialiser les filtres
+                  <X className="w-3 h-3" />
+                  Réinitialiser
                 </Button>
               </div>
+            </CardContent>
+          </Card>
+        </section>
+
+        {/* Bloc LIVE / NEXT UP comme sur le wireframe */}
+        <section className="grid gap-6 lg:grid-cols-[minmax(0,1.3fr)_minmax(0,1fr)]">
+          {/* LIVE (aujourd'hui + en cours) */}
+          <div className="space-y-4">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <span className="h-2 w-2 rounded-full bg-emerald-500" />
+                <p className="text-xs uppercase tracking-[0.18em] text-emerald-600 font-semibold">
+                  Live
+                </p>
+              </div>
+              <span className="text-[11px] text-slate-500">
+                {todayEvents.length + ongoingEvents.length} compétitions
+              </span>
+            </div>
+
+            {loading ? (
+              <div className="flex items-center justify-center py-10">
+                <div className="w-8 h-8 border-4 border-emerald-500 border-t-transparent rounded-full animate-spin" />
+              </div>
+            ) : todayEvents.length + ongoingEvents.length === 0 ? (
+              <Card className="border-dashed border-slate-200">
+                <CardContent className="py-8 flex flex-col items-start gap-2">
+                  <p className="text-sm font-medium text-slate-700">
+                    Aucune compétition en direct pour le moment.
+                  </p>
+                  <p className="text-xs text-slate-500">
+                    Consultez les prochaines compétitions dans la colonne &quot;Next up&quot;.
+                  </p>
+                </CardContent>
+              </Card>
+            ) : (
+              <div className="grid gap-4 md:grid-cols-[minmax(0,1.1fr)_minmax(0,0.9fr)]">
+                {/* Grande carte principale */}
+                <div className="space-y-4">
+                  {(todayEvents[0] || ongoingEvents[0]) && (
+                    <EventCard
+                      event={(todayEvents[0] || ongoingEvents[0]) as Event}
+                      status={todayEvents[0] ? "today" : "ongoing"}
+                    />
+                  )}
+                </div>
+
+                {/* Autres lives compactes */}
+                <div className="space-y-3">
+                  {[...todayEvents.slice(1), ...ongoingEvents.slice(1)]
+                    .slice(0, 3)
+                    .map((event) => (
+                      <Card
+                        key={event.id}
+                        className="group overflow-hidden border-slate-200/80 hover:border-emerald-400 hover:shadow-md transition-all cursor-pointer"
+                      >
+                        <Link to={`/public/event/${event.id}`}>
+                          <CardContent className="py-3 px-3 flex items-center gap-3">
+                            <div className="relative h-14 w-20 rounded-md overflow-hidden bg-slate-900/80">
+                              <div className="absolute inset-0 bg-gradient-to-br from-emerald-400/60 via-teal-500/40 to-slate-900" />
+                              <Timer className="absolute inset-0 m-auto w-5 h-5 text-white/90 opacity-80" />
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <p className="text-xs font-semibold text-slate-900 line-clamp-2 group-hover:text-emerald-700 transition-colors">
+                                {event.name}
+                              </p>
+                              <p className="text-[11px] text-slate-500 mt-1 flex items-center gap-1.5">
+                                <Calendar className="w-3 h-3" />
+                                <span>
+                                  {dayjs(event.start_date).format("DD MMM")} -{" "}
+                                  {dayjs(event.end_date).format("DD MMM")}
+                                </span>
+                              </p>
+                            </div>
+                          </CardContent>
+                        </Link>
+                      </Card>
+                    ))}
+                </div>
+              </div>
             )}
-          </CardContent>
-        </Card>
-
-        {/* Événements en cours aujourd'hui (courses de la journée) */}
-        {todayEvents.length > 0 && (
-          <section className="mb-6">
-            <div className="flex items-center gap-2 mb-3">
-              <div className="w-1 h-5 bg-orange-600 rounded-full"></div>
-              <h2 className="text-base sm:text-lg font-bold text-slate-900">En cours aujourd'hui</h2>
-              <div className="flex-1 h-px bg-gradient-to-r from-orange-600 to-transparent"></div>
-            </div>
-            
-            <div className="grid gap-3 grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
-              {todayEvents.map((event) => (
-                <EventCard key={event.id} event={event} status="today" />
-              ))}
-            </div>
-          </section>
-        )}
-
-        {/* Événements en cours */}
-        {ongoingEvents.length > 0 && (
-          <section className="mb-6">
-            <div className="flex items-center gap-2 mb-3">
-              <div className="w-1 h-5 bg-blue-600 rounded-full"></div>
-              <h2 className="text-base sm:text-lg font-bold text-slate-900">En cours</h2>
-              <div className="flex-1 h-px bg-gradient-to-r from-blue-600 to-transparent"></div>
-            </div>
-            
-            <div className="grid gap-3 grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
-              {ongoingEvents.map((event) => (
-                <EventCard key={event.id} event={event} status="ongoing" />
-              ))}
-            </div>
-          </section>
-        )}
-
-        {/* Événements à venir */}
-        {upcomingEvents.length > 0 && (
-          <section className="mb-6">
-            <div className="flex items-center gap-2 mb-3">
-              <div className="w-1 h-5 bg-green-600 rounded-full"></div>
-              <h2 className="text-base sm:text-lg font-bold text-slate-900">À venir</h2>
-              <div className="flex-1 h-px bg-gradient-to-r from-green-600 to-transparent"></div>
-            </div>
-            
-            <div className="grid gap-3 grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
-              {upcomingEvents.map((event) => (
-                <EventCard key={event.id} event={event} status="upcoming" />
-              ))}
-            </div>
-          </section>
-        )}
-
-        {/* Événements passés */}
-        {pastEvents.length > 0 && (
-          <section className="mb-6">
-            <div className="flex items-center gap-2 mb-3">
-              <div className="w-1 h-5 bg-slate-400 rounded-full"></div>
-              <h2 className="text-base sm:text-lg font-bold text-slate-900">Archives</h2>
-              <div className="flex-1 h-px bg-gradient-to-r from-slate-400 to-transparent"></div>
-            </div>
-            
-            <div className="grid gap-3 grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
-              {pastEvents.map((event) => (
-                <EventCard key={event.id} event={event} status="past" />
-              ))}
-            </div>
-          </section>
-        )}
-
-        {loading ? (
-          <div className="flex items-center justify-center py-20">
-            <div className="flex flex-col items-center gap-4">
-              <div className="w-12 h-12 border-4 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
-              <p className="text-lg text-muted-foreground">Chargement des événements...</p>
-            </div>
           </div>
-        ) : filteredEvents.length === 0 && !loading ? (
-          <div className="text-center py-20">
-            <div className="inline-flex items-center justify-center w-20 h-20 rounded-full bg-slate-100 mb-6">
-              <Calendar className="w-10 h-10 text-slate-400" />
+
+          {/* NEXT UP (à venir) */}
+          <div className="space-y-4">
+            <div className="flex items-center justify-between">
+              <p className="text-xs uppercase tracking-[0.18em] text-slate-600 font-semibold">
+                Next up
+              </p>
+              <span className="text-[11px] text-slate-500">
+                {upcomingEvents.length} compétitions
+              </span>
             </div>
-            <h3 className="text-2xl font-bold text-slate-900 mb-2">
-              {hasActiveFilters ? "Aucun événement trouvé" : "Aucun événement disponible"}
-            </h3>
-            <p className="text-lg text-muted-foreground">
-              {hasActiveFilters
-                ? "Essayez de modifier vos critères de recherche."
-                : "Les prochaines compétitions seront affichées ici."}
+
+            {loading ? (
+              <div className="flex items-center justify-center py-10">
+                <div className="w-8 h-8 border-4 border-slate-400 border-t-transparent rounded-full animate-spin" />
+              </div>
+            ) : upcomingEvents.length === 0 ? (
+              <Card className="border-dashed border-slate-200">
+                <CardContent className="py-8 flex flex-col items-start gap-2">
+                  <p className="text-sm font-medium text-slate-700">
+                    Aucune compétition planifiée.
+                  </p>
+                  <p className="text-xs text-slate-500">
+                    De nouveaux événements apparaîtront ici dès leur publication.
+                  </p>
+                </CardContent>
+              </Card>
+            ) : (
+              <div className="space-y-3">
+                {upcomingEvents.slice(0, 4).map((event, index) => (
+                  <Card
+                    key={event.id}
+                    className={`group overflow-hidden border-slate-200/80 hover:border-emerald-400 hover:shadow-md transition-all cursor-pointer ${
+                      index === 0 ? "bg-emerald-500 text-white" : "bg-white"
+                    }`}
+                  >
+                    <Link to={`/public/event/${event.id}`}>
+                      <CardContent className="py-4 px-4 flex flex-col gap-1.5">
+                        <p
+                          className={`text-xs font-semibold line-clamp-2 ${
+                            index === 0
+                              ? "text-white"
+                              : "text-slate-900 group-hover:text-emerald-700"
+                          }`}
+                        >
+                          {event.name}
+                        </p>
+                        <p
+                          className={`text-[11px] flex items-center gap-1.5 ${
+                            index === 0 ? "text-emerald-50" : "text-slate-500"
+                          }`}
+                        >
+                          <Calendar className="w-3 h-3" />
+                          <span>
+                            {dayjs(event.start_date).format("DD MMM")} -{" "}
+                            {dayjs(event.end_date).format("DD MMM")}
+                          </span>
+                        </p>
+                        <p
+                          className={`text-[11px] flex items-center gap-1.5 ${
+                            index === 0 ? "text-emerald-50" : "text-slate-500"
+                          }`}
+                        >
+                          <MapPin className="w-3 h-3" />
+                          <span className="line-clamp-1">{event.location}</span>
+                        </p>
+                      </CardContent>
+                    </Link>
+                  </Card>
+                ))}
+              </div>
+            )}
+          </div>
+        </section>
+
+        {/* Grille des compétitions (mix live / next / archives) */}
+        <section className="space-y-4">
+          <div className="flex items-center justify-between">
+            <p className="text-xs uppercase tracking-[0.18em] text-slate-600 font-semibold">
+              All events
             </p>
-            {hasActiveFilters && (
-              <Button variant="outline" onClick={clearFilters} className="mt-4">
-                Réinitialiser les filtres
-              </Button>
-            )}
+            <span className="text-[11px] text-slate-500">
+              {filteredEvents.length} compétitions trouvées
+            </span>
           </div>
-        ) : null}
+
+          {loading ? (
+            <div className="flex items-center justify-center py-10">
+              <div className="w-8 h-8 border-4 border-slate-400 border-t-transparent rounded-full animate-spin" />
+            </div>
+          ) : filteredEvents.length === 0 ? (
+            <div className="text-center py-12">
+              <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-slate-100 mb-4">
+                <Calendar className="w-8 h-8 text-slate-400" />
+              </div>
+              <h3 className="text-lg font-semibold text-slate-900 mb-1">
+                Aucune compétition trouvée
+              </h3>
+              <p className="text-sm text-slate-500">
+                Modifiez vos critères de recherche ou revenez plus tard.
+              </p>
+            </div>
+          ) : (
+            <div className="grid gap-4 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-4">
+              {filteredEvents.map((event) => {
+                const today = dayjs().startOf("day");
+                const start = dayjs(event.start_date).startOf("day");
+                const end = dayjs(event.end_date).startOf("day");
+
+                let status: "today" | "ongoing" | "upcoming" | "past" = "upcoming";
+                if (event.is_finished || end.isBefore(today)) {
+                  status = "past";
+                } else if (
+                  (start.isBefore(today) || start.isSame(today)) &&
+                  (end.isAfter(today) || end.isSame(today))
+                ) {
+                  status = "today";
+                } else if (start.isBefore(today) && end.isAfter(today)) {
+                  status = "ongoing";
+                } else if (start.isAfter(today)) {
+                  status = "upcoming";
+                }
+
+                return <EventCard key={event.id} event={event} status={status} />;
+              })}
+            </div>
+          )}
+        </section>
+
+        {/* Bandeau bas comme la grande bannière */}
+        {filteredEvents.length > 0 && (
+          <section className="mt-4">
+            <Card className="relative overflow-hidden border-0 shadow-xl rounded-2xl bg-slate-950">
+              <div className="absolute inset-0">
+                <img
+                  src={filteredEvents[0].cover_url || filteredEvents[0].image_url || DEFAULT_EVENT_IMAGE}
+                  alt={filteredEvents[0].name}
+                  className="w-full h-full object-cover opacity-80"
+                />
+                <div className="absolute inset-0 bg-gradient-to-r from-slate-950 via-slate-900/80 to-transparent" />
+              </div>
+              <CardContent className="relative z-10 px-6 md:px-10 py-10 md:py-14 flex flex-col md:flex-row md:items-end gap-6 md:gap-10">
+                <div className="flex-1 space-y-3 max-w-xl">
+                  <p className="text-xs uppercase tracking-[0.2em] text-emerald-400 font-semibold">
+                    Focus event
+                  </p>
+                  <h3 className="text-2xl md:text-3xl font-semibold text-white leading-tight">
+                    {filteredEvents[0].name}
+                  </h3>
+                  <p className="text-sm md:text-base text-slate-200 flex items-center gap-2">
+                    <Calendar className="w-4 h-4" />
+                    <span>
+                      {dayjs(filteredEvents[0].start_date).format("DD MMM YYYY")} -{" "}
+                      {dayjs(filteredEvents[0].end_date).format("DD MMM YYYY")}
+                    </span>
+                  </p>
+                  <p className="text-xs md:text-sm text-slate-300 flex items-center gap-2">
+                    <MapPin className="w-4 h-4" />
+                    <span className="line-clamp-2">{filteredEvents[0].location}</span>
+                  </p>
+                </div>
+                <div className="flex flex-col items-start md:items-end gap-3">
+                  <Button
+                    asChild
+                    size="lg"
+                    className="bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-semibold px-6 md:px-8"
+                  >
+                    <Link to={`/public/event/${filteredEvents[0].id}`}>
+                      Accéder au live
+                    </Link>
+                  </Button>
+                  <p className="text-[11px] text-slate-300 flex items-center gap-1">
+                    <Users className="w-3 h-3" />
+                    <span>Résultats officiels FFAviron</span>
+                  </p>
+                </div>
+              </CardContent>
+            </Card>
+          </section>
+        )}
       </main>
 
       <PublicFooter />
