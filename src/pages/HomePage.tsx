@@ -693,25 +693,25 @@ function EventCard({ event, status }: { event: Event; status: "today" | "ongoing
 }
 
 function PastEventCard({ event }: { event: Event }) {
+  const categoryLabel =
+    event.race_type && event.race_type.trim().length > 0
+      ? event.race_type
+      : "Archives";
+
   return (
     <Link to={`/public/event/${event.id}`}>
-      <Card className="group h-full border-slate-200/80 bg-white hover:border-emerald-400 hover:shadow-md transition-all rounded-xl">
-        <CardContent className="py-4 px-4 flex flex-col justify-between h-full gap-4">
+      <Card className="group h-full border-0 bg-emerald-500/90 hover:bg-emerald-500 rounded-xl shadow-sm hover:shadow-md transition-all">
+        <CardContent className="py-4 px-4 flex flex-col justify-between h-full gap-6">
           <div className="space-y-1.5">
-            <p className="text-[11px] font-semibold tracking-[0.18em] uppercase text-slate-500 group-hover:text-slate-700">
-              2021 World Rowing
-              <br />
-              Indoor Championships
-            </p>
-            <p className="text-[11px] text-slate-500 line-clamp-2">
+            <p className="text-[11px] font-semibold tracking-[0.18em] uppercase text-emerald-50 leading-snug">
               {event.name}
             </p>
           </div>
 
-          <div className="flex items-center justify-between text-[11px] text-slate-500">
+          <div className="flex items-center justify-between text-[11px] text-emerald-50/90">
             <span>{dayjs(event.start_date).format("DD - DD MMMM")}</span>
-            <span className="inline-flex h-3 w-3 items-center justify-center rounded-full border border-emerald-400/70 bg-emerald-500/10 group-hover:bg-emerald-400/80 group-hover:border-emerald-400 transition-colors">
-              <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 group-hover:bg-emerald-50" />
+            <span className="inline-flex items-center justify-center px-2.5 h-5 rounded-full bg-slate-950/90 text-[10px] font-medium tracking-wide text-emerald-50 group-hover:bg-slate-900">
+              {categoryLabel}
             </span>
           </div>
         </CardContent>
