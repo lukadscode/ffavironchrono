@@ -155,6 +155,14 @@ export default function HomePage() {
 
   const hasActiveFilters = searchQuery || selectedType !== "all";
 
+  // Focus event (priorité : aujourd'hui / en cours, puis à venir, puis premier de la liste)
+  const focusEvent = useMemo(() => {
+    if (todayEvents.length > 0) return todayEvents[0];
+    if (ongoingEvents.length > 0) return ongoingEvents[0];
+    if (upcomingEvents.length > 0) return upcomingEvents[0];
+    return filteredEvents[0];
+  }, [todayEvents, ongoingEvents, upcomingEvents, filteredEvents]);
+
   return (
     <div className="min-h-screen flex flex-col bg-gradient-to-br from-slate-50 via-blue-50/20 to-slate-50">
       <PublicHeader />
@@ -426,7 +434,58 @@ export default function HomePage() {
           </div>
         </section>
 
-        {/* Grille des compétitions (mix live / next / archives) */}
+        {/* Focus event juste au-dessus de "All events" */}
+        {focusEvent && (
+          <section className="space-y-3" id="focus">
+            <p className="text-xs uppercase tracking-[0.18em] text-slate-600 font-semibold">
+              Focus event
+            </p>
+            <Card className="relative overflow-hidden border-0 shadow-xl rounded-2xl bg-slate-950">
+              <div className="absolute inset-0">
+                <img
+                  src={focusEvent.cover_url || focusEvent.image_url || DEFAULT_EVENT_IMAGE}
+                  alt={focusEvent.name}
+                  className="w-full h-full object-cover opacity-80"
+                />
+                <div className="absolute inset-0 bg-gradient-to-r from-slate-950 via-slate-900/80 to-transparent" />
+              </div>
+              <CardContent className="relative z-10 px-6 md:px-10 py-8 md:py-10 flex flex-col md:flex-row md:items-end gap-6 md:gap-10">
+                <div className="flex-1 space-y-3 max-w-xl">
+                  <p className="text-[11px] uppercase tracking-[0.2em] text-emerald-400 font-semibold">
+                    En avant
+                  </p>
+                  <h3 className="text-xl md:text-2xl font-semibold text-white leading-tight">
+                    {focusEvent.name}
+                  </h3>
+                  <p className="text-sm md:text-base text-slate-200 flex items-center gap-2">
+                    <Calendar className="w-4 h-4" />
+                    <span>
+                      {dayjs(focusEvent.start_date).format("DD MMM YYYY")} -{" "}
+                      {dayjs(focusEvent.end_date).format("DD MMM YYYY")}
+                    </span>
+                  </p>
+                  <p className="text-xs md:text-sm text-slate-300 flex items-center gap-2">
+                    <MapPin className="w-4 h-4" />
+                    <span className="line-clamp-2">{focusEvent.location}</span>
+                  </p>
+                </div>
+                <div className="flex flex-col items-start md:items-end gap-3">
+                  <Button
+                    asChild
+                    size="lg"
+                    className="bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-semibold px-6 md:px-8"
+                  >
+                    <Link to={`/public/event/${focusEvent.id}`}>
+                      Accéder au live
+                    </Link>
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+          </section>
+        )}
+
+        {/* Grille des compétitions (tous au même style carte verte) */}
         <section className="space-y-4">
           <div className="flex items-center justify-between">
             <p className="text-xs uppercase tracking-[0.18em] text-slate-600 font-semibold">
@@ -455,88 +514,12 @@ export default function HomePage() {
             </div>
           ) : (
             <div className="grid gap-4 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-4">
-              {filteredEvents.map((event) => {
-                const today = dayjs().startOf("day");
-                const start = dayjs(event.start_date).startOf("day");
-                const end = dayjs(event.end_date).startOf("day");
-
-                let status: "today" | "ongoing" | "upcoming" | "past" = "upcoming";
-                if (event.is_finished || end.isBefore(today)) {
-                  status = "past";
-                } else if (
-                  (start.isBefore(today) || start.isSame(today)) &&
-                  (end.isAfter(today) || end.isSame(today))
-                ) {
-                  status = "today";
-                } else if (start.isBefore(today) && end.isAfter(today)) {
-                  status = "ongoing";
-                } else if (start.isAfter(today)) {
-                  status = "upcoming";
-                }
-
-                if (status === "past") {
-                  return (
-                    <PastEventCard key={event.id} event={event} />
-                  );
-                }
-
-                return <EventCard key={event.id} event={event} status={status} />;
-              })}
+              {filteredEvents.map((event) => (
+                <PastEventCard key={event.id} event={event} />
+              ))}
             </div>
           )}
         </section>
-
-        {/* Bandeau bas comme la grande bannière */}
-        {filteredEvents.length > 0 && (
-          <section className="mt-4">
-            <Card className="relative overflow-hidden border-0 shadow-xl rounded-2xl bg-slate-950">
-              <div className="absolute inset-0">
-                <img
-                  src={filteredEvents[0].cover_url || filteredEvents[0].image_url || DEFAULT_EVENT_IMAGE}
-                  alt={filteredEvents[0].name}
-                  className="w-full h-full object-cover opacity-80"
-                />
-                <div className="absolute inset-0 bg-gradient-to-r from-slate-950 via-slate-900/80 to-transparent" />
-              </div>
-              <CardContent className="relative z-10 px-6 md:px-10 py-10 md:py-14 flex flex-col md:flex-row md:items-end gap-6 md:gap-10">
-                <div className="flex-1 space-y-3 max-w-xl">
-                  <p className="text-xs uppercase tracking-[0.2em] text-emerald-400 font-semibold">
-                    Focus event
-                  </p>
-                  <h3 className="text-2xl md:text-3xl font-semibold text-white leading-tight">
-                    {filteredEvents[0].name}
-                  </h3>
-                  <p className="text-sm md:text-base text-slate-200 flex items-center gap-2">
-                    <Calendar className="w-4 h-4" />
-                    <span>
-                      {dayjs(filteredEvents[0].start_date).format("DD MMM YYYY")} -{" "}
-                      {dayjs(filteredEvents[0].end_date).format("DD MMM YYYY")}
-                    </span>
-                  </p>
-                  <p className="text-xs md:text-sm text-slate-300 flex items-center gap-2">
-                    <MapPin className="w-4 h-4" />
-                    <span className="line-clamp-2">{filteredEvents[0].location}</span>
-                  </p>
-                </div>
-                <div className="flex flex-col items-start md:items-end gap-3">
-                  <Button
-                    asChild
-                    size="lg"
-                    className="bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-semibold px-6 md:px-8"
-                  >
-                    <Link to={`/public/event/${filteredEvents[0].id}`}>
-                      Accéder au live
-                    </Link>
-                  </Button>
-                  <p className="text-[11px] text-slate-300 flex items-center gap-1">
-                    <Users className="w-3 h-3" />
-                    <span>Résultats officiels FFAviron</span>
-                  </p>
-                </div>
-              </CardContent>
-            </Card>
-          </section>
-        )}
       </main>
 
       <PublicFooter />
