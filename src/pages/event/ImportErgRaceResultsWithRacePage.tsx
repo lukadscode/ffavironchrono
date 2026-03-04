@@ -545,36 +545,58 @@ export default function ImportErgRaceResultsWithRacePage() {
   }, [participantSearchQueries, searchParticipants]);
 
   // Charger les équipages d'un participant à la demande
-  const fetchParticipantCrews = useCallback(async (participantId: string) => {
-    if (!participantId || participantCrewsCache[participantId]) {
-      return participantCrewsCache[participantId] || [];
-    }
+  const fetchParticipantCrews = useCallback(
+    async (participantId: string) => {
+      if (!participantId || participantCrewsCache[participantId]) {
+        return participantCrewsCache[participantId] || [];
+      }
 
-    setLoadingParticipantCrews((prev) => ({ ...prev, [participantId]: true }));
-    try {
-      const res = await api.get(`/participants/${participantId}/crews`);
-      const crewsData = res.data?.data || res.data || [];
-      setParticipantCrewsCache((prev) => ({
+      setLoadingParticipantCrews((prev) => ({
         ...prev,
-        [participantId]: crewsData,
+        [participantId]: true,
       }));
-      return crewsData;
-    } catch (err: any) {
-      console.error("Erreur chargement équipages participant:", err);
-      toast({
-        title: "Erreur",
-        description: err.response?.data?.message || "Impossible de charger les équipages du participant",
-        variant: "destructive",
-      });
-      return [];
-    } finally {
-      setLoadingParticipantCrews((prev) => {
-        const updated = { ...prev };
-        delete updated[participantId];
-        return updated;
-      });
-    }
-  }, [participantCrewsCache, toast]);
+      try {
+        const res = await api.get(`/participants/${participantId}/crews`);
+        const crewsData = res.data?.data || res.data || [];
+
+        // 🛟 Sécurité front : ne garder que les équipages de l'événement courant
+        const filteredCrews = crewsData.filter((crew: any) => {
+          if (!eventId) return true;
+          // Plusieurs backends renvoient event_id ou event?.id
+          const crewEventId =
+            crew.event_id ||
+            crew.eventId ||
+            crew.event?.id ||
+            crew.event?.event_id ||
+            null;
+          return !crewEventId || String(crewEventId) === String(eventId);
+        });
+
+        setParticipantCrewsCache((prev) => ({
+          ...prev,
+          [participantId]: filteredCrews,
+        }));
+        return filteredCrews;
+      } catch (err: any) {
+        console.error("Erreur chargement équipages participant:", err);
+        toast({
+          title: "Erreur",
+          description:
+            err.response?.data?.message ||
+            "Impossible de charger les équipages du participant",
+          variant: "destructive",
+        });
+        return [];
+      } finally {
+        setLoadingParticipantCrews((prev) => {
+          const updated = { ...prev };
+          delete updated[participantId];
+          return updated;
+        });
+      }
+    },
+    [participantCrewsCache, toast, eventId]
+  );
 
   // Créer un nouveau participant
   const createNewParticipant = useCallback(async (lineIndex: number) => {
@@ -1345,53 +1367,105 @@ export default function ImportErgRaceResultsWithRacePage() {
                       setSelectedDistanceId(value);
 
                       // Auto-ajuster les équipages sélectionnés en fonction de la nouvelle distance
-                      const target = distances.find((d) => d.id === value);
-                      if (!ergResults || !target) return;
+                      // en s'assurant d'abord que les équipages des participants mappés sont bien chargés.
+                      (async () => {
+                        if (!ergResults) return;
 
-                      const updatedParticipants = ergResults.participants.map((p: any) => {
-                        // Si aucun participant mappé ou ligne exclue, ne rien changer
-                        if (p.__include === false || !p.__mapped_participant_id) {
-                          return p;
-                        }
+                        const target = distances.find((d) => d.id === value);
+                        if (!target) return;
 
-                        const pid = p.__mapped_participant_id as string;
-                        const crews = participantCrewsCache[pid] || [];
-                        if (crews.length === 0) {
-                          return p;
-                        }
-
-                        const compatible = crews.filter((crew: any) =>
-                          isCrewCompatibleWithDistance(crew, target)
+                        // 1. Charger les équipages manquants pour les participants déjà mappés
+                        const mappedIds = Array.from(
+                          new Set(
+                            ergResults.participants
+                              .filter(
+                                (p: any) =>
+                                  p.__include !== false &&
+                                  p.__mapped_participant_id
+                              )
+                              .map(
+                                (p: any) =>
+                                  String(p.__mapped_participant_id) as string
+                              )
+                          )
                         );
 
-                        // Si aucun équipage compatible : on efface l'équipage sélectionné
-                        if (compatible.length === 0) {
-                          if (!p.__mapped_crew_id) return p;
+                        try {
+                          await Promise.all(
+                            mappedIds.map(async (pid) => {
+                              if (!participantCrewsCache[pid]) {
+                                await fetchParticipantCrews(pid);
+                              }
+                            })
+                          );
+                        } catch (e) {
+                          console.error(
+                            "Erreur lors du chargement des équipages pour ré-ajustement distance:",
+                            e
+                          );
+                        }
+
+                        // 2. Recalculer les équipages en fonction de la nouvelle distance
+                        setErgResults((current) => {
+                          if (!current) return current;
+
+                          const updatedParticipants = current.participants.map(
+                            (p: any) => {
+                              if (
+                                p.__include === false ||
+                                !p.__mapped_participant_id
+                              ) {
+                                return p;
+                              }
+
+                              const pid = String(
+                                p.__mapped_participant_id
+                              ) as string;
+                              const crews = participantCrewsCache[pid] || [];
+
+                              // Si on n'a toujours aucun équipage connu pour ce participant,
+                              // on ne touche pas à l'affectation (l'utilisateur pourra ajuster à la main).
+                              if (crews.length === 0) {
+                                return p;
+                              }
+
+                              const compatible = crews.filter((crew: any) =>
+                                isCrewCompatibleWithDistance(crew, target)
+                              );
+
+                              // Aucun équipage compatible : on vide l'affectation d'équipage
+                              if (compatible.length === 0) {
+                                if (!p.__mapped_crew_id) return p;
+                                return {
+                                  ...p,
+                                  __mapped_crew_id: undefined,
+                                };
+                              }
+
+                              // Si l'équipage actuel reste compatible, on le garde
+                              if (
+                                p.__mapped_crew_id &&
+                                compatible.some(
+                                  (c: any) => c.id === p.__mapped_crew_id
+                                )
+                              ) {
+                                return p;
+                              }
+
+                              // Sinon, on choisit automatiquement le premier équipage compatible
+                              return {
+                                ...p,
+                                __mapped_crew_id: compatible[0].id,
+                              };
+                            }
+                          );
+
                           return {
-                            ...p,
-                            __mapped_crew_id: undefined,
+                            ...current,
+                            participants: updatedParticipants,
                           };
-                        }
-
-                        // Si l'équipage actuel est encore compatible, on le garde
-                        if (
-                          p.__mapped_crew_id &&
-                          compatible.some((c: any) => c.id === p.__mapped_crew_id)
-                        ) {
-                          return p;
-                        }
-
-                        // Sinon, on choisit automatiquement le premier équipage compatible
-                        return {
-                          ...p,
-                          __mapped_crew_id: compatible[0].id,
-                        };
-                      });
-
-                      setErgResults({
-                        ...ergResults,
-                        participants: updatedParticipants,
-                      });
+                        });
+                      })();
                     }}
                   >
                     <SelectTrigger id="distance">
