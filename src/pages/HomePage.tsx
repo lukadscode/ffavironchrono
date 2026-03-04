@@ -1,4 +1,4 @@
-import { useEffect, useState, useMemo } from "react";
+import { useEffect, useState, useMemo, useRef } from "react";
 import { Link } from "react-router-dom";
 import { publicApi } from "@/lib/axios";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -8,7 +8,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Label } from "@/components/ui/label";
 import PublicHeader from "@/components/layout/PublicHeader";
 import PublicFooter from "@/components/layout/PublicFooter";
-import { Timer, MapPin, Calendar, TrendingUp, Clock, Award, Users, Search, Filter, X } from "lucide-react";
+import { Timer, MapPin, Calendar, TrendingUp, Clock, Award, Users, Search, Filter, X, ChevronLeft, ChevronRight } from "lucide-react";
 import dayjs from "dayjs";
 
 const DEFAULT_EVENT_IMAGE = "https://www.sports.gouv.fr/sites/default/files/2022-08/photo-2-emmelieke-odul-jpeg-813.jpeg";
@@ -154,6 +154,18 @@ export default function HomePage() {
   };
 
   const hasActiveFilters = searchQuery || selectedType !== "all";
+  const liveEvents = useMemo(
+    () => [...todayEvents, ...ongoingEvents],
+    [todayEvents, ongoingEvents]
+  );
+  const liveScrollRef = useRef<HTMLDivElement | null>(null);
+
+  const scrollLive = (direction: "left" | "right") => {
+    const container = liveScrollRef.current;
+    if (!container) return;
+    const delta = direction === "left" ? -320 : 320;
+    container.scrollBy({ left: delta, behavior: "smooth" });
+  };
 
   // Focus event (priorité : aujourd'hui / en cours, puis à venir, puis premier de la liste)
   const focusEvent = useMemo(() => {
@@ -293,7 +305,7 @@ export default function HomePage() {
                 </p>
               </div>
               <span className="text-[11px] text-slate-500">
-                {todayEvents.length + ongoingEvents.length} compétitions
+                {liveEvents.length} compétitions
               </span>
             </div>
 
@@ -301,7 +313,7 @@ export default function HomePage() {
               <div className="flex items-center justify-center py-10">
                 <div className="w-8 h-8 border-4 border-emerald-500 border-t-transparent rounded-full animate-spin" />
               </div>
-            ) : todayEvents.length + ongoingEvents.length === 0 ? (
+            ) : liveEvents.length === 0 ? (
               <Card className="border-dashed border-slate-200">
                 <CardContent className="py-8 flex flex-col items-start gap-2">
                   <p className="text-sm font-medium text-slate-700">
@@ -313,49 +325,35 @@ export default function HomePage() {
                 </CardContent>
               </Card>
             ) : (
-              <div className="grid gap-4 md:grid-cols-[minmax(0,1.1fr)_minmax(0,0.9fr)]">
-                {/* Grande carte principale */}
-                <div className="space-y-4">
-                  {(todayEvents[0] || ongoingEvents[0]) && (
-                    <EventCard
-                      event={(todayEvents[0] || ongoingEvents[0]) as Event}
-                      status={todayEvents[0] ? "today" : "ongoing"}
-                    />
-                  )}
+              <div className="relative">
+                <div
+                  ref={liveScrollRef}
+                  className="flex gap-4 overflow-x-auto pb-2 scroll-smooth"
+                >
+                  {liveEvents.map((event) => (
+                    <LiveEventCard key={event.id} event={event} />
+                  ))}
                 </div>
-
-                {/* Autres lives compactes */}
-                <div className="space-y-3">
-                  {[...todayEvents.slice(1), ...ongoingEvents.slice(1)]
-                    .slice(0, 3)
-                    .map((event) => (
-                      <Card
-                        key={event.id}
-                        className="group overflow-hidden border-slate-200/80 hover:border-emerald-400 hover:shadow-md transition-all cursor-pointer"
-                      >
-                        <Link to={`/public/event/${event.id}`}>
-                          <CardContent className="py-3 px-3 flex items-center gap-3">
-                            <div className="relative h-14 w-20 rounded-md overflow-hidden bg-slate-900/80">
-                              <div className="absolute inset-0 bg-gradient-to-br from-emerald-400/60 via-teal-500/40 to-slate-900" />
-                              <Timer className="absolute inset-0 m-auto w-5 h-5 text-white/90 opacity-80" />
-                            </div>
-                            <div className="flex-1 min-w-0">
-                              <p className="text-xs font-semibold text-slate-900 line-clamp-2 group-hover:text-emerald-700 transition-colors">
-                                {event.name}
-                              </p>
-                              <p className="text-[11px] text-slate-500 mt-1 flex items-center gap-1.5">
-                                <Calendar className="w-3 h-3" />
-                                <span>
-                                  {dayjs(event.start_date).format("DD MMM")} -{" "}
-                                  {dayjs(event.end_date).format("DD MMM")}
-                                </span>
-                              </p>
-                            </div>
-                          </CardContent>
-                        </Link>
-                      </Card>
-                    ))}
-                </div>
+                {liveEvents.length > 2 && (
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => scrollLive("left")}
+                      className="hidden md:flex absolute -left-4 top-1/2 -translate-y-1/2 h-8 w-8 items-center justify-center rounded-full bg-slate-900/80 text-slate-100 border border-slate-700 hover:border-emerald-400/70 hover:text-emerald-100 shadow-md"
+                      aria-label="Défiler vers la gauche"
+                    >
+                      <ChevronLeft className="w-4 h-4" />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => scrollLive("right")}
+                      className="hidden md:flex absolute -right-4 top-1/2 -translate-y-1/2 h-8 w-8 items-center justify-center rounded-full bg-slate-900/80 text-slate-100 border border-slate-700 hover:border-emerald-400/70 hover:text-emerald-100 shadow-md"
+                      aria-label="Défiler vers la droite"
+                    >
+                      <ChevronRight className="w-4 h-4" />
+                    </button>
+                  </>
+                )}
               </div>
             )}
           </div>
@@ -670,6 +668,59 @@ function EventCard({ event, status }: { event: Event; status: "today" | "ongoing
         <div className="absolute inset-0 pointer-events-none opacity-0 group-hover:opacity-100 transition-opacity">
           <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/10 to-transparent transform -skew-x-12 translate-x-[-200%] group-hover:translate-x-[200%] transition-transform duration-1000"></div>
         </div>
+      </Card>
+    </Link>
+  );
+}
+
+function LiveEventCard({ event }: { event: Event }) {
+  return (
+    <Link to={`/public/event/${event.id}`} className="min-w-[220px] max-w-[260px] flex-1">
+      <Card className="group relative h-full overflow-hidden border-0 rounded-xl shadow-md bg-slate-950">
+        {/* Image */}
+        <div className="relative h-40">
+          {event.cover_url || event.image_url ? (
+            <>
+              <img
+                src={event.cover_url || event.image_url}
+                alt={event.name}
+                className="w-full h-full object-cover"
+              />
+              <div className="absolute inset-0 bg-gradient-to-b from-slate-950/10 via-slate-950/40 to-slate-950/90" />
+            </>
+          ) : (
+            <div className="absolute inset-0 bg-gradient-to-br from-emerald-500 via-teal-500 to-slate-900" />
+          )}
+
+          <div className="absolute top-2 left-2 flex items-center gap-2">
+            <span className="px-2 py-0.5 rounded-full bg-emerald-500 text-slate-950 text-[10px] font-semibold uppercase tracking-[0.18em]">
+              Live
+            </span>
+            {event.race_type && (
+              <span className="px-2 py-0.5 rounded-full bg-slate-950/80 text-emerald-50 text-[10px] font-medium capitalize">
+                {event.race_type}
+              </span>
+            )}
+          </div>
+        </div>
+
+        <CardContent className="px-4 pb-4 pt-3 flex flex-col justify-between h-[140px] bg-emerald-500/95">
+          <div className="space-y-1.5">
+            <p className="text-[11px] font-semibold tracking-[0.18em] uppercase text-emerald-50 leading-snug line-clamp-3">
+              {event.name}
+            </p>
+          </div>
+
+          <div className="flex items-center justify-between text-[11px] text-emerald-50/90">
+            <span>
+              {dayjs(event.start_date).format("DD MMM")} -{" "}
+              {dayjs(event.end_date).format("DD MMM")}
+            </span>
+            <span className="inline-flex items-center justify-center px-2.5 h-5 rounded-full bg-slate-950/90 text-[10px] font-medium tracking-wide text-emerald-50">
+              En direct
+            </span>
+          </div>
+        </CardContent>
       </Card>
     </Link>
   );
