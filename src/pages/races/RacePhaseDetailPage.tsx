@@ -320,12 +320,38 @@ export default function RacePhaseDetailPage() {
 
   const fetchRaces = async () => {
     try {
-      // Nouvel endpoint agrégé : courses de la phase avec race_crews + crews + participants
-      const res = await api.get(`/race-phases/${phaseId}/races-with-crews`);
-      const phaseRaces: Race[] = (res.data.data || []).map((race: any) => ({
-        ...race,
-        crews: race.race_crews || [],
-      }));
+      let phaseRaces: Race[] = [];
+
+      try {
+        // Tentative avec le nouvel endpoint agrégé (courses + crews + participants)
+        const res = await api.get(`/race-phases/${phaseId}/races-with-crews`);
+        phaseRaces = (res.data.data || []).map((race: any) => ({
+          ...race,
+          crews: race.race_crews || [],
+        }));
+      } catch (err: any) {
+        // Si 404 ou endpoint non dispo, on retombe sur l'ancien flux
+        if (err?.response?.status === 404) {
+          const res = await api.get(`/races/event/${eventId}`);
+          const allRaces: Race[] = res.data.data || [];
+          const forPhase = allRaces.filter((r: any) => r.phase_id === phaseId);
+
+          const racesWithCrews: Race[] = await Promise.all(
+            forPhase.map(async (race: any) => {
+              try {
+                const crewRes = await api.get(`/race-crews/${race.id}`);
+                return { ...race, crews: crewRes.data.data || [] } as Race;
+              } catch {
+                return { ...race, crews: [] } as Race;
+              }
+            })
+          );
+
+          phaseRaces = racesWithCrews;
+        } else {
+          throw err;
+        }
+      }
 
       const sorted = phaseRaces.sort((a, b) => (a.race_number || 0) - (b.race_number || 0));
 

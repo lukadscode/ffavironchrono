@@ -80,6 +80,7 @@ export default function ExportPage() {
   const [exportingStartlist, setExportingStartlist] = useState(false);
   const [exportingResults, setExportingResults] = useState<{ byRace?: boolean; byCategory?: boolean; format?: "excel" | "csv" | "pdf" }>({});
   const [exportingParticipants, setExportingParticipants] = useState<"excel" | "csv" | "pdf" | false>(false);
+  const [exportingWeighinPL, setExportingWeighinPL] = useState<"excel" | "pdf" | false>(false);
   const [event, setEvent] = useState<Event | null>(null);
 
   useEffect(() => {
@@ -1963,6 +1964,213 @@ export default function ExportPage() {
     }
   };
 
+  // Export feuille de pesée PL (Poids léger) en Excel ou PDF
+  const exportWeighinPL = async (format: "excel" | "pdf") => {
+    if (!eventId) return;
+
+    setExportingWeighinPL(format);
+    try {
+      // Récupérer toutes les courses avec leurs équipages
+      const racesRes = await api.get(`/races/event/${eventId}`);
+      let races: Race[] = (racesRes.data.data || []).sort((a: Race, b: Race) => {
+        const aTime = a.start_time ? dayjs(a.start_time).valueOf() : 0;
+        const bTime = b.start_time ? dayjs(b.start_time).valueOf() : 0;
+        return aTime - bTime;
+      });
+
+      // Enrichir chaque course avec ses équipages et leurs participants
+      races = await Promise.all(
+        races.map(async (race) => {
+          if (!race.race_crews || race.race_crews.length === 0) {
+            try {
+              const raceCrewsRes = await api.get(`/race-crews/${race.id}`);
+              race.race_crews = raceCrewsRes.data.data || [];
+            } catch (err) {
+              console.error(`Erreur récupération race-crews pour ${race.id}:`, err);
+              race.race_crews = [];
+            }
+          }
+
+          if (race.race_crews && race.race_crews.length > 0) {
+            race.race_crews = await Promise.all(
+              race.race_crews.map(async (rc) => {
+                if (!rc.crew.crew_participants || rc.crew.crew_participants.length === 0) {
+                  try {
+                    const crewDetailRes = await api.get(`/crews/${rc.crew_id}`);
+                    const crewDetail = crewDetailRes.data.data || crewDetailRes.data;
+                    return {
+                      ...rc,
+                      crew: {
+                        ...rc.crew,
+                        crew_participants: crewDetail.crew_participants || crewDetail.CrewParticipants || [],
+                      },
+                    };
+                  } catch (err) {
+                    console.error(`Erreur récupération participants pour équipage ${rc.crew_id}:`, err);
+                    return rc;
+                  }
+                }
+                return rc;
+              })
+            );
+          }
+
+          return race;
+        })
+      );
+
+      // Construire les lignes de la feuille de pesée uniquement pour les équipages PL
+      type WeighinRow = {
+        horaire: string;
+        dossard: string;
+        codeEpreuve: string;
+        club: string;
+        nomPrenomR1: string;
+        signature: string;
+        poids: string;
+      };
+
+      const rows: WeighinRow[] = [];
+
+      races.forEach((race) => {
+        const raceCrews = (race.race_crews || []).sort((a, b) => a.lane - b.lane);
+        raceCrews.forEach((rc) => {
+          const crew = rc.crew;
+          const category = crew?.category;
+          const code = category?.code?.toUpperCase() || "";
+          const label = category?.label?.toLowerCase() || "";
+
+          const isPL =
+            (code && code.includes("PL")) ||
+            (label && label.includes("poids léger"));
+
+          if (!isPL) return;
+
+          const participants = crew.crew_participants || [];
+          const sortedParticipants = [...participants].sort((a, b) => {
+            if (a.is_coxswain && !b.is_coxswain) return 1;
+            if (!a.is_coxswain && b.is_coxswain) return -1;
+            return (a.seat_position || 0) - (b.seat_position || 0);
+          });
+
+          const r1 = sortedParticipants.find((cp) => !cp.is_coxswain) || sortedParticipants[0];
+          const r1Name = r1
+            ? `${r1.participant.last_name?.toUpperCase() || ""} ${r1.participant.first_name || ""}`.trim()
+            : "";
+
+          rows.push({
+            horaire: race.start_time ? dayjs(race.start_time).format("HH:mm:ss") : "",
+            dossard: "", // Le numéro de dossard n'est pas encore exposé par l'API
+            codeEpreuve: category?.code || "",
+            club: crew.club_name || "",
+            nomPrenomR1: r1Name,
+            signature: "",
+            poids: "",
+          });
+        });
+      });
+
+      // Trier par horaire croissant
+      rows.sort((a, b) => a.horaire.localeCompare(b.horaire));
+
+      if (format === "excel") {
+        const sheetRows = rows.map((r) => ({
+          "HORAIRE": r.horaire,
+          "NUMÉRO DE DOSSARD": r.dossard,
+          "CODE ÉPREUVE": r.codeEpreuve,
+          "CLUB": r.club,
+          "NOM PRÉNOM R1": r.nomPrenomR1,
+          "SIGNATURE": r.signature,
+          "POIDS": r.poids,
+        }));
+
+        const ws = XLSX.utils.json_to_sheet(sheetRows);
+        const wb = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(wb, ws, "Feuille de pesée PL");
+
+        const fileName = `Feuille_Pesee_PL_${event?.name?.replace(/\s+/g, "_") || "Event"}_${dayjs().format("YYYY-MM-DD")}.xlsx`;
+        XLSX.writeFile(wb, fileName);
+
+        toast({
+          title: "Export Excel réussi",
+          description: `Feuille de pesée PL générée (${rows.length} lignes)`,
+        });
+      } else {
+        const doc = new jsPDF({
+          orientation: "landscape",
+          unit: "mm",
+          format: "a4",
+        });
+
+        // Titre
+        doc.setFontSize(14);
+        doc.setFont("helvetica", "bold");
+        doc.text("FEUILLE DE PESÉE – POIDS LÉGER", 148, 12, { align: "center" });
+
+        if (event) {
+          doc.setFontSize(10);
+          doc.setFont("helvetica", "normal");
+          doc.text(event.name, 148, 18, { align: "center" });
+        }
+
+        const tableData = rows.map((r) => [
+          r.horaire,
+          r.dossard,
+          r.codeEpreuve,
+          r.club,
+          r.nomPrenomR1,
+          "", // Signature
+          "", // Poids
+        ]);
+
+        autoTable(doc, {
+          startY: 24,
+          head: [["HORAIRE", "N° DOSSARD", "CODE ÉPREUVE", "CLUB", "NOM PRÉNOM R1", "SIGNATURE", "POIDS"]],
+          body: tableData,
+          styles: {
+            fontSize: 8,
+            cellPadding: 2,
+          },
+          headStyles: {
+            fillColor: [66, 139, 202],
+            textColor: 255,
+            fontStyle: "bold",
+          },
+          alternateRowStyles: {
+            fillColor: [245, 245, 245],
+          },
+          columnStyles: {
+            0: { cellWidth: 25 },
+            1: { cellWidth: 25 },
+            2: { cellWidth: 30 },
+            3: { cellWidth: 60 },
+            4: { cellWidth: 60 },
+            5: { cellWidth: 40 },
+            6: { cellWidth: 25 },
+          },
+          margin: { left: 10, right: 10, top: 24 },
+        });
+
+        const fileName = `Feuille_Pesee_PL_${event?.name?.replace(/\s+/g, "_") || "Event"}_${dayjs().format("YYYY-MM-DD")}.pdf`;
+        doc.save(fileName);
+
+        toast({
+          title: "Export PDF réussi",
+          description: `Feuille de pesée PL générée (${rows.length} lignes)`,
+        });
+      }
+    } catch (err: any) {
+      console.error("Erreur export feuille de pesée PL:", err);
+      toast({
+        title: "Erreur",
+        description: err?.response?.data?.message || "Impossible de générer la feuille de pesée PL",
+        variant: "destructive",
+      });
+    } finally {
+      setExportingWeighinPL(false);
+    }
+  };
+
   if (loading) {
     return (
       <div className="flex items-center justify-center py-20">
@@ -2260,6 +2468,58 @@ export default function ExportPage() {
               >
                 <FileText className="w-4 h-4 mr-2" />
                 {exportingParticipants === "pdf" ? (
+                  <>
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    Génération...
+                  </>
+                ) : (
+                  "PDF (.pdf)"
+                )}
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Feuille de pesée Poids Légers */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <FileSpreadsheet className="w-5 h-5" />
+              Feuille de pesée Poids Légers
+            </CardTitle>
+            <CardDescription>
+              Tous les équipages dont le code contient "PL" ou le libellé contient "Poids Léger"
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <p className="text-sm text-muted-foreground">
+              Formats disponibles :
+            </p>
+            <div className="space-y-2">
+              <Button
+                onClick={() => exportWeighinPL("excel")}
+                disabled={exportingWeighinPL === "excel"}
+                variant="outline"
+                className="w-full justify-start"
+              >
+                <FileSpreadsheet className="w-4 h-4 mr-2" />
+                {exportingWeighinPL === "excel" ? (
+                  <>
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    Génération...
+                  </>
+                ) : (
+                  "Excel (.xlsx)"
+                )}
+              </Button>
+              <Button
+                onClick={() => exportWeighinPL("pdf")}
+                disabled={exportingWeighinPL === "pdf"}
+                variant="outline"
+                className="w-full justify-start"
+              >
+                <FileText className="w-4 h-4 mr-2" />
+                {exportingWeighinPL === "pdf" ? (
                   <>
                     <Loader2 className="w-4 h-4 mr-2 animate-spin" />
                     Génération...
