@@ -2242,22 +2242,16 @@ export default function ExportPage() {
 
       const rows: CrewTimerRow[] = [];
 
-      // Numérotation par catégorie
+      // Numérotation des épreuves par catégorie
       const categoryOrder = new Map<string, number>(); // categoryCode -> Event Num
-      const bowCounters = new Map<string, number>(); // categoryCode -> next Bow
+      // Numérotation globale BOW (1,2,3...) dans l'ordre des équipages
+      let globalBowCounter = 0;
 
       const getEventNum = (categoryCode: string): number => {
         if (!categoryOrder.has(categoryCode)) {
           categoryOrder.set(categoryCode, categoryOrder.size + 1);
         }
         return categoryOrder.get(categoryCode)!;
-      };
-
-      const getNextBow = (categoryCode: string): number => {
-        const current = bowCounters.get(categoryCode) || 0;
-        const next = current + 1;
-        bowCounters.set(categoryCode, next);
-        return next;
       };
 
       races.forEach((race) => {
@@ -2271,7 +2265,7 @@ export default function ExportPage() {
           if (!code && !label) return;
 
           const eventNum = getEventNum(code || label);
-          const bow = getNextBow(code || label);
+          const bow = ++globalBowCounter;
 
           const participants = crew.crew_participants || [];
           const sortedParticipants = [...participants].sort((a, b) => {
