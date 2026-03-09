@@ -341,6 +341,7 @@ export default function GenerateRacesPage() {
   const [validationErrors, setValidationErrors] = useState<string[]>([]);
   const [showErrorDialog, setShowErrorDialog] = useState(false);
   const [copiedError, setCopiedError] = useState(false);
+  const [raceMode, setRaceMode] = useState<"line" | "time_trial">("line");
 
   // État pour la génération en mode "parcours contre la montre"
   const [timeTrialStartTime, setTimeTrialStartTime] = useState<string>("");
@@ -1458,12 +1459,12 @@ export default function GenerateRacesPage() {
         <CardHeader>
           <CardTitle>Configuration</CardTitle>
         </CardHeader>
-        <CardContent>
+        <CardContent className="space-y-4">
           <div className="grid md:grid-cols-2 gap-4">
             <div className="space-y-2">
               <Label>Phase *</Label>
-              <Select 
-                value={phaseId} 
+              <Select
+                value={phaseId}
                 onValueChange={(v) => {
                   setPhaseId(v);
                   setSeries([]);
@@ -1472,7 +1473,9 @@ export default function GenerateRacesPage() {
                 disabled={loadingPhases || loadingSchema}
               >
                 <SelectTrigger>
-                  <SelectValue placeholder={loadingPhases ? "Chargement..." : "Choisir une phase"} />
+                  <SelectValue
+                    placeholder={loadingPhases ? "Chargement..." : "Choisir une phase"}
+                  />
                 </SelectTrigger>
                 <SelectContent>
                   {phases.map((p) => (
@@ -1501,9 +1504,37 @@ export default function GenerateRacesPage() {
                 placeholder="Ex: 6"
               />
             </div>
+          </div>
 
+          {/* Sélecteur de mode */}
+          <div className="space-y-2">
+            <Label>Mode de génération</Label>
+            <div className="flex flex-wrap gap-2">
+              <Button
+                type="button"
+                variant={raceMode === "line" ? "default" : "outline"}
+                size="sm"
+                onClick={() => setRaceMode("line")}
+                className="gap-2"
+              >
+                Course en ligne
+              </Button>
+              <Button
+                type="button"
+                variant={raceMode === "time_trial" ? "default" : "outline"}
+                size="sm"
+                onClick={() => setRaceMode("time_trial")}
+                className="gap-2"
+              >
+                Parcours contre la montre
+              </Button>
+            </div>
+          </div>
+
+          {/* Paramètres globaux pour la course en ligne (facultatifs pour time trial) */}
+          <div className="grid md:grid-cols-2 gap-4">
             <div className="space-y-2">
-              <Label>Heure de départ de la première course</Label>
+              <Label>Heure de départ de la première course (course en ligne)</Label>
               <Input
                 type="datetime-local"
                 value={startTime}
@@ -1512,7 +1543,7 @@ export default function GenerateRacesPage() {
             </div>
 
             <div className="space-y-2">
-              <Label>Minutes entre chaque course</Label>
+              <Label>Minutes entre chaque course (course en ligne)</Label>
               <Input
                 type="number"
                 min={0}
@@ -1525,7 +1556,7 @@ export default function GenerateRacesPage() {
       </Card>
 
       {/* Section existante : génération en mode "course en ligne" (séries) */}
-      {phaseId && laneCount > 0 ? (
+      {raceMode === "line" && phaseId && laneCount > 0 ? (
         <DndContext collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
           <div className="grid lg:grid-cols-2 gap-6">
             {/* Colonne gauche : Catégories disponibles */}
@@ -1617,7 +1648,7 @@ export default function GenerateRacesPage() {
             </Card>
           </div>
         </DndContext>
-      ) : (
+      ) : raceMode === "line" ? (
         <Card>
           <CardContent className="py-12 text-center">
             <Info className="w-12 h-12 mx-auto mb-4 text-muted-foreground opacity-50" />
@@ -1632,7 +1663,7 @@ export default function GenerateRacesPage() {
       )}
 
       {/* Boutons d'action pour la course en ligne */}
-      {phaseId && (
+      {raceMode === "line" && phaseId && (
         <Card>
           <CardContent className="pt-6 space-y-3">
             {/* Indicateur de schéma enregistré */}
@@ -1739,7 +1770,7 @@ export default function GenerateRacesPage() {
       )}
 
       {/* Section Parcours contre la montre (time trial) */}
-      {phaseId && (
+      {raceMode === "time_trial" && phaseId && (
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
