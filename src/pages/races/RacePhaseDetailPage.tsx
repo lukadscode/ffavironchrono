@@ -382,7 +382,7 @@ export default function RacePhaseDetailPage() {
         }
       }
 
-      // Calculer les gaps réels entre les courses depuis les start_time
+      // Calculer les gaps réels entre les courses depuis les start_time (en minutes décimales)
       const calculatedGaps: Record<string, number> = {};
       for (let i = 0; i < sorted.length - 1; i++) {
         const current = sorted[i];
@@ -390,9 +390,9 @@ export default function RacePhaseDetailPage() {
         if (current.start_time && next.start_time) {
           const currentTime = new Date(current.start_time).getTime();
           const nextTime = new Date(next.start_time).getTime();
-          const diffMinutes = Math.round((nextTime - currentTime) / (1000 * 60));
-          if (diffMinutes > 0) {
-            calculatedGaps[current.id] = diffMinutes;
+          const diffSeconds = Math.max(0, Math.round((nextTime - currentTime) / 1000));
+          if (diffSeconds > 0) {
+            calculatedGaps[current.id] = diffSeconds / 60;
           }
         }
       }
@@ -413,7 +413,7 @@ export default function RacePhaseDetailPage() {
           });
         } catch {
           // Si erreur de parsing, utiliser les gaps calculés
-          const defaultSlot = savedSlotMinutes ? Number(savedSlotMinutes) : DEFAULT_SLOT_MINUTES;
+          const defaultSlot = savedSlotMinutes ? Number(savedSlotMinutes) : (Object.values(calculatedGaps)[0] ?? DEFAULT_SLOT_MINUTES);
           sorted.forEach((r, idx) => {
             if (idx < sorted.length - 1) {
               finalGaps[r.id] = calculatedGaps[r.id] || defaultSlot;
@@ -422,7 +422,7 @@ export default function RacePhaseDetailPage() {
         }
       } else {
         // Pas de gaps sauvegardés, utiliser les gaps calculés ou l'intervalle par défaut
-        const defaultSlot = savedSlotMinutes ? Number(savedSlotMinutes) : DEFAULT_SLOT_MINUTES;
+        const defaultSlot = savedSlotMinutes ? Number(savedSlotMinutes) : (Object.values(calculatedGaps)[0] ?? DEFAULT_SLOT_MINUTES);
         sorted.forEach((r, idx) => {
           if (idx < sorted.length - 1) {
             finalGaps[r.id] = calculatedGaps[r.id] || defaultSlot;
@@ -430,6 +430,13 @@ export default function RacePhaseDetailPage() {
         });
       }
       setGapsByRaceId(finalGaps);
+
+      // Mettre à jour le slot par défaut et son affichage (mm:ss)
+      const newSlot = savedSlotMinutes
+        ? Number(savedSlotMinutes)
+        : (Object.values(finalGaps)[0] ?? DEFAULT_SLOT_MINUTES);
+      setSlotMinutes(newSlot);
+      setSlotDisplay(formatMinutesToMmSs(newSlot));
 
       setRaces(sorted);
     } catch {
@@ -767,6 +774,11 @@ export default function RacePhaseDetailPage() {
   }, [phases, currentPhase, phaseId]);
 
   const isDraggingRaceCrew = dragPreview?.type === "raceCrew";
+
+  // Garder l'affichage mm:ss sync avec la valeur en minutes
+  useEffect(() => {
+    setSlotDisplay(formatMinutesToMmSs(slotMinutes));
+  }, [slotMinutes]);
 
   // === Actions timeline ===
   const applySchedule = async () => {
@@ -1247,12 +1259,19 @@ export default function RacePhaseDetailPage() {
                           setExpandedRaces(newExpanded);
                         }}
                       >
-                        {shouldShowCrews && lanes.map((lane) => {
-                          const entry = race.crews?.find((c) => c.lane === lane);
-                          return (
-                            <DroppableLane key={`${race.id}-${lane}`} lane={lane} raceId={race.id} entry={entry} />
-                          );
-                        })}
+                        {shouldShowCrews &&
+                          lanes.map((lane) => {
+                            const entry = race.crews?.find((c) => c.lane === lane);
+                            return (
+                              <DroppableLane
+                                key={`${race.id}-${lane}`}
+                                lane={lane}
+                                raceId={race.id}
+                                entry={entry}
+                                isTimeTrial={race.race_type === "time_trial"}
+                              />
+                            );
+                          })}
                       </TimelineRace>
                     </div>
                   );
@@ -1352,7 +1371,7 @@ function DraggableCrew({ crew }: { crew: Crew }) {
   );
 }
 
-function DroppableLane({ lane, raceId, entry }: { lane: number; raceId: string; entry?: RaceCrew; }) {
+function DroppableLane({ lane, raceId, entry, isTimeTrial }: { lane: number; raceId: string; entry?: RaceCrew; isTimeTrial?: boolean; }) {
   const { setNodeRef: setDropRef, isOver } = useDroppable({ id: `${raceId}-${lane}`, data: { raceId, lane } });
 
   const { setNodeRef: setDragRef, attributes, listeners, transform, isDragging } = useDraggable({
@@ -1392,15 +1411,17 @@ function DroppableLane({ lane, raceId, entry }: { lane: number; raceId: string; 
         <span className="font-semibold text-xs">L{lane}</span>
         <div className="flex-1 text-right min-w-0">
           {entry ? (
-            <div className="space-y-0">
-              <div className="font-medium truncate">{entry.crew?.club_name}</div>
+            <div className={clsx("space-y-0", isTimeTrial && "flex items-center justify-end gap-1")}>
+              <div className="font-medium truncate">
+                {entry.crew?.club_name}
+              </div>
               {entry.crew?.temps_pronostique && (
                 <div className="text-[10px] text-blue-600 font-semibold flex items-center gap-0.5">
                   <Clock className="w-2.5 h-2.5" />
                   <span>{formatTempsPronostique(entry.crew.temps_pronostique)}</span>
                 </div>
               )}
-              {participants.length > 0 && (
+              {!isTimeTrial && participants.length > 0 && (
                 <div className="text-[10px] text-gray-600 space-y-0.5">
                   {participants.map((p, idx) => (
                     <div key={idx} className={clsx("truncate", p.isCoxswain && "font-semibold")}>
