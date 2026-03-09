@@ -872,40 +872,64 @@ export default function RacePhaseDetailPage() {
   };
 
   const onChangeGapAfter = async (raceId: string, minutes: number) => {
-    const m = Math.max(1, minutes || 1);
-    setGapsByRaceId(prev => {
-      const updated = { ...prev, [raceId]: m };
-      // Sauvegarder les gaps dans localStorage
-      if (phaseId) {
-        localStorage.setItem(`phase_${phaseId}_gaps`, JSON.stringify(updated));
-      }
-      return updated;
-    });
-    const idx = races.findIndex(r => r.id === raceId);
+    // Laisser l'utilisateur libre sur la valeur (y compris < 1 minute)
+    const m = Math.max(0, minutes || 0);
+
+    // Construire immédiatement la nouvelle map de gaps (évite les soucis de setState async)
+    const newGaps: Record<string, number> = { ...gapsByRaceId, [raceId]: m };
+    setGapsByRaceId(newGaps);
+    if (phaseId) {
+      localStorage.setItem(`phase_${phaseId}_gaps`, JSON.stringify(newGaps));
+    }
+
+    const idx = races.findIndex((r) => r.id === raceId);
     if (idx < 0 || idx >= races.length - 1) return;
+
     const current = races[idx];
     const currentDate = new Date(current.start_time || parseLocalInput(firstStartLocal));
-    const nextStartDate = addMinutes(currentDate, m);
-    const next = recomputeTimesFrom(races, idx + 1, nextStartDate);
-    setRaces(next);
 
-    // Sauvegarder automatiquement en base de données
+    // Recalculer les horaires uniquement pour les courses suivantes
+    const updatedRaces = [...races];
+
+    // 1) Mettre à jour la course suivante avec l'intervalle modifié
+    const firstNextStart = addMinutes(currentDate, m);
+    if (idx + 1 < updatedRaces.length) {
+      updatedRaces[idx + 1] = {
+        ...updatedRaces[idx + 1],
+        start_time: toIsoUtc(firstNextStart),
+      };
+    }
+
+    // 2) Propager aux suivantes en utilisant leurs propres gaps (ou l'intervalle par défaut)
+    for (let i = idx + 2; i < updatedRaces.length; i++) {
+      const prevRace = updatedRaces[i - 1];
+      const prevDate = new Date(prevRace.start_time || firstNextStart);
+      const gapForPrev = newGaps[prevRace.id] ?? slotMinutes;
+      updatedRaces[i] = {
+        ...updatedRaces[i],
+        start_time: toIsoUtc(addMinutes(prevDate, gapForPrev)),
+      };
+    }
+
+    setRaces(updatedRaces);
+
+    // Sauvegarder automatiquement en base de données pour les courses suivantes
     try {
-      const updatedRaces = next.slice(idx + 1); // Toutes les courses après celle dont l'intervalle a changé
+      const racesToPersist = updatedRaces.slice(idx + 1);
       await Promise.all(
-        updatedRaces.map((r, offset) => 
-          api.put(`/races/${r.id}`, { 
+        racesToPersist.map((r) =>
+          api.put(`/races/${r.id}`, {
             start_time: r.start_time,
-            race_number: r.race_number || (idx + offset + 2)
+            race_number: r.race_number,
           })
         )
       );
     } catch (err) {
       console.error("Erreur lors de la sauvegarde des horaires:", err);
-      toast({ 
-        title: "Erreur lors de la sauvegarde", 
+      toast({
+        title: "Erreur lors de la sauvegarde",
         description: "Les horaires ont été mis à jour localement mais n'ont pas pu être sauvegardés.",
-        variant: "destructive" 
+        variant: "destructive",
       });
     }
   };
@@ -1718,20 +1742,7 @@ function TimelineRace({
       </div>
 
       {gapMinutes !== undefined && (
-        <div className="flex items-center gap-1 md:gap-1.5 text-[10px] md:text-xs bg-gray-50 px-1.5 md:px-2 lg:px-3 py-1 md:py-1.5 lg:py-2 rounded-md">
-          <span className="text-gray-600">Intervalle (mm:ss) :</span>
-          <input
-            type="text"
-            value={formatMinutesToMmSs(gapMinutes)}
-            onChange={(e) => {
-              const minutes = parseMmSsToMinutes(e.target.value);
-              if (minutes !== null) {
-                onGapChange(minutes);
-              }
-            }}
-            className="w-16 md:w-18 lg:w-20 px-1 md:px-1.5 lg:px-2 py-0.5 border border-gray-300 rounded bg-white text-center font-mono text-[10px] md:text-xs focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-          />
-        </div>
+        <GapInput gapMinutes={gapMinutes} onGapChange={onGapChange} />
       )}
 
       {children && (
@@ -1739,6 +1750,35 @@ function TimelineRace({
           {children}
         </div>
       )}
+    </div>
+  );
+}
+
+// Input d'intervalle qui ne valide qu'au blur (pour éviter les 00:00 qui bougent à chaque frappe)
+function GapInput({ gapMinutes, onGapChange }: { gapMinutes: number; onGapChange: (minutes: number) => void }) {
+  const [localValue, setLocalValue] = useState<string>(formatMinutesToMmSs(gapMinutes));
+
+  useEffect(() => {
+    setLocalValue(formatMinutesToMmSs(gapMinutes));
+  }, [gapMinutes]);
+
+  const handleBlur = () => {
+    const minutes = parseMmSsToMinutes(localValue);
+    if (minutes !== null) {
+      onGapChange(minutes);
+    }
+  };
+
+  return (
+    <div className="flex items-center gap-1 md:gap-1.5 text-[10px] md:text-xs bg-gray-50 px-1.5 md:px-2 lg:px-3 py-1 md:py-1.5 lg:py-2 rounded-md">
+      <span className="text-gray-600">Intervalle (mm:ss) :</span>
+      <input
+        type="text"
+        value={localValue}
+        onChange={(e) => setLocalValue(e.target.value)}
+        onBlur={handleBlur}
+        className="w-16 md:w-18 lg:w-20 px-1 md:px-1.5 lg:px-2 py-0.5 border border-gray-300 rounded bg-white text-center font-mono text-[10px] md:text-xs focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+      />
     </div>
   );
 }
