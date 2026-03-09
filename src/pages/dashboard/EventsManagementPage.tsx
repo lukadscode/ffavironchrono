@@ -409,7 +409,7 @@ export default function EventsManagementPage() {
                     <Button
                       type="button"
                       variant={event.race_type === "rivière" ? "default" : "outline"}
-                      size="xs"
+                      size="sm"
                       className="h-6 px-2 gap-1 text-[11px]"
                       onClick={() => handleChangeRaceType(event.id, "rivière")}
                     >
@@ -419,7 +419,7 @@ export default function EventsManagementPage() {
                     <Button
                       type="button"
                       variant={event.race_type === "mer" ? "default" : "outline"}
-                      size="xs"
+                      size="sm"
                       className="h-6 px-2 gap-1 text-[11px]"
                       onClick={() => handleChangeRaceType(event.id, "mer")}
                     >
@@ -429,7 +429,7 @@ export default function EventsManagementPage() {
                     <Button
                       type="button"
                       variant={event.race_type === "indoor" ? "default" : "outline"}
-                      size="xs"
+                      size="sm"
                       className="h-6 px-2 gap-1 text-[11px]"
                       onClick={() => handleChangeRaceType(event.id, "indoor")}
                     >
@@ -511,7 +511,7 @@ export default function EventsManagementPage() {
                           <Button
                             type="button"
                             variant={event.race_type === "rivière" ? "default" : "outline"}
-                            size="xs"
+                            size="sm"
                             className="h-6 px-2 gap-1 text-[11px]"
                             onClick={() => handleChangeRaceType(event.id, "rivière")}
                           >
@@ -521,7 +521,7 @@ export default function EventsManagementPage() {
                           <Button
                             type="button"
                             variant={event.race_type === "mer" ? "default" : "outline"}
-                            size="xs"
+                            size="sm"
                             className="h-6 px-2 gap-1 text-[11px]"
                             onClick={() => handleChangeRaceType(event.id, "mer")}
                           >
@@ -531,7 +531,7 @@ export default function EventsManagementPage() {
                           <Button
                             type="button"
                             variant={event.race_type === "indoor" ? "default" : "outline"}
-                            size="xs"
+                            size="sm"
                             className="h-6 px-2 gap-1 text-[11px]"
                             onClick={() => handleChangeRaceType(event.id, "indoor")}
                           >
