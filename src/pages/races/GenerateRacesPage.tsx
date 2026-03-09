@@ -42,6 +42,33 @@ interface Series {
   categories: Record<string, number>; // { categoryCode: numberOfParticipants }
 }
 
+// Helpers pour formater/parsers des intervalles mm:ss (utilisés en mode course en ligne)
+function formatMinutesToMmSs(minutes: number): string {
+  const totalSeconds = Math.max(0, Math.round((minutes || 0) * 60));
+  const mm = Math.floor(totalSeconds / 60);
+  const ss = totalSeconds % 60;
+  return `${String(mm).padStart(2, "0")}:${String(ss).padStart(2, "0")}`;
+}
+
+function parseMmSsToMinutes(value: string): number | null {
+  if (!value) return null;
+  const trimmed = value.trim();
+  const parts = trimmed.split(":");
+  if (parts.length === 1) {
+    const m = Number(parts[0]);
+    if (Number.isNaN(m) || m < 0) return null;
+    return m;
+  }
+  if (parts.length === 2) {
+    const m = Number(parts[0]);
+    const s = Number(parts[1]);
+    if (Number.isNaN(m) || Number.isNaN(s) || m < 0 || s < 0 || s >= 60) return null;
+    const totalSeconds = m * 60 + s;
+    return totalSeconds / 60;
+  }
+  return null;
+}
+
 function SortableCategoryItem({ 
   category, 
   assignedCount 
@@ -348,6 +375,12 @@ export default function GenerateRacesPage() {
   const [timeTrialIntervalMinutes, setTimeTrialIntervalMinutes] = useState<number>(1);
   const [timeTrialIntervalSeconds, setTimeTrialIntervalSeconds] = useState<number>(0);
   const [timeTrialCategoryOrder, setTimeTrialCategoryOrder] = useState<string[]>([]);
+  const [intervalDisplay, setIntervalDisplay] = useState<string>(formatMinutesToMmSs(5));
+
+  // Garder l'affichage mm:ss sync avec la valeur en minutes
+  useEffect(() => {
+    setIntervalDisplay(formatMinutesToMmSs(intervalMinutes));
+  }, [intervalMinutes]);
 
   // Charger les phases
   useEffect(() => {
@@ -1043,11 +1076,13 @@ export default function GenerateRacesPage() {
     try {
       setSavingDraft(true);
 
+      const totalSeconds = Math.max(0, Math.round((intervalMinutes || 5) * 60));
       const payload: any = {
         phase_id: phaseId,
         lane_count: laneCount,
         start_time: startTime ? new Date(startTime).toISOString() : undefined,
-        interval_minutes: intervalMinutes || 5,
+        interval_minutes: totalSeconds / 60,
+        interval_seconds: totalSeconds,
         series: series.map(s => ({
           id: s.id,
           categories: s.categories
@@ -1345,11 +1380,13 @@ export default function GenerateRacesPage() {
       }
 
       // Construire le payload avec la structure des séries
+      const totalSeconds = Math.max(0, Math.round((intervalMinutes || 5) * 60));
       const payload: any = {
         phase_id: phaseId,
         lane_count: laneCount,
         start_time: startTime ? new Date(startTime).toISOString() : undefined,
-        interval_minutes: intervalMinutes || 5,
+        interval_minutes: totalSeconds / 60,
+        interval_seconds: totalSeconds,
         series: series.map(s => ({
           id: s.id,
           categories: s.categories  // { categoryCode: numberOfParticipants }
@@ -1546,12 +1583,22 @@ export default function GenerateRacesPage() {
               </div>
 
               <div className="space-y-2">
-                <Label>Minutes entre chaque course (course en ligne)</Label>
+                <Label>
+                  Intervalle entre chaque course (course en ligne)&nbsp;
+                  <span className="text-xs text-muted-foreground">(mm:ss)</span>
+                </Label>
                 <Input
-                  type="number"
-                  min={0}
-                  value={intervalMinutes}
-                  onChange={(e) => setIntervalMinutes(Number(e.target.value))}
+                  type="text"
+                  value={intervalDisplay}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    setIntervalDisplay(val);
+                    const minutes = parseMmSsToMinutes(val);
+                    if (minutes !== null) {
+                      setIntervalMinutes(minutes);
+                    }
+                  }}
+                  placeholder="05:00"
                 />
               </div>
             </div>

@@ -220,6 +220,33 @@ function validateRaceDistances(race: Race): { isValid: boolean; distance: number
   return { isValid: true, distance: crewsWithDistance[0].distance, error: null };
 }
 
+// Helpers mm:ss pour les intervalles (affichage uniquement)
+function formatMinutesToMmSs(minutes: number): string {
+  const totalSeconds = Math.max(0, Math.round((minutes || 0) * 60));
+  const mm = Math.floor(totalSeconds / 60);
+  const ss = totalSeconds % 60;
+  return `${String(mm).padStart(2, "0")}:${String(ss).padStart(2, "0")}`;
+}
+
+function parseMmSsToMinutes(value: string): number | null {
+  if (!value) return null;
+  const trimmed = value.trim();
+  const parts = trimmed.split(":");
+  if (parts.length === 1) {
+    const m = Number(parts[0]);
+    if (Number.isNaN(m) || m < 0) return null;
+    return m;
+  }
+  if (parts.length === 2) {
+    const m = Number(parts[0]);
+    const s = Number(parts[1]);
+    if (Number.isNaN(m) || Number.isNaN(s) || m < 0 || s < 0 || s >= 60) return null;
+    const totalSeconds = m * 60 + s;
+    return totalSeconds / 60;
+  }
+  return null;
+}
+
 // Fonction pour générer le nom de course avec toutes les catégories
 function generateRaceNameWithCategories(race: Race, originalName: string): string {
   const categoryLabels = new Set<string>();
@@ -264,6 +291,7 @@ export default function RacePhaseDetailPage() {
   const [firstStartLocal, setFirstStartLocal] = useState<string>(""); // "YYYY-MM-DDTHH:mm"
   // minutes entre une course et la suivante: key = race.id
   const [gapsByRaceId, setGapsByRaceId] = useState<Record<string, number>>({});
+  const [slotDisplay, setSlotDisplay] = useState<string>(formatMinutesToMmSs(DEFAULT_SLOT_MINUTES));
 
   const fetchPhases = async () => {
     try {
@@ -1094,7 +1122,7 @@ export default function RacePhaseDetailPage() {
                 </button>
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5 md:gap-2 lg:gap-3">
-                <label className="flex flex-col gap-1 text-xs md:text-sm">
+              <label className="flex flex-col gap-1 text-xs md:text-sm">
                   <span className="text-gray-700 font-medium">Heure de la 1ʳᵉ course</span>
                   <input
                     type="datetime-local"
@@ -1112,24 +1140,42 @@ export default function RacePhaseDetailPage() {
                   />
                 </label>
                 <label className="flex flex-col gap-1 text-xs md:text-sm">
-                  <span className="text-gray-700 font-medium">Intervalle par défaut (minutes)</span>
+                  <span className="text-gray-700 font-medium">
+                    Intervalle par défaut (mm:ss)
+                  </span>
                   <input
-                    type="number"
-                    min={1}
-                    value={slotMinutes}
+                    type="text"
+                    value={slotDisplay}
                     onChange={(e) => {
-                      const m = Math.max(1, Number(e.target.value) || 1);
-                      setSlotMinutes(m);
-                      // Sauvegarder dans localStorage
-                      if (phaseId) {
-                        localStorage.setItem(`phase_${phaseId}_slotMinutes`, String(m));
+                      const val = e.target.value;
+                      setSlotDisplay(val);
+                      const minutes = parseMmSsToMinutes(val);
+                      if (minutes !== null) {
+                        const m = Math.max(1 / 60, minutes || 1 / 60);
+                        setSlotMinutes(m);
+                        // Sauvegarder dans localStorage
+                        if (phaseId) {
+                          localStorage.setItem(
+                            `phase_${phaseId}_slotMinutes`,
+                            String(m)
+                          );
+                        }
+                        const applied: Record<string, number> = {
+                          ...gapsByRaceId,
+                        };
+                        races.forEach((r) => {
+                          applied[r.id] = m;
+                        });
+                        setGapsByRaceId(applied);
+                        const next = recomputeTimesFrom(
+                          races,
+                          0,
+                          parseLocalInput(firstStartLocal)
+                        );
+                        setRaces(next);
                       }
-                      const applied: Record<string, number> = { ...gapsByRaceId };
-                      races.forEach(r => { applied[r.id] = m; });
-                      setGapsByRaceId(applied);
-                      const next = recomputeTimesFrom(races, 0, parseLocalInput(firstStartLocal));
-                      setRaces(next);
                     }}
+                    placeholder="08:00"
                     className="px-2 md:px-3 py-1.5 md:py-2 text-xs md:text-sm border border-gray-300 rounded-md bg-white shadow-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                   />
                 </label>
@@ -1560,15 +1606,18 @@ function TimelineRace({
 
       {gapMinutes !== undefined && (
         <div className="flex items-center gap-1 md:gap-1.5 text-[10px] md:text-xs bg-gray-50 px-1.5 md:px-2 lg:px-3 py-1 md:py-1.5 lg:py-2 rounded-md">
-          <span className="text-gray-600">Intervalle :</span>
+          <span className="text-gray-600">Intervalle (mm:ss) :</span>
           <input
-            type="number"
-            min={1}
-            value={gapMinutes}
-            onChange={(e) => onGapChange(Math.max(1, Number(e.target.value) || 1))}
-            className="w-12 md:w-14 lg:w-16 px-1 md:px-1.5 lg:px-2 py-0.5 border border-gray-300 rounded bg-white text-center font-mono text-[10px] md:text-xs focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+            type="text"
+            value={formatMinutesToMmSs(gapMinutes)}
+            onChange={(e) => {
+              const minutes = parseMmSsToMinutes(e.target.value);
+              if (minutes !== null) {
+                onGapChange(minutes);
+              }
+            }}
+            className="w-16 md:w-18 lg:w-20 px-1 md:px-1.5 lg:px-2 py-0.5 border border-gray-300 rounded bg-white text-center font-mono text-[10px] md:text-xs focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
           />
-          <span className="text-gray-600">min</span>
         </div>
       )}
 
