@@ -81,6 +81,7 @@ export default function ExportPage() {
   const [exportingResults, setExportingResults] = useState<{ byRace?: boolean; byCategory?: boolean; format?: "excel" | "csv" | "pdf" }>({});
   const [exportingParticipants, setExportingParticipants] = useState<"excel" | "csv" | "pdf" | false>(false);
   const [exportingWeighinPL, setExportingWeighinPL] = useState<"excel" | "pdf" | false>(false);
+  const [exportingCrewtimer, setExportingCrewtimer] = useState(false);
   const [event, setEvent] = useState<Event | null>(null);
 
   useEffect(() => {
@@ -2171,6 +2172,165 @@ export default function ExportPage() {
     }
   };
 
+  // Export CrewTimer (Excel uniquement)
+  const exportCrewtimerExcel = async () => {
+    if (!eventId) return;
+
+    setExportingCrewtimer(true);
+    try {
+      // Récupérer toutes les courses avec leurs équipages
+      const racesRes = await api.get(`/races/event/${eventId}`);
+      let races: Race[] = (racesRes.data.data || []).sort((a: Race, b: Race) => {
+        const aTime = a.start_time ? dayjs(a.start_time).valueOf() : 0;
+        const bTime = b.start_time ? dayjs(b.start_time).valueOf() : 0;
+        return aTime - bTime;
+      });
+
+      // Enrichir chaque course avec ses équipages et leurs participants
+      races = await Promise.all(
+        races.map(async (race) => {
+          if (!race.race_crews || race.race_crews.length === 0) {
+            try {
+              const raceCrewsRes = await api.get(`/race-crews/${race.id}`);
+              race.race_crews = raceCrewsRes.data.data || [];
+            } catch (err) {
+              console.error(`Erreur récupération race-crews pour ${race.id}:`, err);
+              race.race_crews = [];
+            }
+          }
+
+          if (race.race_crews && race.race_crews.length > 0) {
+            race.race_crews = await Promise.all(
+              race.race_crews.map(async (rc) => {
+                if (!rc.crew.crew_participants || rc.crew.crew_participants.length === 0) {
+                  try {
+                    const crewDetailRes = await api.get(`/crews/${rc.crew_id}`);
+                    const crewDetail = crewDetailRes.data.data || crewDetailRes.data;
+                    return {
+                      ...rc,
+                      crew: {
+                        ...rc.crew,
+                        crew_participants: crewDetail.crew_participants || crewDetail.CrewParticipants || [],
+                      },
+                    };
+                  } catch (err) {
+                    console.error(`Erreur récupération participants pour équipage ${rc.crew_id}:`, err);
+                    return rc;
+                  }
+                }
+                return rc;
+              })
+            );
+          }
+
+          return race;
+        })
+      );
+
+      type CrewTimerRow = {
+        "Event Time": string;
+        "Event Num": number;
+        "Event Name": string;
+        "Bow": number;
+        "Event Abbrev": string;
+        "Crew": string;
+        "Crew Abbrev": string;
+        "Stroke": string;
+        "clubNumber": string;
+        "ClubName": string;
+      };
+
+      const rows: CrewTimerRow[] = [];
+
+      // Numérotation par catégorie
+      const categoryOrder = new Map<string, number>(); // categoryCode -> Event Num
+      const bowCounters = new Map<string, number>(); // categoryCode -> next Bow
+
+      const getEventNum = (categoryCode: string): number => {
+        if (!categoryOrder.has(categoryCode)) {
+          categoryOrder.set(categoryCode, categoryOrder.size + 1);
+        }
+        return categoryOrder.get(categoryCode)!;
+      };
+
+      const getNextBow = (categoryCode: string): number => {
+        const current = bowCounters.get(categoryCode) || 0;
+        const next = current + 1;
+        bowCounters.set(categoryCode, next);
+        return next;
+      };
+
+      races.forEach((race) => {
+        const raceCrews = (race.race_crews || []).sort((a, b) => a.lane - b.lane);
+        raceCrews.forEach((rc) => {
+          const crew = rc.crew;
+          const category = crew?.category;
+          const code = category?.code || "";
+          const label = category?.label || "";
+
+          if (!code && !label) return;
+
+          const eventNum = getEventNum(code || label);
+          const bow = getNextBow(code || label);
+
+          const participants = crew.crew_participants || [];
+          const sortedParticipants = [...participants].sort((a, b) => {
+            if (a.is_coxswain && !b.is_coxswain) return 1;
+            if (!a.is_coxswain && b.is_coxswain) return -1;
+            return (a.seat_position || 0) - (b.seat_position || 0);
+          });
+
+          const strokeNames = sortedParticipants
+            .map((cp) => {
+              const p = cp.participant;
+              const last = p.last_name?.toUpperCase() || "";
+              const first = p.first_name || "";
+              return `${last} ${first}`.trim();
+            })
+            .filter(Boolean)
+            .join(" / ");
+
+          const clubName = crew.club_name || "";
+          const clubCode = crew.club_code || "";
+
+          rows.push({
+            "Event Time": race.start_time ? dayjs(race.start_time).format("HH:mm:ss") : "",
+            "Event Num": eventNum,
+            "Event Name": label || code,
+            "Bow": bow,
+            "Event Abbrev": code,
+            "Crew": clubName || `Équipage ${clubCode || "-"}`,
+            "Crew Abbrev": clubCode,
+            "Stroke": strokeNames,
+            "clubNumber": clubCode,
+            "ClubName": clubName,
+          });
+        });
+      });
+
+      const ws = XLSX.utils.json_to_sheet(rows);
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, "CrewTimer");
+
+      const fileName = `CrewTimer_${event?.name?.replace(/\s+/g, "_") || "Event"}_${dayjs().format("YYYY-MM-DD")}.xlsx`;
+      XLSX.writeFile(wb, fileName);
+
+      toast({
+        title: "Export CrewTimer réussi",
+        description: `${rows.length} lignes générées`,
+      });
+    } catch (err: any) {
+      console.error("Erreur export CrewTimer:", err);
+      toast({
+        title: "Erreur",
+        description: err?.response?.data?.message || "Impossible de générer l'export CrewTimer",
+        variant: "destructive",
+      });
+    } finally {
+      setExportingCrewtimer(false);
+    }
+  };
+
   if (loading) {
     return (
       <div className="flex items-center justify-center py-20">
@@ -2529,6 +2689,40 @@ export default function ExportPage() {
                 )}
               </Button>
             </div>
+          </CardContent>
+        </Card>
+
+        {/* Export CrewTimer (Excel) */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <FileSpreadsheet className="w-5 h-5" />
+              Export CrewTimer
+            </CardTitle>
+            <CardDescription>
+              Fichier Excel formaté pour CrewTimer avec un enregistrement par équipage de course
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <p className="text-sm text-muted-foreground">
+              Colonnes : Event Time, Event Num, Event Name, Bow, Event Abbrev, Crew, Crew Abbrev, Stroke, clubNumber, ClubName
+            </p>
+            <Button
+              onClick={exportCrewtimerExcel}
+              disabled={exportingCrewtimer}
+              variant="outline"
+              className="w-full justify-start"
+            >
+              <FileSpreadsheet className="w-4 h-4 mr-2" />
+              {exportingCrewtimer ? (
+                <>
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  Génération...
+                </>
+              ) : (
+                "Excel (.xlsx)"
+              )}
+            </Button>
           </CardContent>
         </Card>
       </div>
