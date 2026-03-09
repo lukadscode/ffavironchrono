@@ -91,7 +91,9 @@ interface Race {
     duration_seconds: number | null;
     label: string; // Label formaté depuis l'API (ex: "8x250m", "2000m", "2min", "2min 30s")
   };
+  // `crews` est utilisé dans le front, `race_crews` vient du nouvel endpoint agrégé
   crews: RaceCrew[];
+  race_crews?: RaceCrew[];
 }
 
 type DragPreview =
@@ -307,38 +309,10 @@ export default function RacePhaseDetailPage() {
 
   const fetchCrews = async () => {
     try {
-      const res = await api.get(`/crews/event/${eventId}`);
+      // Nouvel endpoint agrégé : tous les équipages avec participants pour l'événement
+      const res = await api.get(`/crews/event/${eventId}/with-participants`);
       const crewsData = res.data.data || [];
-      
-      // Enrichir chaque crew avec ses participants
-      const crewsWithParticipants = await Promise.all(
-        crewsData.map(async (crew: any) => {
-          try {
-            // Récupérer les détails complets du crew (incluant les participants)
-            const crewDetailRes = await api.get(`/crews/${crew.id}`);
-            const crewDetail = crewDetailRes.data.data || crewDetailRes.data;
-            
-            // Retourner le crew avec ses participants
-            return {
-              ...crew,
-              crew_participants: crewDetail.crew_participants || 
-                               crewDetail.CrewParticipants || 
-                               crewDetail.crewParticipants || 
-                               crew.crew_participants || 
-                               [],
-            };
-          } catch (err) {
-            console.error(`Erreur chargement participants pour crew ${crew.id}:`, err);
-            // Si erreur, retourner le crew sans participants
-            return {
-              ...crew,
-              crew_participants: crew.crew_participants || [],
-            };
-          }
-        })
-      );
-      
-      setCrews(crewsWithParticipants);
+      setCrews(crewsData);
     } catch {
       toast({ title: "Erreur chargement équipages", variant: "destructive" });
     }
@@ -346,17 +320,14 @@ export default function RacePhaseDetailPage() {
 
   const fetchRaces = async () => {
     try {
-      const res = await api.get(`/races/event/${eventId}`);
-      const phaseRaces: Race[] = res.data.data.filter((r: any) => r.phase_id === phaseId);
+      // Nouvel endpoint agrégé : courses de la phase avec race_crews + crews + participants
+      const res = await api.get(`/race-phases/${phaseId}/races-with-crews`);
+      const phaseRaces: Race[] = (res.data.data || []).map((race: any) => ({
+        ...race,
+        crews: race.race_crews || [],
+      }));
 
-      const racesWithCrews: Race[] = await Promise.all(
-        phaseRaces.map(async (race: any) => {
-          const crewRes = await api.get(`/race-crews/${race.id}`);
-          return { ...race, crews: crewRes.data.data } as Race;
-        })
-      );
-
-      const sorted = racesWithCrews.sort((a,b) => (a.race_number||0) - (b.race_number||0));
+      const sorted = phaseRaces.sort((a, b) => (a.race_number || 0) - (b.race_number || 0));
 
       // Restaurer l'intervalle par défaut depuis localStorage ou utiliser la valeur par défaut
       const savedSlotMinutes = localStorage.getItem(`phase_${phaseId}_slotMinutes`);
