@@ -12,7 +12,7 @@ import { DndContext, closestCenter, useDroppable } from "@dnd-kit/core";
 import type { DragEndEvent } from "@dnd-kit/core";
 import { SortableContext, verticalListSortingStrategy, useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { Loader2, GripVertical, Tag, Info, ArrowLeft, Save, Sparkles, Plus, X, Minus, FileText, Download, Copy, CheckCircle2 } from "lucide-react";
+import { Loader2, GripVertical, Tag, Info, ArrowLeft, Save, Sparkles, Plus, X, Minus, FileText, Download, Copy, CheckCircle2, ArrowUp, ArrowDown } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 
@@ -341,6 +341,12 @@ export default function GenerateRacesPage() {
   const [validationErrors, setValidationErrors] = useState<string[]>([]);
   const [showErrorDialog, setShowErrorDialog] = useState(false);
   const [copiedError, setCopiedError] = useState(false);
+
+  // État pour la génération en mode "parcours contre la montre"
+  const [timeTrialStartTime, setTimeTrialStartTime] = useState<string>("");
+  const [timeTrialIntervalMinutes, setTimeTrialIntervalMinutes] = useState<number>(1);
+  const [timeTrialIntervalSeconds, setTimeTrialIntervalSeconds] = useState<number>(0);
+  const [timeTrialCategoryOrder, setTimeTrialCategoryOrder] = useState<string[]>([]);
 
   // Charger les phases
   useEffect(() => {
@@ -814,6 +820,29 @@ export default function GenerateRacesPage() {
     setSeries(prev => prev.filter(s => s.id !== seriesId));
   };
 
+  // ----- Gestion de l'ordre des catégories pour le mode time trial -----
+  const handleAddTimeTrialCategory = (categoryId: string) => {
+    setTimeTrialCategoryOrder((prev) =>
+      prev.includes(categoryId) ? prev : [...prev, categoryId]
+    );
+  };
+
+  const handleRemoveTimeTrialCategory = (categoryId: string) => {
+    setTimeTrialCategoryOrder((prev) => prev.filter((id) => id !== categoryId));
+  };
+
+  const moveTimeTrialCategory = (index: number, direction: "up" | "down") => {
+    setTimeTrialCategoryOrder((prev) => {
+      const newOrder = [...prev];
+      const newIndex = direction === "up" ? index - 1 : index + 1;
+      if (newIndex < 0 || newIndex >= newOrder.length) return prev;
+      const tmp = newOrder[index];
+      newOrder[index] = newOrder[newIndex];
+      newOrder[newIndex] = tmp;
+      return newOrder;
+    });
+  };
+
   const handleDragEnd = (event: DragEndEvent) => {
     const { active, over } = event;
     if (!over || active.id === over.id) return;
@@ -1117,6 +1146,99 @@ export default function GenerateRacesPage() {
     }
   };
 
+  // Génération des courses en mode "parcours contre la montre"
+  const handleGenerateTimeTrial = async () => {
+    if (!phaseId || !eventId) {
+      toast({
+        title: "Erreur",
+        description: "Veuillez sélectionner une phase pour générer les départs contre la montre",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    if (!timeTrialStartTime) {
+      toast({
+        title: "Erreur",
+        description: "Veuillez définir l'heure de départ de la première course",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    const intervalSeconds =
+      timeTrialIntervalMinutes * 60 + timeTrialIntervalSeconds;
+
+    if (!intervalSeconds || intervalSeconds <= 0) {
+      toast({
+        title: "Erreur",
+        description:
+          "L'intervalle entre les départs doit être strictement supérieur à 0 seconde",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    if (timeTrialCategoryOrder.length === 0) {
+      toast({
+        title: "Erreur",
+        description:
+          "Veuillez sélectionner au moins une catégorie pour le parcours contre la montre",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    try {
+      setLoading(true);
+
+      const startDate = new Date(timeTrialStartTime);
+      const payload = {
+        phase_id: phaseId,
+        start_time: startDate.toISOString(),
+        interval_seconds: intervalSeconds,
+        categories: timeTrialCategoryOrder.map((id, index) => ({
+          category_id: id,
+          order: index + 1,
+        })),
+      };
+
+      const response = await api.post("/races/generate-time-trial", payload);
+      const data = response.data?.data;
+
+      toast({
+        title: "Succès",
+        description:
+          data?.message ||
+          `${data?.races_created ?? "Des"} courses contre la montre générées avec succès`,
+      });
+
+      navigate(`/event/${eventId}/racePhases/${phaseId}`);
+    } catch (err: any) {
+      const errorData = err?.response?.data;
+      if (errorData?.errors && Array.isArray(errorData.errors)) {
+        setValidationErrors(errorData.errors);
+        setShowErrorDialog(true);
+        toast({
+          title: "Erreurs de validation",
+          description: `${errorData.errors.length} erreur(s) détectée(s). Voir les détails ci-dessous.`,
+          variant: "destructive",
+        });
+      } else {
+        toast({
+          title: "Erreur lors de la génération time trial",
+          description:
+            errorData?.message ||
+            err?.message ||
+            "Une erreur est survenue lors de la génération des courses contre la montre",
+          variant: "destructive",
+        });
+      }
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const handleGenerate = async () => {
     if (!phaseId || !laneCount || !eventId) {
       toast({
@@ -1402,22 +1524,20 @@ export default function GenerateRacesPage() {
         </CardContent>
       </Card>
 
-      {/* Deux colonnes : Catégories disponibles et Séries */}
+      {/* Section existante : génération en mode "course en ligne" (séries) */}
       {phaseId && laneCount > 0 ? (
-        <DndContext
-          collisionDetection={closestCenter}
-          onDragEnd={handleDragEnd}
-        >
+        <DndContext collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
           <div className="grid lg:grid-cols-2 gap-6">
             {/* Colonne gauche : Catégories disponibles */}
             <Card>
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
                   <Tag className="w-5 h-5" />
-                  Catégories disponibles
+                  Catégories disponibles (course en ligne)
                 </CardTitle>
                 <p className="text-sm text-muted-foreground mt-1">
-                  Glissez-déposez les catégories vers la colonne de droite pour créer des séries
+                  Glissez-déposez les catégories vers la colonne de droite pour créer des séries en course en
+                  ligne classique.
                 </p>
               </CardHeader>
               <CardContent>
@@ -1434,8 +1554,8 @@ export default function GenerateRacesPage() {
                       >
                         <div className="space-y-3">
                           {allCategoriesWithStatus.map((category) => (
-                            <SortableCategoryItem 
-                              key={category.id} 
+                            <SortableCategoryItem
+                              key={category.id}
                               category={category}
                               assignedCount={category.assignedCount}
                             />
@@ -1456,9 +1576,9 @@ export default function GenerateRacesPage() {
             {/* Colonne droite : Séries */}
             <Card>
               <CardHeader>
-                <CardTitle>Séries</CardTitle>
+                <CardTitle>Séries (course en ligne)</CardTitle>
                 <p className="text-sm text-muted-foreground mt-1">
-                  Organisez les catégories en séries. Glissez-déposez une catégorie sur une série pour l'ajouter.
+                  Organisez les catégories en séries pour des départs avec plusieurs bateaux côte à côte.
                 </p>
               </CardHeader>
               <CardContent>
@@ -1466,10 +1586,7 @@ export default function GenerateRacesPage() {
                   <div className="space-y-4">
                     {series.length > 0 ? (
                       series.map((s, idx) => (
-                        <DroppableSeries
-                          key={s.id}
-                          seriesId={s.id}
-                        >
+                        <DroppableSeries key={s.id} seriesId={s.id}>
                           <SeriesCard
                             series={s}
                             seriesIndex={idx}
@@ -1504,7 +1621,9 @@ export default function GenerateRacesPage() {
         <Card>
           <CardContent className="py-12 text-center">
             <Info className="w-12 h-12 mx-auto mb-4 text-muted-foreground opacity-50" />
-            <p className="font-medium text-muted-foreground">Sélectionnez une phase et le nombre de lignes d'eau</p>
+            <p className="font-medium text-muted-foreground">
+              Sélectionnez une phase et le nombre de lignes d'eau pour configurer les séries de course en ligne.
+            </p>
             <p className="text-sm text-muted-foreground mt-1">
               Configurez les paramètres ci-dessus pour commencer
             </p>
@@ -1512,7 +1631,7 @@ export default function GenerateRacesPage() {
         </Card>
       )}
 
-      {/* Boutons d'action */}
+      {/* Boutons d'action pour la course en ligne */}
       {phaseId && (
         <Card>
           <CardContent className="pt-6 space-y-3">
@@ -1614,6 +1733,203 @@ export default function GenerateRacesPage() {
                   )}
                 </Button>
               )}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Section Parcours contre la montre (time trial) */}
+      {phaseId && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Sparkles className="w-5 h-5" />
+              Parcours contre la montre (time trial)
+            </CardTitle>
+            <p className="text-sm text-muted-foreground mt-1">
+              Configurez des départs individuels avec une heure de départ initiale et un intervalle fixe
+              entre chaque équipage.
+            </p>
+          </CardHeader>
+          <CardContent className="space-y-6">
+            {/* Configuration time trial */}
+            <div className="grid md:grid-cols-3 gap-4">
+              <div className="space-y-2">
+                <Label>Heure de départ de la première course *</Label>
+                <Input
+                  type="datetime-local"
+                  value={timeTrialStartTime}
+                  onChange={(e) => setTimeTrialStartTime(e.target.value)}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Minutes entre chaque départ *</Label>
+                <Input
+                  type="number"
+                  min={0}
+                  value={timeTrialIntervalMinutes}
+                  onChange={(e) =>
+                    setTimeTrialIntervalMinutes(
+                      Number.isNaN(Number(e.target.value))
+                        ? 0
+                        : Number(e.target.value)
+                    )
+                  }
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Secondes entre chaque départ *</Label>
+                <Input
+                  type="number"
+                  min={0}
+                  max={59}
+                  value={timeTrialIntervalSeconds}
+                  onChange={(e) => {
+                    const v = Number(e.target.value);
+                    if (Number.isNaN(v)) {
+                      setTimeTrialIntervalSeconds(0);
+                    } else {
+                      setTimeTrialIntervalSeconds(Math.min(Math.max(v, 0), 59));
+                    }
+                  }}
+                />
+              </div>
+            </div>
+
+            {/* Ordre des catégories pour le time trial */}
+            <div className="grid lg:grid-cols-2 gap-6">
+              {/* Liste des catégories disponibles */}
+              <div>
+                <h3 className="text-sm font-semibold mb-2">Catégories disponibles</h3>
+                <ScrollArea className="h-64 border rounded-lg p-3 bg-slate-50">
+                  <div className="space-y-2">
+                    {categories.length === 0 ? (
+                      <p className="text-sm text-muted-foreground text-center py-6">
+                        Aucune catégorie disponible pour cet événement.
+                      </p>
+                    ) : (
+                      categories.map((cat) => {
+                        const alreadySelected = timeTrialCategoryOrder.includes(cat.id);
+                        return (
+                          <div
+                            key={cat.id}
+                            className="flex items-center justify-between p-2 rounded border bg-white"
+                          >
+                            <div className="flex flex-col">
+                              <span className="text-sm font-medium">
+                                {cat.code} – {cat.label}
+                              </span>
+                              <span className="text-xs text-muted-foreground">
+                                {cat.crew_count} équipage
+                                {cat.crew_count > 1 ? "s" : ""}
+                              </span>
+                            </div>
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant={alreadySelected ? "outline" : "default"}
+                              disabled={alreadySelected}
+                              onClick={() => handleAddTimeTrialCategory(cat.id)}
+                            >
+                              Ajouter
+                            </Button>
+                          </div>
+                        );
+                      })
+                    )}
+                  </div>
+                </ScrollArea>
+              </div>
+
+              {/* Ordre de passage */}
+              <div>
+                <h3 className="text-sm font-semibold mb-2">
+                  Ordre de passage des catégories (time trial)
+                </h3>
+                <ScrollArea className="h-64 border rounded-lg p-3 bg-slate-50">
+                  {timeTrialCategoryOrder.length === 0 ? (
+                    <p className="text-sm text-muted-foreground text-center py-6">
+                      Aucune catégorie sélectionnée. Ajoutez des catégories depuis la liste de gauche.
+                    </p>
+                  ) : (
+                    <div className="space-y-2">
+                      {timeTrialCategoryOrder.map((id, index) => {
+                        const cat = categories.find((c) => c.id === id);
+                        if (!cat) return null;
+                        return (
+                          <div
+                            key={id}
+                            className="flex items-center justify-between p-2 rounded border bg-white"
+                          >
+                            <div className="flex flex-col">
+                              <span className="text-sm font-medium">
+                                {index + 1}. {cat.code} – {cat.label}
+                              </span>
+                              <span className="text-xs text-muted-foreground">
+                                {cat.crew_count} équipage
+                                {cat.crew_count > 1 ? "s" : ""}
+                              </span>
+                            </div>
+                            <div className="flex items-center gap-1">
+                              <Button
+                                type="button"
+                                variant="outline"
+                                size="icon"
+                                className="h-7 w-7"
+                                onClick={() => moveTimeTrialCategory(index, "up")}
+                                disabled={index === 0}
+                              >
+                                <ArrowUp className="w-3 h-3" />
+                              </Button>
+                              <Button
+                                type="button"
+                                variant="outline"
+                                size="icon"
+                                className="h-7 w-7"
+                                onClick={() => moveTimeTrialCategory(index, "down")}
+                                disabled={index === timeTrialCategoryOrder.length - 1}
+                              >
+                                <ArrowDown className="w-3 h-3" />
+                              </Button>
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="icon"
+                                className="h-7 w-7 text-red-500 hover:text-red-700"
+                                onClick={() => handleRemoveTimeTrialCategory(id)}
+                              >
+                                <X className="w-3 h-3" />
+                              </Button>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </ScrollArea>
+              </div>
+            </div>
+
+            {/* Bouton d'action */}
+            <div className="flex justify-end">
+              <Button
+                type="button"
+                size="lg"
+                onClick={handleGenerateTimeTrial}
+                disabled={loading || !phaseId}
+              >
+                {loading ? (
+                  <>
+                    <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                    Génération...
+                  </>
+                ) : (
+                  <>
+                    <Sparkles className="h-4 w-4 mr-2" />
+                    Générer les départs (time trial)
+                  </>
+                )}
+              </Button>
             </div>
           </CardContent>
         </Card>
