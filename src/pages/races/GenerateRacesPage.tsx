@@ -1487,23 +1487,25 @@ export default function GenerateRacesPage() {
               </Select>
             </div>
 
-            <div className="space-y-2">
-              <Label>Nombre de lignes d'eau/rameur *</Label>
-              <Input
-                type="number"
-                min={1}
-                value={laneCount}
-                onChange={(e) => {
-                  const value = parseInt(e.target.value, 10);
-                  if (!isNaN(value) && value > 0) {
-                    setLaneCount(value);
-                  } else if (e.target.value === "") {
-                    setLaneCount(1);
-                  }
-                }}
-                placeholder="Ex: 6"
-              />
-            </div>
+            {raceMode === "line" && (
+              <div className="space-y-2">
+                <Label>Nombre de lignes d'eau/rameur *</Label>
+                <Input
+                  type="number"
+                  min={1}
+                  value={laneCount}
+                  onChange={(e) => {
+                    const value = parseInt(e.target.value, 10);
+                    if (!isNaN(value) && value > 0) {
+                      setLaneCount(value);
+                    } else if (e.target.value === "") {
+                      setLaneCount(1);
+                    }
+                  }}
+                  placeholder="Ex: 6"
+                />
+              </div>
+            )}
           </div>
 
           {/* Sélecteur de mode */}
@@ -1531,27 +1533,29 @@ export default function GenerateRacesPage() {
             </div>
           </div>
 
-          {/* Paramètres globaux pour la course en ligne (facultatifs pour time trial) */}
-          <div className="grid md:grid-cols-2 gap-4">
-            <div className="space-y-2">
-              <Label>Heure de départ de la première course (course en ligne)</Label>
-              <Input
-                type="datetime-local"
-                value={startTime}
-                onChange={(e) => setStartTime(e.target.value)}
-              />
-            </div>
+          {/* Paramètres globaux pour la course en ligne */}
+          {raceMode === "line" && (
+            <div className="grid md:grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label>Heure de départ de la première course (course en ligne)</Label>
+                <Input
+                  type="datetime-local"
+                  value={startTime}
+                  onChange={(e) => setStartTime(e.target.value)}
+                />
+              </div>
 
-            <div className="space-y-2">
-              <Label>Minutes entre chaque course (course en ligne)</Label>
-              <Input
-                type="number"
-                min={0}
-                value={intervalMinutes}
-                onChange={(e) => setIntervalMinutes(Number(e.target.value))}
-              />
+              <div className="space-y-2">
+                <Label>Minutes entre chaque course (course en ligne)</Label>
+                <Input
+                  type="number"
+                  min={0}
+                  value={intervalMinutes}
+                  onChange={(e) => setIntervalMinutes(Number(e.target.value))}
+                />
+              </div>
             </div>
-          </div>
+          )}
         </CardContent>
       </Card>
 
@@ -1841,9 +1845,9 @@ export default function GenerateRacesPage() {
                         Aucune catégorie disponible pour cet événement.
                       </p>
                     ) : (
-                      categories.map((cat) => {
-                        const alreadySelected = timeTrialCategoryOrder.includes(cat.id);
-                        return (
+                      categories
+                        .filter((cat) => !timeTrialCategoryOrder.includes(cat.id))
+                        .map((cat) => (
                           <div
                             key={cat.id}
                             className="flex items-center justify-between p-2 rounded border bg-white"
@@ -1860,15 +1864,13 @@ export default function GenerateRacesPage() {
                             <Button
                               type="button"
                               size="sm"
-                              variant={alreadySelected ? "outline" : "default"}
-                              disabled={alreadySelected}
+                              variant="default"
                               onClick={() => handleAddTimeTrialCategory(cat.id)}
                             >
                               Ajouter
                             </Button>
                           </div>
-                        );
-                      })
+                        ))
                     )}
                   </div>
                 </ScrollArea>
