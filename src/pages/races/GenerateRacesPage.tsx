@@ -1556,7 +1556,7 @@ export default function GenerateRacesPage() {
       </Card>
 
       {/* Section existante : génération en mode "course en ligne" (séries) */}
-      {raceMode === "line" && phaseId && laneCount > 0 ? (
+      {raceMode === "line" && phaseId && laneCount > 0 && (
         <DndContext collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
           <div className="grid lg:grid-cols-2 gap-6">
             {/* Colonne gauche : Catégories disponibles */}
@@ -1648,7 +1648,9 @@ export default function GenerateRacesPage() {
             </Card>
           </div>
         </DndContext>
-      ) : raceMode === "line" ? (
+      )}
+
+      {raceMode === "line" && (!phaseId || laneCount <= 0) && (
         <Card>
           <CardContent className="py-12 text-center">
             <Info className="w-12 h-12 mx-auto mb-4 text-muted-foreground opacity-50" />
