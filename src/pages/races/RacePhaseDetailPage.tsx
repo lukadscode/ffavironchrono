@@ -3,6 +3,7 @@ import { useEffect, useMemo, useState } from "react";
 import api from "@/lib/axios";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
@@ -294,6 +295,7 @@ export default function RacePhaseDetailPage() {
   // minutes entre une course et la suivante: key = race.id
   const [gapsByRaceId, setGapsByRaceId] = useState<Record<string, number>>({});
   const [slotDisplay, setSlotDisplay] = useState<string>(formatMinutesToMmSs(DEFAULT_SLOT_MINUTES));
+  const [scheduleDialogOpen, setScheduleDialogOpen] = useState(false);
 
   const fetchPhases = async () => {
     try {
@@ -554,25 +556,77 @@ export default function RacePhaseDetailPage() {
     return next;
   };
 
-  const persistRaceOrder = async (ordered: Race[]) => {
+  const persistRaceOrder = async (
+    ordered: Race[],
+    overrides?: {
+      firstStartLocal?: string;
+      slotMinutes?: number;
+      gapsByRaceId?: Record<string, number>;
+    }
+  ) => {
     const withNames = renumberSeriesNames(ordered);
-    // anchor = firstStartLocal
-    const withTimes = recomputeTimesFrom(withNames, 0, parseLocalInput(firstStartLocal));
+
+    // Valeurs effectives (permet d'utiliser des valeurs temporaires depuis la modale)
+    const effectiveFirstStart = overrides?.firstStartLocal ?? firstStartLocal;
+    const effectiveSlotMinutes = overrides?.slotMinutes ?? slotMinutes;
+    const effectiveGaps = overrides?.gapsByRaceId ?? gapsByRaceId;
+
+    // Calculer la date d'ancrage de la première course
+    let anchorDate: Date;
+    if (effectiveFirstStart) {
+      anchorDate = parseLocalInput(effectiveFirstStart);
+    } else if (withNames[0]?.start_time) {
+      anchorDate = new Date(withNames[0].start_time);
+    } else {
+      const d = new Date();
+      d.setHours(9, 0, 0, 0);
+      anchorDate = d;
+    }
+
+    // Recalcul local des horaires avec les valeurs effectives
+    const recomputeWithOverrides = (list: Race[]): Race[] => {
+      const next = [...list];
+      for (let i = 0; i < next.length; i++) {
+        if (i === 0) {
+          next[i] = { ...next[i], start_time: toIsoUtc(anchorDate) };
+        } else {
+          const prev = next[i - 1];
+          const gap = effectiveGaps[prev.id] ?? effectiveSlotMinutes;
+          const prevDate = new Date(prev.start_time!);
+          next[i] = { ...next[i], start_time: toIsoUtc(addMinutes(prevDate, gap)) };
+        }
+      }
+      return next;
+    };
+
+    const withTimes = recomputeWithOverrides(withNames);
 
     try {
       await Promise.all(
-        withTimes.map((r, idx) => api.put(`/races/${r.id}`, { race_number: idx + 1, start_time: r.start_time, name: r.name }))
+        withTimes.map((r, idx) =>
+          api.put(`/races/${r.id}`, {
+            race_number: idx + 1,
+            start_time: r.start_time,
+            name: r.name,
+          })
+        )
       );
-      
+
       // Sauvegarder l'intervalle par défaut et les gaps dans localStorage
       if (phaseId) {
-        localStorage.setItem(`phase_${phaseId}_slotMinutes`, String(slotMinutes));
-        localStorage.setItem(`phase_${phaseId}_firstStartLocal`, firstStartLocal);
-        localStorage.setItem(`phase_${phaseId}_gaps`, JSON.stringify(gapsByRaceId));
+        localStorage.setItem(`phase_${phaseId}_slotMinutes`, String(effectiveSlotMinutes));
+        localStorage.setItem(`phase_${phaseId}_firstStartLocal`, toLocalInputValue(anchorDate));
+        localStorage.setItem(`phase_${phaseId}_gaps`, JSON.stringify(effectiveGaps));
       }
-      
-      toast({ title: "Ordre, horaires et noms mis à jour." });
+
+      // Mettre à jour l'état local avec les valeurs effectives et les nouveaux horaires
+      setSlotMinutes(effectiveSlotMinutes);
+      setFirstStartLocal(toLocalInputValue(anchorDate));
+      setGapsByRaceId(effectiveGaps);
+      setSlotDisplay(formatMinutesToMmSs(effectiveSlotMinutes));
       setRaces(withTimes);
+
+      toast({ title: "Ordre, horaires et noms mis à jour." });
     } catch {
       toast({ title: "Erreur lors de la mise à jour de l'ordre", variant: "destructive" });
       fetchRaces();
@@ -779,7 +833,7 @@ export default function RacePhaseDetailPage() {
 
   // === Actions timeline ===
   const applySchedule = async () => {
-    const ordered = [...races].sort((a,b) => (a.race_number||0) - (b.race_number||0));
+    const ordered = [...races].sort((a, b) => (a.race_number || 0) - (b.race_number || 0));
     await persistRaceOrder(ordered);
   };
 
@@ -1121,73 +1175,30 @@ export default function RacePhaseDetailPage() {
 
             <div className="space-y-1.5 md:space-y-2 p-2 md:p-2.5 lg:p-3 bg-gradient-to-r from-blue-50 to-indigo-50 rounded-lg border border-blue-200">
               <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-1.5 md:gap-2">
-                <h3 className="text-xs md:text-sm font-semibold text-gray-700">Configuration des horaires</h3>
-                <button
-                  className="px-2 md:px-3 py-1 md:py-1.5 text-xs md:text-sm font-medium rounded-md bg-blue-600 text-white hover:bg-blue-700 transition-colors shadow-sm"
-                  onClick={applySchedule}
-                  title="Enregistrer les horaires recalculés"
-                >
-                  Enregistrer les horaires
-                </button>
-              </div>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5 md:gap-2 lg:gap-3">
-              <label className="flex flex-col gap-1 text-xs md:text-sm">
-                  <span className="text-gray-700 font-medium">Heure de la 1ʳᵉ course</span>
-                  <input
-                    type="datetime-local"
-                    value={firstStartLocal}
-                    onChange={(e) => {
-                      setFirstStartLocal(e.target.value);
-                      // Sauvegarder dans localStorage
-                      if (phaseId) {
-                        localStorage.setItem(`phase_${phaseId}_firstStartLocal`, e.target.value);
-                      }
-                      const next = recomputeTimesFrom(races, 0, parseLocalInput(e.target.value));
-                      setRaces(next);
-                    }}
-                    className="px-2 md:px-3 py-1.5 md:py-2 text-xs md:text-sm border border-gray-300 rounded-md bg-white shadow-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                  />
-                </label>
-                <label className="flex flex-col gap-1 text-xs md:text-sm">
-                  <span className="text-gray-700 font-medium">
-                    Intervalle par défaut (mm:ss)
-                  </span>
-                  <input
-                    type="text"
-                    value={slotDisplay}
-                    onChange={(e) => {
-                      const val = e.target.value;
-                      setSlotDisplay(val);
-                      const minutes = parseMmSsToMinutes(val);
-                      if (minutes !== null) {
-                        const m = Math.max(1 / 60, minutes || 1 / 60);
-                        setSlotMinutes(m);
-                        // Sauvegarder dans localStorage
-                        if (phaseId) {
-                          localStorage.setItem(
-                            `phase_${phaseId}_slotMinutes`,
-                            String(m)
-                          );
-                        }
-                        const applied: Record<string, number> = {
-                          ...gapsByRaceId,
-                        };
-                        races.forEach((r) => {
-                          applied[r.id] = m;
-                        });
-                        setGapsByRaceId(applied);
-                        const next = recomputeTimesFrom(
-                          races,
-                          0,
-                          parseLocalInput(firstStartLocal)
-                        );
-                        setRaces(next);
-                      }
-                    }}
-                    placeholder="08:00"
-                    className="px-2 md:px-3 py-1.5 md:py-2 text-xs md:text-sm border border-gray-300 rounded-md bg-white shadow-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                  />
-                </label>
+                <div>
+                  <h3 className="text-xs md:text-sm font-semibold text-gray-700">Configuration des horaires</h3>
+                  <p className="text-[11px] md:text-xs text-gray-600">
+                    1ʳᵉ course : {firstStartLocal ? firstStartLocal.replace("T", " ") : "non définie"} ·
+                    {" "}Intervalle par défaut : {formatMinutesToMmSs(slotMinutes)}
+                  </p>
+                </div>
+                <div className="flex flex-wrap gap-1.5 md:gap-2">
+                  <button
+                    className="px-2 md:px-3 py-1 md:py-1.5 text-xs md:text-sm font-medium rounded-md border border-blue-500 text-blue-700 bg-white hover:bg-blue-50 transition-colors shadow-sm"
+                    onClick={() => setScheduleDialogOpen(true)}
+                    type="button"
+                  >
+                    Configurer
+                  </button>
+                  <button
+                    className="px-2 md:px-3 py-1 md:py-1.5 text-xs md:text-sm font-medium rounded-md bg-blue-600 text-white hover:bg-blue-700 transition-colors shadow-sm"
+                    onClick={applySchedule}
+                    type="button"
+                    title="Enregistrer les horaires recalculés"
+                  >
+                    Enregistrer les horaires
+                  </button>
+                </div>
               </div>
             </div>
           </CardHeader>
@@ -1285,6 +1296,90 @@ export default function RacePhaseDetailPage() {
           <div className="px-3 py-1 text-xs bg-gray-800 text-white rounded shadow-lg">{dragPreview.label}</div>
         ) : null}
       </DragOverlay>
+
+      {/* Modale de configuration des horaires */}
+      <Dialog open={scheduleDialogOpen} onOpenChange={setScheduleDialogOpen}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Configuration des horaires</DialogTitle>
+            <DialogDescription>
+              Définissez l&apos;heure de départ de la première course et l&apos;intervalle par défaut entre les
+              courses. Les horaires seront recalculés et enregistrés pour toutes les séries de cette phase.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4 mt-2">
+            <label className="flex flex-col gap-1 text-sm">
+              <span className="text-gray-700 font-medium">Heure de la 1ʳᵉ course</span>
+              <input
+                type="datetime-local"
+                value={firstStartLocal}
+                onChange={(e) => setFirstStartLocal(e.target.value)}
+                className="px-3 py-2 text-sm border border-gray-300 rounded-md bg-white shadow-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              />
+            </label>
+
+            <label className="flex flex-col gap-1 text-sm">
+              <span className="text-gray-700 font-medium">Intervalle par défaut (mm:ss)</span>
+              <input
+                type="text"
+                value={slotDisplay}
+                onChange={(e) => setSlotDisplay(e.target.value)}
+                placeholder="08:00"
+                className="px-3 py-2 text-sm border border-gray-300 rounded-md bg-white shadow-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              />
+              <span className="text-[11px] text-gray-500">
+                Au clic sur &laquo; Enregistrer les horaires &raquo;, cet intervalle sera appliqué à toutes les
+                courses qui n&apos;ont pas d&apos;intervalle spécifique.
+              </span>
+            </label>
+          </div>
+
+          <DialogFooter className="mt-4 flex justify-end gap-2">
+            <button
+              type="button"
+              className="px-3 py-1.5 text-sm rounded-md border border-gray-300 text-gray-700 hover:bg-gray-50"
+              onClick={() => setScheduleDialogOpen(false)}
+            >
+              Annuler
+            </button>
+            <button
+              type="button"
+              className="px-3 py-1.5 text-sm rounded-md bg-blue-600 text-white hover:bg-blue-700 shadow-sm"
+              onClick={async () => {
+                const minutes = parseMmSsToMinutes(slotDisplay);
+                if (minutes === null) {
+                  toast({
+                    title: "Intervalle invalide",
+                    description: "Veuillez saisir un intervalle au format mm:ss (ex: 08:00).",
+                    variant: "destructive",
+                  });
+                  return;
+                }
+                const m = Math.max(1 / 60, minutes || 1 / 60);
+
+                const newGaps: Record<string, number> = { ...gapsByRaceId };
+                races.forEach((r, idx) => {
+                  if (idx < races.length - 1) {
+                    newGaps[r.id] = m;
+                  }
+                });
+
+                const ordered = [...races].sort((a, b) => (a.race_number || 0) - (b.race_number || 0));
+                await persistRaceOrder(ordered, {
+                  firstStartLocal: firstStartLocal,
+                  slotMinutes: m,
+                  gapsByRaceId: newGaps,
+                });
+
+                setScheduleDialogOpen(false);
+              }}
+            >
+              Enregistrer les horaires
+            </button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </DndContext>
   );
 }
