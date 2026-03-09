@@ -24,7 +24,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { useToast } from "@/hooks/use-toast";
-import { Calendar, MapPin, Plus, Loader2, Trash2, AlertTriangle, Search, LayoutGrid, List } from "lucide-react";
+import { Calendar, MapPin, Plus, Loader2, Trash2, AlertTriangle, Search, LayoutGrid, List, Waves, Anchor, Dumbbell } from "lucide-react";
 import dayjs from "dayjs";
 
 type Event = {
@@ -214,6 +214,26 @@ export default function EventsManagementPage() {
     }
   };
 
+  const handleChangeRaceType = async (eventId: string, newType: string) => {
+    try {
+      await api.patch(`/events/${eventId}`, { race_type: newType });
+      setEvents((prev) =>
+        prev.map((e) => (e.id === eventId ? { ...e, race_type: newType } : e))
+      );
+      toast({
+        title: "Type mis à jour",
+        description: `Le type de l'événement a été changé en "${newType}".`,
+      });
+    } catch (err) {
+      console.error("Erreur mise à jour du type d'événement", err);
+      toast({
+        title: "Erreur",
+        description: "Impossible de mettre à jour le type d'événement.",
+        variant: "destructive",
+      });
+    }
+  };
+
   if (!isAdmin) {
     return null;
   }
@@ -365,22 +385,58 @@ export default function EventsManagementPage() {
                   </div>
                 </div>
 
-                <div className="flex items-center gap-2 pt-2">
-                  {event.race_type && (
-                    <span className="px-2 py-1 rounded-full text-xs font-medium bg-purple-100 text-purple-700 border border-purple-200 capitalize">
-                      {event.race_type}
-                    </span>
-                  )}
-                  {event.is_finished && (
-                    <span className="px-2 py-1 rounded-full text-xs font-medium bg-slate-100 text-slate-700 border border-slate-200">
-                      Terminé
-                    </span>
-                  )}
-                  {event.is_visible === false && (
-                    <span className="px-2 py-1 rounded-full text-xs font-medium bg-orange-100 text-orange-700 border border-orange-200">
-                      Masqué
-                    </span>
-                  )}
+                <div className="flex flex-col gap-2 pt-2">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    {event.race_type && (
+                      <span className="px-2 py-1 rounded-full text-xs font-medium bg-purple-100 text-purple-700 border border-purple-200 capitalize">
+                        {event.race_type}
+                      </span>
+                    )}
+                    {event.is_finished && (
+                      <span className="px-2 py-1 rounded-full text-xs font-medium bg-slate-100 text-slate-700 border border-slate-200">
+                        Terminé
+                      </span>
+                    )}
+                    {event.is_visible === false && (
+                      <span className="px-2 py-1 rounded-full text-xs font-medium bg-orange-100 text-orange-700 border border-orange-200">
+                        Masqué
+                      </span>
+                    )}
+                  </div>
+
+                  <div className="flex items-center gap-2 flex-wrap text-[11px] text-muted-foreground">
+                    <span className="font-semibold">Mode :</span>
+                    <Button
+                      type="button"
+                      variant={event.race_type === "rivière" ? "default" : "outline"}
+                      size="xs"
+                      className="h-6 px-2 gap-1 text-[11px]"
+                      onClick={() => handleChangeRaceType(event.id, "rivière")}
+                    >
+                      <Anchor className="w-3 h-3" />
+                      Rivière
+                    </Button>
+                    <Button
+                      type="button"
+                      variant={event.race_type === "mer" ? "default" : "outline"}
+                      size="xs"
+                      className="h-6 px-2 gap-1 text-[11px]"
+                      onClick={() => handleChangeRaceType(event.id, "mer")}
+                    >
+                      <Waves className="w-3 h-3" />
+                      Mer
+                    </Button>
+                    <Button
+                      type="button"
+                      variant={event.race_type === "indoor" ? "default" : "outline"}
+                      size="xs"
+                      className="h-6 px-2 gap-1 text-[11px]"
+                      onClick={() => handleChangeRaceType(event.id, "indoor")}
+                    >
+                      <Dumbbell className="w-3 h-3" />
+                      Indoor
+                    </Button>
+                  </div>
                 </div>
 
                 <div className="flex flex-col sm:flex-row gap-2 mt-4">
@@ -445,11 +501,45 @@ export default function EventsManagementPage() {
                       </div>
                     </TableCell>
                     <TableCell>
-                      {event.race_type && (
-                        <span className="px-2 py-1 rounded-full text-xs font-medium bg-purple-100 text-purple-700 border border-purple-200 capitalize">
-                          {event.race_type}
-                        </span>
-                      )}
+                      <div className="flex flex-col gap-1">
+                        {event.race_type && (
+                          <span className="px-2 py-1 rounded-full text-xs font-medium bg-purple-100 text-purple-700 border border-purple-200 capitalize">
+                            {event.race_type}
+                          </span>
+                        )}
+                        <div className="flex items-center gap-1 flex-wrap text-[11px] text-muted-foreground mt-1">
+                          <Button
+                            type="button"
+                            variant={event.race_type === "rivière" ? "default" : "outline"}
+                            size="xs"
+                            className="h-6 px-2 gap-1 text-[11px]"
+                            onClick={() => handleChangeRaceType(event.id, "rivière")}
+                          >
+                            <Anchor className="w-3 h-3" />
+                            Rivière
+                          </Button>
+                          <Button
+                            type="button"
+                            variant={event.race_type === "mer" ? "default" : "outline"}
+                            size="xs"
+                            className="h-6 px-2 gap-1 text-[11px]"
+                            onClick={() => handleChangeRaceType(event.id, "mer")}
+                          >
+                            <Waves className="w-3 h-3" />
+                            Mer
+                          </Button>
+                          <Button
+                            type="button"
+                            variant={event.race_type === "indoor" ? "default" : "outline"}
+                            size="xs"
+                            className="h-6 px-2 gap-1 text-[11px]"
+                            onClick={() => handleChangeRaceType(event.id, "indoor")}
+                          >
+                            <Dumbbell className="w-3 h-3" />
+                            Indoor
+                          </Button>
+                        </div>
+                      </div>
                     </TableCell>
                     <TableCell>
                       <div className="flex items-center gap-2 flex-wrap">
