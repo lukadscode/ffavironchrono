@@ -1148,7 +1148,11 @@ export default function RacePhaseDetailPage() {
                   const laneCount = race.lane_count || 6;
                   const lanes = Array.from({ length: laneCount }, (_, i) => i + 1);
                   const timeLabel = race.start_time
-                    ? new Date(race.start_time).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
+                    ? new Date(race.start_time).toLocaleTimeString("fr-FR", 
+                        race.race_type === "time_trial"
+                          ? { hour: "2-digit", minute: "2-digit", second: "2-digit" }
+                          : { hour: "2-digit", minute: "2-digit" }
+                      )
                     : "";
                   const gap = gapsByRaceId[race.id] ?? slotMinutes;
                   const isExpanded = expandedRaces.has(race.id);
