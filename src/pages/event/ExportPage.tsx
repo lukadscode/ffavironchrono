@@ -2188,6 +2188,32 @@ export default function ExportPage() {
 
     setExportingCrewtimer(true);
     try {
+      // Récupérer tous les équipages de l'événement pour avoir systématiquement le code_court du club
+      const crewsRes = await api.get(`/crews/event/${eventId}`);
+      const allCrews: Crew[] = crewsRes.data.data || crewsRes.data || [];
+
+      // Map pour retrouver facilement crew_name + club.code_court par crew_id
+      const crewInfoById = new Map<
+        string,
+        {
+          crewName: string;
+          clubShortCode: string;
+        }
+      >();
+
+      allCrews.forEach((c) => {
+        const clubShortCode = c.club?.code_court || c.club_code || "";
+        const crewName =
+          c.crew_name ||
+          c.club_name ||
+          `Équipage ${clubShortCode || c.club_code || "-"}`;
+
+        crewInfoById.set(c.id, {
+          crewName,
+          clubShortCode,
+        });
+      });
+
       // Récupérer toutes les courses avec leurs équipages
       const racesRes = await api.get(`/races/event/${eventId}`);
       let races: Race[] = (racesRes.data.data || []).sort((a: Race, b: Race) => {
@@ -2300,12 +2326,17 @@ export default function ExportPage() {
             .filter(Boolean)
             .join(" / ");
 
+          // On récupère en priorité les infos depuis la map construite sur /crews/event/:eventId
+          const baseInfo = crewInfoById.get(rc.crew_id);
+
           const clubName = crew.club_name || "";
           const clubCode = crew.club_code || "";
-          const clubShortCode = crew.club?.code_court || clubCode || "";
+          const clubShortCode =
+            baseInfo?.clubShortCode || crew.club?.code_court || clubCode || "";
 
-          // Nom d'équipage : on privilégie crew_name renvoyé par l'API, sinon fallback sur le club
+          // Nom d'équipage : on privilégie crew_name ou la valeur issue de la map
           const crewName =
+            baseInfo?.crewName ||
             crew.crew_name ||
             clubName ||
             `Équipage ${clubShortCode || "-"}`;
