@@ -372,8 +372,7 @@ export default function GenerateRacesPage() {
 
   // État pour la génération en mode "parcours contre la montre"
   const [timeTrialStartTime, setTimeTrialStartTime] = useState<string>("");
-  const [timeTrialIntervalMinutes, setTimeTrialIntervalMinutes] = useState<number>(1);
-  const [timeTrialIntervalSeconds, setTimeTrialIntervalSeconds] = useState<number>(0);
+  const [timeTrialIntervalDisplay, setTimeTrialIntervalDisplay] = useState<string>(formatMinutesToMmSs(1));
   const [timeTrialCategoryOrder, setTimeTrialCategoryOrder] = useState<string[]>([]);
   const [intervalDisplay, setIntervalDisplay] = useState<string>(formatMinutesToMmSs(5));
 
@@ -1202,8 +1201,8 @@ export default function GenerateRacesPage() {
       return;
     }
 
-    const intervalSeconds =
-      timeTrialIntervalMinutes * 60 + timeTrialIntervalSeconds;
+    const parsedMinutes = parseMmSsToMinutes(timeTrialIntervalDisplay);
+    const intervalSeconds = parsedMinutes !== null ? Math.round(parsedMinutes * 60) : 0;
 
     if (!intervalSeconds || intervalSeconds <= 0) {
       toast({
@@ -1847,35 +1846,26 @@ export default function GenerateRacesPage() {
                 />
               </div>
               <div className="space-y-2">
-                <Label>Minutes entre chaque départ *</Label>
+                <Label>
+                  Intervalle entre chaque départ *
+                  <span className="ml-1 text-xs text-muted-foreground">(mm:ss)</span>
+                </Label>
                 <Input
-                  type="number"
-                  min={0}
-                  value={timeTrialIntervalMinutes}
-                  onChange={(e) =>
-                    setTimeTrialIntervalMinutes(
-                      Number.isNaN(Number(e.target.value))
-                        ? 0
-                        : Number(e.target.value)
-                    )
-                  }
-                />
-              </div>
-              <div className="space-y-2">
-                <Label>Secondes entre chaque départ *</Label>
-                <Input
-                  type="number"
-                  min={0}
-                  max={59}
-                  value={timeTrialIntervalSeconds}
+                  type="text"
+                  value={timeTrialIntervalDisplay}
                   onChange={(e) => {
-                    const v = Number(e.target.value);
-                    if (Number.isNaN(v)) {
-                      setTimeTrialIntervalSeconds(0);
-                    } else {
-                      setTimeTrialIntervalSeconds(Math.min(Math.max(v, 0), 59));
+                    // On ne fait qu'actualiser l'affichage pendant la saisie
+                    setTimeTrialIntervalDisplay(e.target.value);
+                  }}
+                  onBlur={() => {
+                    // Au blur seulement, on valide/normalise la valeur
+                    const minutes = parseMmSsToMinutes(timeTrialIntervalDisplay);
+                    if (minutes !== null) {
+                      const normalized = formatMinutesToMmSs(minutes);
+                      setTimeTrialIntervalDisplay(normalized);
                     }
                   }}
+                  placeholder="01:00"
                 />
               </div>
             </div>

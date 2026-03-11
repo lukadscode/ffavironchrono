@@ -14,6 +14,14 @@ type Crew = {
   id: string;
   club_name: string;
   club_code: string;
+  // L'objet club complet peut être présent (avec notamment code_court)
+  club?: {
+    id?: string;
+    code?: string;
+    code_court?: string;
+    name?: string;
+    nom_court?: string;
+  };
   coach_name?: string | null;
   status?: string;
   category?: {
@@ -187,6 +195,7 @@ export default function ExportPage() {
                       ...rc,
                       crew: {
                         ...rc.crew,
+                        club: crewDetail.club || rc.crew.club,
                         crew_participants: crewDetail.crew_participants || crewDetail.CrewParticipants || [],
                       },
                     };
@@ -2229,15 +2238,19 @@ export default function ExportPage() {
 
       type CrewTimerRow = {
         "Event Time": string;
-        "Event Num": number;
+        "Event Num": number | "";
         "Event Name": string;
-        "Bow": number;
+        "Bow": number | "";
         "Event Abbrev": string;
         "Crew": string;
         "Crew Abbrev": string;
         "Stroke": string;
-        "clubNumber": string;
-        "ClubName": string;
+        "RaceType": string;
+        "Status": string;
+        "Age": string;
+        "Day": string;
+        "Handicap": string;
+        "Note": string;
       };
 
       const rows: CrewTimerRow[] = [];
@@ -2246,6 +2259,8 @@ export default function ExportPage() {
       const categoryOrder = new Map<string, number>(); // categoryCode -> Event Num
       // Numérotation globale BOW (1,2,3...) dans l'ordre des équipages
       let globalBowCounter = 0;
+      // Suivi du changement de catégorie (Event Abbrev) pour insérer une ligne vide entre chaque bloc
+      let lastEventAbbrev: string | null = null;
 
       const getEventNum = (categoryCode: string): number => {
         if (!categoryOrder.has(categoryCode)) {
@@ -2286,6 +2301,34 @@ export default function ExportPage() {
 
           const clubName = crew.club_name || "";
           const clubCode = crew.club_code || "";
+          const clubShortCode = crew.club?.code_court || clubCode || "";
+
+          // Nom d'équipage : on privilégie le nom de l'équipage (crew.name) s'il existe
+          const crewName =
+            (crew as any).name ||
+            clubName ||
+            `Équipage ${clubShortCode || "-"}`;
+
+          // Si on change de catégorie (Event Abbrev), insérer une ligne vide de séparation
+          if (lastEventAbbrev !== null && lastEventAbbrev !== code) {
+            rows.push({
+              "Event Time": "",
+              "Event Num": "",
+              "Event Name": "",
+              "Bow": "",
+              "Event Abbrev": "",
+              "Crew": "",
+              "Crew Abbrev": "",
+              "Stroke": "",
+              "RaceType": "",
+              "Status": "",
+              "Age": "",
+              "Day": "",
+              "Handicap": "",
+              "Note": "",
+            });
+          }
+          lastEventAbbrev = code;
 
           rows.push({
             "Event Time": race.start_time ? dayjs(race.start_time).format("HH:mm:ss") : "",
@@ -2293,11 +2336,15 @@ export default function ExportPage() {
             "Event Name": label || code,
             "Bow": bow,
             "Event Abbrev": code,
-            "Crew": clubName || `Équipage ${clubCode || "-"}`,
-            "Crew Abbrev": clubCode,
+            "Crew": crewName,
+            "Crew Abbrev": clubShortCode,
             "Stroke": strokeNames,
-            "clubNumber": clubCode,
-            "ClubName": clubName,
+            "RaceType": "HEAD",
+            "Status": "",
+            "Age": "",
+            "Day": "",
+            "Handicap": "",
+            "Note": "",
           });
         });
       });
