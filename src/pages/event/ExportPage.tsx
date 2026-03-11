@@ -14,6 +14,7 @@ type Crew = {
   id: string;
   club_name: string;
   club_code: string;
+  crew_name?: string;
   // L'objet club complet peut être présent (avec notamment code_court)
   club?: {
     id?: string;
@@ -137,7 +138,7 @@ export default function ExportPage() {
       // Récupérer tous les équipages avec leurs participants
       const crewsRes = await api.get(`/crews/event/${eventId}`);
       let crews: Crew[] = crewsRes.data.data || [];
-      
+
       // TOUJOURS enrichir chaque équipage avec ses participants complets
       crews = await Promise.all(
         crews.map(async (crew) => {
@@ -181,7 +182,7 @@ export default function ExportPage() {
               race.race_crews = [];
             }
           }
-          
+
           // Enrichir chaque équipage avec ses participants si nécessaire
           if (race.race_crews && race.race_crews.length > 0) {
             race.race_crews = await Promise.all(
@@ -231,7 +232,7 @@ export default function ExportPage() {
 
       // Créer un map des résultats par équipage (timings pour courses normales, indoor pour courses indoor)
       const crewResults = new Map<string, any[]>();
-      
+
       // Pour chaque course, récupérer les résultats (timings ou indoor)
       for (const race of races) {
         try {
@@ -240,7 +241,7 @@ export default function ExportPage() {
             try {
               const indoorRes = await api.get(`/indoor-results/race/${race.id}`).catch(() => ({ data: { data: null } }));
               const indoorData = indoorRes.data.data;
-              
+
               if (indoorData && indoorData.participants && indoorData.participants.length > 0) {
                 // Pour chaque participant indoor, créer un résultat
                 indoorData.participants.forEach((participant: any) => {
@@ -248,7 +249,7 @@ export default function ExportPage() {
                     if (!crewResults.has(participant.crew_id)) {
                       crewResults.set(participant.crew_id, []);
                     }
-                    
+
                     crewResults.get(participant.crew_id)?.push({
                       race_id: race.id,
                       race_name: race.name,
@@ -293,9 +294,9 @@ export default function ExportPage() {
             // Récupérer les timing points
             const timingPointsRes = await api.get(`/timing-points/race/${race.id}`).catch(() => ({ data: { data: [] } }));
             const timingPoints = timingPointsRes.data.data || [];
-            const lastTimingPoint = timingPoints.length > 0 
-              ? timingPoints.reduce((last: any, current: any) => 
-                  (current.order_index > last.order_index ? current : last), timingPoints[0])
+            const lastTimingPoint = timingPoints.length > 0
+              ? timingPoints.reduce((last: any, current: any) =>
+                (current.order_index > last.order_index ? current : last), timingPoints[0])
               : null;
 
             // Récupérer les assignments
@@ -328,14 +329,14 @@ export default function ExportPage() {
 
               // Trouver le timing final
               const crewTimings = timingsByCrew.get(rc.crew_id) || [];
-              const finishTiming = lastTimingPoint 
+              const finishTiming = lastTimingPoint
                 ? crewTimings.find((t: any) => t.timing_point_id === lastTimingPoint.id)
                 : null;
 
               // Calculer le classement (trier tous les équipages de la course par temps)
               const allCrewTimings = Array.from(timingsByCrew.entries())
                 .map(([cid, timings]) => {
-                  const finish = lastTimingPoint 
+                  const finish = lastTimingPoint
                     ? timings.find((t: any) => t.timing_point_id === lastTimingPoint.id)
                     : null;
                   return { crew_id: cid, time: finish?.relative_time_ms || null };
@@ -612,10 +613,10 @@ export default function ExportPage() {
     try {
       // Récupérer toutes les courses avec leurs équipages
       const racesRes = await api.get(`/races/event/${eventId}`);
-      let races: Race[] = (racesRes.data.data || []).sort((a: Race, b: Race) => 
+      let races: Race[] = (racesRes.data.data || []).sort((a: Race, b: Race) =>
         a.race_number - b.race_number
       );
-      
+
       // Enrichir chaque course avec ses équipages et leurs participants
       races = await Promise.all(
         races.map(async (race) => {
@@ -629,7 +630,7 @@ export default function ExportPage() {
               race.race_crews = [];
             }
           }
-          
+
           // Enrichir chaque équipage avec ses participants si nécessaire
           if (race.race_crews && race.race_crews.length > 0) {
             race.race_crews = await Promise.all(
@@ -655,7 +656,7 @@ export default function ExportPage() {
               })
             );
           }
-          
+
           return race;
         })
       );
@@ -664,7 +665,7 @@ export default function ExportPage() {
         // Fonction pour charger le logo (une seule fois) avec plusieurs méthodes
         const loadLogo = async (): Promise<string | null> => {
           const logoUrl = "https://www.ffaviron.fr/wp-content/uploads/2025/06/FFAviron-nouveau-site.png";
-          
+
           // Méthode 1 : Essayer avec fetch + FileReader
           try {
             const response = await fetch(logoUrl, {
@@ -757,7 +758,7 @@ export default function ExportPage() {
           doc.setFontSize(15);
           doc.setFont("helvetica", "bold");
           doc.text("LISTE DE DÉPART", 105, 12, { align: "center" });
-          
+
           if (event) {
             doc.setFontSize(10);
             doc.setFont("helvetica", "normal");
@@ -790,11 +791,11 @@ export default function ExportPage() {
         // Pour chaque course
         for (let raceIndex = 0; raceIndex < races.length; raceIndex++) {
           const race = races[raceIndex];
-          
+
           // Calculer l'espace nécessaire pour cette course
           const raceCrews = (race.race_crews || []).sort((a, b) => a.lane - b.lane);
           const headerHeight = 5 + (race.start_time || race.race_phase?.name || race.distance ? 4 : 0);
-          const estimatedTableHeight = raceCrews.length > 0 
+          const estimatedTableHeight = raceCrews.length > 0
             ? (raceCrews.length * 4.5) + 8 // Hauteur estimée du tableau (4.5mm par ligne + en-tête)
             : 6;
           const totalHeight = headerHeight + estimatedTableHeight + 4; // +4 pour l'espacement
@@ -826,7 +827,7 @@ export default function ExportPage() {
           if (race.distance?.label || race.distance?.meters) {
             raceInfo.push(race.distance.label);
           }
-          
+
           if (raceInfo.length > 0) {
             doc.text(raceInfo.join(" • "), 10, yPosition);
             yPosition += 4;
@@ -883,15 +884,15 @@ export default function ExportPage() {
               startY: yPosition, // Position actuelle pour la première page
               head: [["C", "Club", "Code", "Catégorie", "Participants", "Licences"]],
               body: tableData,
-              styles: { 
-                fontSize: 7, 
+              styles: {
+                fontSize: 7,
                 cellPadding: 1.5,
                 lineWidth: 0.1,
                 lineColor: [200, 200, 200]
               },
-              headStyles: { 
-                fillColor: [66, 139, 202], 
-                textColor: 255, 
+              headStyles: {
+                fillColor: [66, 139, 202],
+                textColor: 255,
                 fontStyle: "bold",
                 fontSize: 7
               },
@@ -946,12 +947,12 @@ export default function ExportPage() {
         const pageCount = doc.getNumberOfPages();
         for (let i = 1; i <= pageCount; i++) {
           doc.setPage(i);
-          
+
           // Réajouter l'en-tête sur les pages suivantes (la première a déjà l'en-tête)
           if (i > 1) {
             addHeader(logoDataUrl);
           }
-          
+
           // Pied de page
           doc.setFontSize(7);
           doc.setFont("helvetica", "italic");
@@ -1033,7 +1034,7 @@ export default function ExportPage() {
 
           // Équipages de la course
           const raceCrews = (race.race_crews || []).sort((a, b) => a.lane - b.lane);
-          
+
           if (raceCrews.length === 0) {
             allRows.push({
               "COURSE": "",
@@ -1054,7 +1055,7 @@ export default function ExportPage() {
               const crew = rc.crew;
               const participants = crew.crew_participants || [];
               const sortedParticipants = [...participants].sort((a, b) => a.seat_position - b.seat_position);
-              
+
               // Formater les participants avec leurs positions
               const participantNames = sortedParticipants
                 .map((cp) => {
@@ -1153,7 +1154,7 @@ export default function ExportPage() {
 
       // Récupérer toutes les courses
       const racesRes = await api.get(`/races/event/${eventId}`);
-      let races: Race[] = (racesRes.data.data || []).sort((a: Race, b: Race) => 
+      let races: Race[] = (racesRes.data.data || []).sort((a: Race, b: Race) =>
         (a.race_number || 0) - (b.race_number || 0)
       );
 
@@ -1164,54 +1165,54 @@ export default function ExportPage() {
         categories.map((c) => [c.id, c])
       );
 
-          // Enrichir les courses avec leurs équipages et résultats
-          const racesWithResults = await Promise.all(
-            races.map(async (race) => {
-              // Récupérer les race-crews
-              if (!race.race_crews || race.race_crews.length === 0) {
-                try {
-                  const raceCrewsRes = await api.get(`/race-crews/${race.id}`);
-                  race.race_crews = raceCrewsRes.data.data || [];
-                } catch (err) {
-                  race.race_crews = [];
-                }
-              }
+      // Enrichir les courses avec leurs équipages et résultats
+      const racesWithResults = await Promise.all(
+        races.map(async (race) => {
+          // Récupérer les race-crews
+          if (!race.race_crews || race.race_crews.length === 0) {
+            try {
+              const raceCrewsRes = await api.get(`/race-crews/${race.id}`);
+              race.race_crews = raceCrewsRes.data.data || [];
+            } catch (err) {
+              race.race_crews = [];
+            }
+          }
 
-              // Enrichir chaque équipage avec ses participants
-              if (race.race_crews && race.race_crews.length > 0) {
-                race.race_crews = await Promise.all(
-                  race.race_crews.map(async (rc: any) => {
-                    if (!rc.crew?.crew_participants || rc.crew.crew_participants.length === 0) {
-                      try {
-                        const crewDetailRes = await api.get(`/crews/${rc.crew_id}`);
-                        const crewDetail = crewDetailRes.data.data || crewDetailRes.data;
-                        return {
-                          ...rc,
-                          crew: {
-                            ...rc.crew,
-                            crew_participants: crewDetail.crew_participants || 
-                                             crewDetail.CrewParticipants || 
-                                             crewDetail.crewParticipants || 
-                                             [],
-                          },
-                        };
-                      } catch (err) {
-                        return rc;
-                      }
-                    }
+          // Enrichir chaque équipage avec ses participants
+          if (race.race_crews && race.race_crews.length > 0) {
+            race.race_crews = await Promise.all(
+              race.race_crews.map(async (rc: any) => {
+                if (!rc.crew?.crew_participants || rc.crew.crew_participants.length === 0) {
+                  try {
+                    const crewDetailRes = await api.get(`/crews/${rc.crew_id}`);
+                    const crewDetail = crewDetailRes.data.data || crewDetailRes.data;
+                    return {
+                      ...rc,
+                      crew: {
+                        ...rc.crew,
+                        crew_participants: crewDetail.crew_participants ||
+                          crewDetail.CrewParticipants ||
+                          crewDetail.crewParticipants ||
+                          [],
+                      },
+                    };
+                  } catch (err) {
                     return rc;
-                  })
-                );
-              }
+                  }
+                }
+                return rc;
+              })
+            );
+          }
 
-              const results: any[] = [];
+          const results: any[] = [];
 
           if (isIndoorEvent) {
             // Récupérer les résultats indoor
             try {
               const indoorRes = await api.get(`/indoor-results/race/${race.id}`).catch(() => ({ data: { data: null } }));
               const indoorData = indoorRes.data.data;
-              
+
               if (indoorData && indoorData.participants && indoorData.participants.length > 0) {
                 // Les résultats indoor sont déjà triés par place globalement (pas par catégorie)
                 // participant.place est le classement global de la série
@@ -1266,9 +1267,9 @@ export default function ExportPage() {
               // Récupérer les timing points
               const timingPointsRes = await api.get(`/timing-points/race/${race.id}`).catch(() => ({ data: { data: [] } }));
               const timingPoints = timingPointsRes.data.data || [];
-              const lastTimingPoint = timingPoints.length > 0 
-                ? timingPoints.reduce((last: any, current: any) => 
-                    (current.order_index > last.order_index ? current : last), timingPoints[0])
+              const lastTimingPoint = timingPoints.length > 0
+                ? timingPoints.reduce((last: any, current: any) =>
+                  (current.order_index > last.order_index ? current : last), timingPoints[0])
                 : null;
 
               if (lastTimingPoint) {
@@ -1384,7 +1385,7 @@ export default function ExportPage() {
           doc.setFontSize(15);
           doc.setFont("helvetica", "bold");
           doc.text("RÉSULTATS", 105, 15, { align: "center" });
-          
+
           if (event) {
             doc.setFontSize(10);
             doc.setFont("helvetica", "normal");
@@ -1457,7 +1458,7 @@ export default function ExportPage() {
         } else {
           // Grouper par catégories
           const resultsByCategory = new Map<string, any[]>();
-          
+
           racesWithValidResults.forEach((race: any) => {
             race.results.forEach((result: any) => {
               const catId = result.category_id || "unknown";
@@ -1606,7 +1607,7 @@ export default function ExportPage() {
         } else {
           // Grouper par catégories
           const resultsByCategory = new Map<string, any[]>();
-          
+
           racesWithValidResults.forEach((race: any) => {
             race.results.forEach((result: any) => {
               const catId = result.category_id || "unknown";
@@ -1736,7 +1737,7 @@ export default function ExportPage() {
       // Récupérer tous les participants de l'événement
       const participantsRes = await api.get(`/participants/event/${eventId}`);
       const participantsData = participantsRes.data.data || [];
-      
+
       // Filtrer les participants qui ont au moins un équipage
       const participants = participantsData.filter((p: any) => {
         const crewParticipants = p.crew_participants || p.CrewParticipants || [];
@@ -1780,10 +1781,10 @@ export default function ExportPage() {
         const ws = XLSX.utils.json_to_sheet(exportData);
         const wb = XLSX.utils.book_new();
         XLSX.utils.book_append_sheet(wb, ws, "Participants");
-        
+
         const fileName = `participants_${event?.name || "event"}_${dayjs().format("YYYY-MM-DD")}.xlsx`;
         XLSX.writeFile(wb, fileName);
-        
+
         toast({
           title: "Export Excel réussi",
           description: "Fichier Excel téléchargé",
@@ -1800,7 +1801,7 @@ export default function ExportPage() {
         document.body.appendChild(link);
         link.click();
         document.body.removeChild(link);
-        
+
         toast({
           title: "Export CSV réussi",
           description: "Fichier CSV téléchargé",
@@ -1809,7 +1810,7 @@ export default function ExportPage() {
         // Fonction pour charger le logo
         const loadLogo = async (): Promise<string | null> => {
           const logoUrl = "https://www.ffaviron.fr/wp-content/uploads/2025/06/FFAviron-nouveau-site.png";
-          
+
           try {
             const response = await fetch(logoUrl, {
               mode: "cors",
@@ -1887,7 +1888,7 @@ export default function ExportPage() {
           doc.setFontSize(15);
           doc.setFont("helvetica", "bold");
           doc.text("LISTE DES PARTICIPANTS", 105, 12, { align: "center" });
-          
+
           if (event) {
             doc.setFontSize(10);
             doc.setFont("helvetica", "normal");
@@ -2303,9 +2304,9 @@ export default function ExportPage() {
           const clubCode = crew.club_code || "";
           const clubShortCode = crew.club?.code_court || clubCode || "";
 
-          // Nom d'équipage : on privilégie le nom de l'équipage (crew.name) s'il existe
+          // Nom d'équipage : on privilégie crew_name renvoyé par l'API, sinon fallback sur le club
           const crewName =
-            (crew as any).name ||
+            crew.crew_name ||
             clubName ||
             `Équipage ${clubShortCode || "-"}`;
 
