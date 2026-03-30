@@ -77,6 +77,21 @@ interface ClubResult {
   results: Array<UnifiedResult & { category: Category }>;
 }
 
+interface EnduranceMerImportRow {
+  epreuve_code: string;
+  place: number;
+  club_code: string;
+  club_name: string;
+  points_attributed: string;
+}
+
+interface EnduranceMerRankingRow {
+  club_code: string;
+  club_name: string;
+  total_points: number;
+  rank: number;
+}
+
 /**
  * Convertit un temps en millisecondes (string ou number) en format lisible
  * Utilise la fonction utilitaire centralisée formatDuration
@@ -91,6 +106,71 @@ function formatTime(finalTime: string | number | null | undefined): string | nul
   return formatted === "--:--.---" ? null : formatted;
 }
 
+function hasClubForPoints(r: UnifiedResult): boolean {
+  const n = (r.club_name || "").trim();
+  const c = (r.club_code || "").trim();
+  return n.length > 0 || c.length > 0;
+}
+
+function indoorResultRowKey(r: UnifiedResult): string {
+  return `${r.race_id}|${r.position ?? ""}|${r.lane ?? ""}|${r.crew_id ?? ""}`;
+}
+
+/**
+ * Indoor : sans club → pas de points. Les barèmes (1er, 2e, …) s’appliquent
+ * dans l’ordre aux seuls concurrents qui ont un club (le 1er avec club reçoit
+ * les points de 1re place, etc.).
+ */
+function redistributeIndoorPointsByClub(
+  data: CategoryResult[]
+): CategoryResult[] {
+  return data.map((cat) => {
+    const sorted = [...cat.results].sort(
+      (a, b) => (a.position ?? 999) - (b.position ?? 999)
+    );
+    const maxPos = Math.max(0, ...sorted.map((r) => r.position ?? 0));
+
+    const rankPoints: (number | null)[] = [];
+    for (let k = 1; k <= maxPos; k++) {
+      const row = sorted.find((r) => r.position === k);
+      if (row && row.is_eligible_for_points && row.points != null) {
+        rankPoints[k] = row.points;
+      } else {
+        rankPoints[k] = null;
+      }
+    }
+
+    const withClubSorted = sorted
+      .filter((r) => hasClubForPoints(r) && r.is_eligible_for_points)
+      .sort((a, b) => (a.position ?? 0) - (b.position ?? 0));
+
+    const newPointsByKey = new Map<string, number | null>();
+    withClubSorted.forEach((r, i) => {
+      const barèmePlace = i + 1;
+      newPointsByKey.set(
+        indoorResultRowKey(r),
+        rankPoints[barèmePlace] ?? null
+      );
+    });
+
+    const newResults = sorted.map((r) => {
+      if (!hasClubForPoints(r)) {
+        return { ...r, points: null };
+      }
+      if (!r.is_eligible_for_points) {
+        return r;
+      }
+      const np = newPointsByKey.get(indoorResultRowKey(r));
+      if (np === undefined) {
+        return { ...r, points: null };
+      }
+      return { ...r, points: np };
+    });
+
+    return { ...cat, results: newResults };
+  });
+}
+
 export default function EventResultsPage() {
   const { eventId } = useParams<{ eventId: string }>();
   const [categoryResults, setCategoryResults] = useState<CategoryResult[]>([]);
@@ -98,7 +178,9 @@ export default function EventResultsPage() {
   const [error, setError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<"categories" | "clubs" | "club-ranking">("categories");
   const [isIndoor, setIsIndoor] = useState<boolean>(false);
+  const [isMer, setIsMer] = useState<boolean>(false);
   const [eventName, setEventName] = useState<string>("");
+  const [merRanking, setMerRanking] = useState<EnduranceMerRankingRow[]>([]);
   const { toast } = useToast();
 
   useEffect(() => {
@@ -111,12 +193,15 @@ export default function EventResultsPage() {
 
         // D'abord, déterminer le type d'événement
         let isIndoorEvent = false;
+        let isMerEvent = false;
         try {
           const eventRes = await api.get(`/events/${eventId}`);
           const eventData = eventRes.data.data || eventRes.data;
           const raceType = eventData.race_type?.toLowerCase() || "";
           isIndoorEvent = raceType.includes("indoor");
+          isMerEvent = raceType.includes("mer");
           setIsIndoor(isIndoorEvent);
+          setIsMer(isMerEvent);
           setEventName(eventData.name || "");
         } catch (err) {
           console.error("Erreur vérification type événement", err);
@@ -127,6 +212,10 @@ export default function EventResultsPage() {
         if (isIndoorEvent) {
           // API pour les résultats indoor
           response = await api.get(`/indoor-results/event/${eventId}/bycategorie`);
+        } else if (isMerEvent) {
+          response = await api.get(`/events/${eventId}/endurance-mer/import-results`);
+          const rankingRes = await api.get(`/events/${eventId}/endurance-mer/ranking`);
+          setMerRanking(Array.isArray(rankingRes.data?.data) ? rankingRes.data.data : []);
         } else {
           // API pour les résultats normaux
           response = await api.get(`/events/${eventId}/results-by-category`);
@@ -138,51 +227,93 @@ export default function EventResultsPage() {
 
         // Normaliser les résultats pour un format unifié
         const rawData = response.data.data || [];
-        const normalizedResults: CategoryResult[] = rawData.map((catResult: any) => ({
-          category: catResult.category,
-          results: catResult.results.map((r: any) => {
-            // Normaliser selon le type d'événement
-            if (isIndoorEvent) {
-              // Format indoor - utiliser position (classement catégorie) au lieu de place
-              return {
-                race_id: r.race_id,
-                race_number: r.race_number,
-                race_name: r.race_name,
-                crew_id: r.crew_id,
-                club_name: r.crew?.club_name || null,
-                club_code: r.crew?.club_code || null,
-                position: r.position, // Position dans le classement de la catégorie
-                time_display: r.time_display,
-                time_ms: r.time_ms,
-                has_timing: r.time_ms !== null && r.time_ms !== undefined,
-                distance: r.distance,
-                distance_info: r.distance_info || null,
-                avg_pace: r.avg_pace,
-                spm: r.spm,
-                calories: r.calories,
-                points: r.points || null,
-                is_eligible_for_points: r.is_eligible_for_points || false,
-                participants: r.crew?.participants || [],
-              };
-            } else {
-              // Format normal
-              return {
-                race_id: r.race_id,
-                race_number: r.race_number,
-                phase_id: r.phase_id,
-                phase_name: r.phase_name,
-                crew_id: r.crew_id,
-                lane: r.lane,
+        let normalizedResults: CategoryResult[] = [];
+
+        if (isMerEvent) {
+          const rows = Array.isArray(rawData) ? (rawData as EnduranceMerImportRow[]) : [];
+          const grouped = rows.reduce<Record<string, EnduranceMerImportRow[]>>((acc, row) => {
+            const key = row.epreuve_code || "AUTRE";
+            if (!acc[key]) acc[key] = [];
+            acc[key].push(row);
+            return acc;
+          }, {});
+
+          normalizedResults = Object.entries(grouped)
+            .sort(([a], [b]) => a.localeCompare(b))
+            .map(([epreuveCode, results]) => ({
+              category: {
+                id: epreuveCode,
+                code: epreuveCode,
+                label: epreuveCode,
+                age_group: null,
+                gender: null,
+              },
+              results: results.map((r, index) => ({
+                race_id: `${epreuveCode}-${r.place}-${r.club_code}-${index}`,
+                race_number: r.place,
+                race_name: epreuveCode,
+                crew_id: null,
                 club_name: r.club_name,
                 club_code: r.club_code,
-                position: r.position,
-                finish_time: r.finish_time,
-                final_time: r.final_time,
-                has_timing: r.has_timing,
-              };
-            }
-          }),
-        }));
+                position: r.place,
+                time_display: null,
+                has_timing: false,
+                points: Number.parseFloat(String(r.points_attributed ?? 0)),
+                is_eligible_for_points: true,
+              })),
+            }));
+        } else {
+          normalizedResults = rawData.map((catResult: any) => ({
+            category: catResult.category,
+            results: catResult.results.map((r: any) => {
+              // Normaliser selon le type d'événement
+              if (isIndoorEvent) {
+                // Format indoor - utiliser position (classement catégorie) au lieu de place
+                return {
+                  race_id: r.race_id,
+                  race_number: r.race_number,
+                  race_name: r.race_name,
+                  crew_id: r.crew_id,
+                  lane: r.lane ?? undefined,
+                  club_name: r.crew?.club_name || null,
+                  club_code: r.crew?.club_code || null,
+                  position: r.position, // Position dans le classement de la catégorie
+                  time_display: r.time_display,
+                  time_ms: r.time_ms,
+                  has_timing: r.time_ms !== null && r.time_ms !== undefined,
+                  distance: r.distance,
+                  distance_info: r.distance_info || null,
+                  avg_pace: r.avg_pace,
+                  spm: r.spm,
+                  calories: r.calories,
+                  points: r.points || null,
+                  is_eligible_for_points: r.is_eligible_for_points || false,
+                  participants: r.crew?.participants || [],
+                };
+              } else {
+                // Format normal
+                return {
+                  race_id: r.race_id,
+                  race_number: r.race_number,
+                  phase_id: r.phase_id,
+                  phase_name: r.phase_name,
+                  crew_id: r.crew_id,
+                  lane: r.lane,
+                  club_name: r.club_name,
+                  club_code: r.club_code,
+                  position: r.position,
+                  finish_time: r.finish_time,
+                  final_time: r.final_time,
+                  has_timing: r.has_timing,
+                };
+              }
+            }),
+          }));
+        }
+
+        if (isIndoorEvent) {
+          normalizedResults = redistributeIndoorPointsByClub(normalizedResults);
+        }
 
         setCategoryResults(normalizedResults);
       } catch (err: any) {
@@ -234,13 +365,15 @@ export default function EventResultsPage() {
 
   // Classement des clubs par points (uniquement pour indoor)
   const clubRanking = useMemo(() => {
-    if (!isIndoor) return [];
+    if (!isIndoor && !isMer) return [];
 
     const clubPointsMap = new Map<string, { club_name: string; club_code: string | null; totalPoints: number; resultCount: number }>();
 
     categoryResults.forEach((categoryResult) => {
       categoryResult.results.forEach((result) => {
-        if (!result.club_name || !result.is_eligible_for_points || result.points === null) return;
+        if (!result.club_name) return;
+        if (isIndoor && (!result.is_eligible_for_points || result.points === null)) return;
+        if (isMer && result.points === null) return;
 
         const clubId = result.club_code || result.club_name || "unknown";
         
@@ -266,7 +399,7 @@ export default function EventResultsPage() {
         ...club,
         rank: index + 1,
       }));
-  }, [categoryResults, isIndoor]);
+  }, [categoryResults, isIndoor, isMer]);
 
   // Fonction d'export Excel pour les résultats par catégories
   const exportCategoriesToExcel = () => {
@@ -437,7 +570,7 @@ export default function EventResultsPage() {
               <Building2 className="w-4 h-4" />
               Par clubs
             </button>
-            {isIndoor && (
+            {(isIndoor || isMer) && (
               <button
                 onClick={() => setActiveTab("club-ranking")}
                 className={`px-6 py-3 font-medium flex items-center gap-2 border-b-2 transition-all ${
@@ -455,7 +588,7 @@ export default function EventResultsPage() {
             onClick={() => {
               if (activeTab === "categories") exportCategoriesToExcel();
               else if (activeTab === "clubs") exportClubsToExcel();
-              else if (activeTab === "club-ranking" && isIndoor) exportClubRankingToExcel();
+              else if (activeTab === "club-ranking" && (isIndoor || isMer)) exportClubRankingToExcel();
             }}
             variant="outline"
             size="sm"
@@ -499,7 +632,7 @@ export default function EventResultsPage() {
                             <TableHead className="w-20 text-center font-semibold">Position</TableHead>
                             <TableHead className="min-w-[200px] font-semibold">Club</TableHead>
                             <TableHead className="w-24 text-center font-semibold">Course</TableHead>
-                            {!isIndoor && (
+                            {!isIndoor && !isMer && (
                               <>
                                 <TableHead className="min-w-[150px] font-semibold">Phase</TableHead>
                                 <TableHead className="w-20 text-center font-semibold">Couloir</TableHead>
@@ -508,7 +641,7 @@ export default function EventResultsPage() {
                             {isIndoor && (
                               <TableHead className="min-w-[200px] font-semibold">Participants</TableHead>
                             )}
-                            <TableHead className="w-32 text-right font-semibold">Temps</TableHead>
+                            <TableHead className="w-32 text-right font-semibold">{isMer ? "Points" : "Temps"}</TableHead>
                             {isIndoor && (
                               <>
                                 <TableHead className="w-24 text-right font-semibold">Distance</TableHead>
@@ -568,7 +701,7 @@ export default function EventResultsPage() {
                                 <TableCell className="text-center">
                                   {result.race_name || `Course ${result.race_number}`}
                                 </TableCell>
-                                {!isIndoor && (
+                                {!isIndoor && !isMer && (
                                   <>
                                     <TableCell>
                                       {result.phase_name || "-"}
@@ -584,7 +717,9 @@ export default function EventResultsPage() {
                                   </TableCell>
                                 )}
                                 <TableCell className="text-right">
-                                  {(result.has_timing !== false && (result.time_display || result.final_time || result.time_ms)) ? (
+                                  {isMer ? (
+                                    <span className="font-mono font-semibold">{result.points?.toFixed(2) ?? "-"}</span>
+                                  ) : (result.has_timing !== false && (result.time_display || result.final_time || result.time_ms)) ? (
                                     <span className="font-mono font-semibold">
                                       {result.time_display || formatTime(result.final_time || result.time_ms) || "-"}
                                     </span>
@@ -664,7 +799,7 @@ export default function EventResultsPage() {
                             <TableHead className="min-w-[180px] font-semibold">Catégorie</TableHead>
                             <TableHead className="w-20 text-center font-semibold">Position</TableHead>
                             <TableHead className="w-24 text-center font-semibold">Course</TableHead>
-                            {!isIndoor && (
+                            {!isIndoor && !isMer && (
                               <>
                                 <TableHead className="min-w-[150px] font-semibold">Phase</TableHead>
                                 <TableHead className="w-20 text-center font-semibold">Couloir</TableHead>
@@ -673,7 +808,7 @@ export default function EventResultsPage() {
                             {isIndoor && (
                               <TableHead className="min-w-[200px] font-semibold">Participants</TableHead>
                             )}
-                            <TableHead className="w-32 text-right font-semibold">Temps</TableHead>
+                            <TableHead className="w-32 text-right font-semibold">{isMer ? "Points" : "Temps"}</TableHead>
                             {isIndoor && (
                               <>
                                 <TableHead className="w-24 text-right font-semibold">Distance</TableHead>
@@ -737,7 +872,7 @@ export default function EventResultsPage() {
                                   <TableCell className="text-center">
                                     {result.race_name || `Course ${result.race_number}`}
                                   </TableCell>
-                                  {!isIndoor && (
+                                  {!isIndoor && !isMer && (
                                     <>
                                       <TableCell>
                                         {result.phase_name || "-"}
@@ -753,7 +888,9 @@ export default function EventResultsPage() {
                                     </TableCell>
                                   )}
                                   <TableCell className="text-right">
-                                    {(result.has_timing !== false && (result.time_display || result.final_time || result.time_ms)) ? (
+                                    {isMer ? (
+                                      <span className="font-mono font-semibold">{result.points?.toFixed(2) ?? "-"}</span>
+                                    ) : (result.has_timing !== false && (result.time_display || result.final_time || result.time_ms)) ? (
                                       <span className="font-mono font-semibold">
                                         {result.time_display || formatTime(result.final_time || result.time_ms) || "-"}
                                       </span>
@@ -799,9 +936,51 @@ export default function EventResultsPage() {
         </div>
       )}
 
-      {activeTab === "club-ranking" && isIndoor && (
+      {activeTab === "club-ranking" && (isIndoor || isMer) && (
         <div className="mt-6">
-          {clubRanking.length === 0 ? (
+          {isMer && merRanking.length > 0 ? (
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Trophy className="w-5 h-5 text-primary" />
+                  Classement des clubs (Mer)
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="p-0">
+                <div className="overflow-x-auto">
+                  <Table>
+                    <TableHeader>
+                      <TableRow className="bg-muted/50">
+                        <TableHead className="w-20 text-center font-semibold">Rang</TableHead>
+                        <TableHead className="min-w-[250px] font-semibold">Club</TableHead>
+                        <TableHead className="w-32 text-center font-semibold">Total points</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {merRanking.map((club) => (
+                        <TableRow key={club.club_code || club.club_name}>
+                          <TableCell className="text-center">
+                            <span className="font-bold text-lg text-primary">{club.rank}</span>
+                          </TableCell>
+                          <TableCell>
+                            <div className="font-medium">{club.club_name}</div>
+                            {club.club_code && (
+                              <div className="text-sm text-muted-foreground">{club.club_code}</div>
+                            )}
+                          </TableCell>
+                          <TableCell className="text-center">
+                            <span className="font-bold text-xl text-primary">
+                              {Number(club.total_points || 0).toFixed(2)}
+                            </span>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
+              </CardContent>
+            </Card>
+          ) : clubRanking.length === 0 ? (
             <Card>
               <CardContent className="py-12 text-center">
                 <p className="text-muted-foreground">Aucun classement disponible. Les points ne sont attribués que pour les distances éligibles (2000m, 500m, relais 8x250m).</p>

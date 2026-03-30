@@ -46,10 +46,19 @@ interface EventRankings {
   rankings: ClubRanking[];
 }
 
+interface EventListItem {
+  id: string;
+  name: string;
+  location: string;
+  start_date: string;
+  end_date: string;
+  race_type?: string;
+}
+
 export default function ClubRankingsPage() {
   const { user } = useAuth();
   const navigate = useNavigate();
-  const [eventType, setEventType] = useState<string>("indoor");
+  const [eventType, setEventType] = useState<"indoor" | "mer" | "riviere">("indoor");
   const [data, setData] = useState<EventRankings[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -78,7 +87,65 @@ export default function ClubRankingsPage() {
     setLoading(true);
     setError(null);
     try {
-      const response = await api.get(`/rankings/clubs/by-type/${eventType}?ranking_type=indoor_points`);
+      if (eventType === "mer") {
+        const eventsRes = await api.get("/events");
+        const allEvents = (eventsRes.data?.data ?? []) as EventListItem[];
+        const merEvents = allEvents.filter((event) => event.race_type === "mer");
+
+        const rankingsByEvent = await Promise.all(
+          merEvents.map(async (event) => {
+            try {
+              const rankingRes = await api.get(`/events/${event.id}/endurance-mer/ranking`);
+              const rankingData = Array.isArray(rankingRes.data?.data) ? rankingRes.data.data : [];
+
+              const normalizedRankings: ClubRanking[] = rankingData.map((row: any, index: number) => ({
+                id: `${event.id}-${row.club_code ?? row.club_name ?? index}`,
+                club_name: row.club_name ?? "Club inconnu",
+                club_code: row.club_code ?? null,
+                total_points: Number(row.total_points ?? 0),
+                rank: typeof row.rank === "number" ? row.rank : index + 1,
+                points_count: 0,
+                results_count: 0,
+              }));
+
+              return {
+                event: {
+                  id: event.id,
+                  name: event.name,
+                  location: event.location,
+                  start_date: event.start_date,
+                  end_date: event.end_date,
+                  race_type: event.race_type ?? "mer",
+                },
+                rankings: normalizedRankings,
+              } satisfies EventRankings;
+            } catch {
+              return {
+                event: {
+                  id: event.id,
+                  name: event.name,
+                  location: event.location,
+                  start_date: event.start_date,
+                  end_date: event.end_date,
+                  race_type: event.race_type ?? "mer",
+                },
+                rankings: [],
+              } satisfies EventRankings;
+            }
+          })
+        );
+
+        setData(rankingsByEvent);
+        return;
+      }
+
+      const raceTypeParam = eventType === "riviere" ? "rivière" : eventType;
+      const params = new URLSearchParams();
+      if (eventType === "indoor") {
+        params.set("ranking_type", "indoor_points");
+      }
+      const query = params.toString();
+      const response = await api.get(`/rankings/clubs/by-type/${raceTypeParam}${query ? `?${query}` : ""}`);
       
       if (response.data.status === "success") {
         setData(response.data.data || []);
@@ -169,7 +236,7 @@ export default function ClubRankingsPage() {
             <SelectContent>
               <SelectItem value="indoor">Indoor</SelectItem>
               <SelectItem value="mer">Mer</SelectItem>
-              <SelectItem value="rivière">Rivière</SelectItem>
+              <SelectItem value="riviere">Rivière</SelectItem>
             </SelectContent>
           </Select>
         </CardContent>
@@ -299,126 +366,127 @@ export default function ClubRankingsPage() {
       )}
 
       {/* Classements par Événement */}
-      {activeTab === "by-event" && data.length === 0 ? (
-        <Card>
-          <CardContent className="py-12 text-center">
-            <p className="text-muted-foreground">
-              Aucun classement disponible pour ce type d'événement.
-            </p>
-          </CardContent>
-        </Card>
-      ) : (
-        <div className="space-y-6">
-          {data.map((eventRankings) => (
-            <Card key={eventRankings.event.id}>
-              <CardHeader>
-                <div className="flex items-start justify-between">
-                  <div className="flex-1">
-                    <CardTitle className="flex items-center gap-2">
-                      <Trophy className="w-5 h-5 text-primary" />
-                      {eventRankings.event.name}
-                    </CardTitle>
-                    <CardDescription className="flex flex-wrap items-center gap-4 mt-2">
-                      <div className="flex items-center gap-2">
-                        <Calendar className="w-4 h-4" />
-                        <span>
-                          {dayjs(eventRankings.event.start_date).format("DD/MM/YYYY")}
-                          {!dayjs(eventRankings.event.start_date).isSame(
-                            dayjs(eventRankings.event.end_date),
-                            "day"
-                          ) && (
-                            <> - {dayjs(eventRankings.event.end_date).format("DD/MM/YYYY")}</>
-                          )}
-                        </span>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <MapPin className="w-4 h-4" />
-                        <span>{eventRankings.event.location}</span>
-                      </div>
-                    </CardDescription>
+      {activeTab === "by-event" &&
+        (data.length === 0 ? (
+          <Card>
+            <CardContent className="py-12 text-center">
+              <p className="text-muted-foreground">
+                Aucun classement disponible pour ce type d'événement.
+              </p>
+            </CardContent>
+          </Card>
+        ) : (
+          <div className="space-y-6">
+            {data.map((eventRankings) => (
+              <Card key={eventRankings.event.id}>
+                <CardHeader>
+                  <div className="flex items-start justify-between">
+                    <div className="flex-1">
+                      <CardTitle className="flex items-center gap-2">
+                        <Trophy className="w-5 h-5 text-primary" />
+                        {eventRankings.event.name}
+                      </CardTitle>
+                      <CardDescription className="flex flex-wrap items-center gap-4 mt-2">
+                        <div className="flex items-center gap-2">
+                          <Calendar className="w-4 h-4" />
+                          <span>
+                            {dayjs(eventRankings.event.start_date).format("DD/MM/YYYY")}
+                            {!dayjs(eventRankings.event.start_date).isSame(
+                              dayjs(eventRankings.event.end_date),
+                              "day"
+                            ) && (
+                              <> - {dayjs(eventRankings.event.end_date).format("DD/MM/YYYY")}</>
+                            )}
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <MapPin className="w-4 h-4" />
+                          <span>{eventRankings.event.location}</span>
+                        </div>
+                      </CardDescription>
+                    </div>
+                    <Button asChild variant="outline" size="sm" className="ml-4">
+                      <Link to={`/event/${eventRankings.event.id}/results`}>
+                        <ExternalLink className="w-4 h-4 mr-2" />
+                        Voir le détail
+                      </Link>
+                    </Button>
                   </div>
-                  <Button asChild variant="outline" size="sm" className="ml-4">
-                    <Link to={`/event/${eventRankings.event.id}/results`}>
-                      <ExternalLink className="w-4 h-4 mr-2" />
-                      Voir le détail
-                    </Link>
-                  </Button>
-                </div>
-              </CardHeader>
-              <CardContent className="p-0">
-                <div className="overflow-x-auto">
-                  <Table>
-                    <TableHeader>
-                      <TableRow className="bg-muted/50">
-                        <TableHead className="w-20 text-center font-semibold">Rang</TableHead>
-                        <TableHead className="min-w-[250px] font-semibold">Club</TableHead>
-                        <TableHead className="w-32 text-center font-semibold">Total points</TableHead>
-                        <TableHead className="w-32 text-center font-semibold">Nb points</TableHead>
-                        <TableHead className="w-32 text-center font-semibold">Nb résultats</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {eventRankings.rankings.length === 0 ? (
-                        <TableRow>
-                          <TableCell colSpan={5} className="text-center text-muted-foreground py-8">
-                            Aucun classement disponible pour cet événement
-                          </TableCell>
+                </CardHeader>
+                <CardContent className="p-0">
+                  <div className="overflow-x-auto">
+                    <Table>
+                      <TableHeader>
+                        <TableRow className="bg-muted/50">
+                          <TableHead className="w-20 text-center font-semibold">Rang</TableHead>
+                          <TableHead className="min-w-[250px] font-semibold">Club</TableHead>
+                          <TableHead className="w-32 text-center font-semibold">Total points</TableHead>
+                          <TableHead className="w-32 text-center font-semibold">Nb points</TableHead>
+                          <TableHead className="w-32 text-center font-semibold">Nb résultats</TableHead>
                         </TableRow>
-                      ) : (
-                        eventRankings.rankings.map((ranking) => (
-                          <TableRow
-                            key={ranking.id}
-                            className={`${
-                              ranking.rank === 1 ? "bg-amber-50 dark:bg-amber-950/20" :
-                              ranking.rank === 2 ? "bg-slate-50 dark:bg-slate-900/20" :
-                              ranking.rank === 3 ? "bg-amber-100 dark:bg-amber-900/20" : ""
-                            }`}
-                          >
-                            <TableCell className="text-center">
-                              {ranking.rank !== null ? (
-                                <span className="font-bold text-lg text-primary">
-                                  {ranking.rank}
-                                </span>
-                              ) : (
-                                <span className="text-muted-foreground">-</span>
-                              )}
-                            </TableCell>
-                            <TableCell>
-                              <div className="font-medium">
-                                {ranking.club_name}
-                              </div>
-                              {ranking.club_code && (
-                                <div className="text-sm text-muted-foreground">
-                                  {ranking.club_code}
-                                </div>
-                              )}
-                            </TableCell>
-                            <TableCell className="text-center">
-                              <span className="font-bold text-xl text-primary">
-                                {ranking.total_points.toFixed(1)}
-                              </span>
-                            </TableCell>
-                            <TableCell className="text-center">
-                              <span className="text-muted-foreground">
-                                {ranking.points_count} point{ranking.points_count > 1 ? "s" : ""}
-                              </span>
-                            </TableCell>
-                            <TableCell className="text-center">
-                              <span className="text-muted-foreground">
-                                {ranking.results_count || 0} résultat{(ranking.results_count || 0) > 1 ? "s" : ""}
-                              </span>
+                      </TableHeader>
+                      <TableBody>
+                        {eventRankings.rankings.length === 0 ? (
+                          <TableRow>
+                            <TableCell colSpan={5} className="text-center text-muted-foreground py-8">
+                              Aucun classement disponible pour cet événement
                             </TableCell>
                           </TableRow>
-                        ))
-                      )}
-                    </TableBody>
-                  </Table>
-                </div>
-              </CardContent>
-            </Card>
-          ))}
-        </div>
-      )}
+                        ) : (
+                          eventRankings.rankings.map((ranking) => (
+                            <TableRow
+                              key={ranking.id}
+                              className={`${
+                                ranking.rank === 1 ? "bg-amber-50 dark:bg-amber-950/20" :
+                                ranking.rank === 2 ? "bg-slate-50 dark:bg-slate-900/20" :
+                                ranking.rank === 3 ? "bg-amber-100 dark:bg-amber-900/20" : ""
+                              }`}
+                            >
+                              <TableCell className="text-center">
+                                {ranking.rank !== null ? (
+                                  <span className="font-bold text-lg text-primary">
+                                    {ranking.rank}
+                                  </span>
+                                ) : (
+                                  <span className="text-muted-foreground">-</span>
+                                )}
+                              </TableCell>
+                              <TableCell>
+                                <div className="font-medium">
+                                  {ranking.club_name}
+                                </div>
+                                {ranking.club_code && (
+                                  <div className="text-sm text-muted-foreground">
+                                    {ranking.club_code}
+                                  </div>
+                                )}
+                              </TableCell>
+                              <TableCell className="text-center">
+                                <span className="font-bold text-xl text-primary">
+                                  {ranking.total_points.toFixed(1)}
+                                </span>
+                              </TableCell>
+                              <TableCell className="text-center">
+                                <span className="text-muted-foreground">
+                                  {ranking.points_count} point{ranking.points_count > 1 ? "s" : ""}
+                                </span>
+                              </TableCell>
+                              <TableCell className="text-center">
+                                <span className="text-muted-foreground">
+                                  {ranking.results_count || 0} résultat{(ranking.results_count || 0) > 1 ? "s" : ""}
+                                </span>
+                              </TableCell>
+                            </TableRow>
+                          ))
+                        )}
+                      </TableBody>
+                    </Table>
+                  </div>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        ))}
     </div>
   );
 }

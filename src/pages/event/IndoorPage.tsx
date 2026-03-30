@@ -72,6 +72,7 @@ export default function IndoorPage() {
 
   // Vérifier si l'utilisateur est admin ou superadmin
   const isAdmin = user?.role === "admin" || user?.role === "superadmin";
+  const isSuperAdmin = user?.role === "superadmin";
 
   useEffect(() => {
     if (eventId) {
@@ -410,6 +411,20 @@ export default function IndoorPage() {
                 <Upload className="w-4 h-4 mr-2" />
                 Importer course + résultats (JSON)
               </Button>
+              {isSuperAdmin && (
+                <Button
+                  onClick={() =>
+                    navigate(
+                      `/event/${eventId}/indoor/import-ergrace-results-superadmin`
+                    )
+                  }
+                  variant="outline"
+                  className="bg-amber-50 hover:bg-amber-100 text-amber-900 border-amber-400"
+                >
+                  <Upload className="w-4 h-4 mr-2" />
+                  Import JSON express (super admin)
+                </Button>
+              )}
             </>
           )}
           {races.length > 0 && (

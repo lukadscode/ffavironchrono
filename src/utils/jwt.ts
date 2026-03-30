@@ -31,7 +31,6 @@ export function isTokenExpired(token: string): boolean {
   const expirationTime = decoded.exp * 1000; // Convertir en millisecondes
   return Date.now() >= expirationTime;
 }
-
 /**
  * Récupère la date d'expiration d'un token
  */
@@ -91,4 +90,5 @@ export function getTokenDuration(token: string): number | null {
   
   return (decoded.exp - decoded.iat) * 1000;
 }
+
 

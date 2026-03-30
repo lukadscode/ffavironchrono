@@ -37,10 +37,12 @@ import IndoorPage from "@/pages/event/IndoorPage";
 import IndoorRaceDetailPage from "@/pages/event/IndoorRaceDetailPage";
 import ImportErgRaceRacePage from "@/pages/event/ImportErgRaceRacePage";
 import ImportErgRaceResultsWithRacePage from "@/pages/event/ImportErgRaceResultsWithRacePage";
+import ImportErgRaceResultsSuperAdminPage from "@/pages/event/ImportErgRaceResultsSuperAdminPage";
 import ImportParticipantsPage from "@/pages/event/ImportParticipantsPage";
 import ExportPage from "@/pages/event/ExportPage";
 import EventUpdatePage from "@/pages/event/EventUpdatePage";
 import EventResultsPage from "@/pages/event/EventResultsPage";
+import EnduranceMerPage from "@/pages/event/EnduranceMerPage";
 import ClubRankingsPage from "@/pages/dashboard/ClubRankingsPage";
 import EventStatisticsPage from "@/pages/dashboard/EventStatisticsPage";
 import EventsList from "@/pages/public/EventsList";
@@ -326,6 +328,14 @@ const router = createBrowserRouter([
           </EventProtectedRoute>
         )
       },
+      {
+        path: "indoor/import-ergrace-results-superadmin",
+        element: (
+          <EventProtectedRoute allowedRoles={["organiser"]}>
+            <ImportErgRaceResultsSuperAdminPage />
+          </EventProtectedRoute>
+        )
+      },
       // Exports - organisateur et éditeur
       { 
         path: "export", 
@@ -350,6 +360,15 @@ const router = createBrowserRouter([
         element: (
           <EventProtectedRoute allowedRoles={["organiser"]}>
             <EventResultsPage />
+          </EventProtectedRoute>
+        )
+      },
+      // Résultats Endurance Mer (événements type mer) - import Excel + classement clubs
+      {
+        path: "endurance-mer",
+        element: (
+          <EventProtectedRoute allowedRoles={["organiser", "editor"]}>
+            <EnduranceMerPage />
           </EventProtectedRoute>
         )
       },

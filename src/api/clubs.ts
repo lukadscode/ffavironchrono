@@ -124,7 +124,14 @@ export function clearClubsCache(): void {
 export async function getClubByShortCode(codeCourt: string): Promise<Club | null> {
   try {
     const clubs = await fetchAllClubs();
-    return clubs.find((club) => club.code_court === codeCourt) || null;
+    if (!codeCourt) return null;
+    const exact = clubs.find((club) => club.code_court === codeCourt);
+    if (exact) return exact;
+    const key = codeCourt.trim().toLowerCase();
+    return (
+      clubs.find((club) => (club.code_court || "").trim().toLowerCase() === key) ||
+      null
+    );
   } catch (error) {
     console.error("Erreur récupération club par code court", error);
     return null;

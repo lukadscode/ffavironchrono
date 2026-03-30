@@ -27,6 +27,7 @@ import {
   Tag,
   UserX,
   Trophy,
+  Waves,
 } from "lucide-react";
 
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -54,6 +55,7 @@ const allNavItems = [
   { to: "indoor", label: "Indoor", icon: Activity, permission: "indoor" },
   { to: "arbitres", label: "Arbitres", icon: Gavel, permission: "arbitres" },
   { to: "results", label: "Résultats", icon: Trophy, permission: "overview" }, // Organisateur, admin et superadmin
+  { to: "endurance-mer", label: "Résultats Mer", icon: Waves, permission: "overview" }, // Visible uniquement pour événements type mer
   { to: "export", label: "Exports", icon: FileDown, permission: "overview" },
   { to: "update", label: "Mise à jour FFAviron", icon: RefreshCw, permission: "permissions" }, // Seulement organisateur
   { to: "timingPoint", label: "Points", icon: Timer, permission: "timingPoint" },
@@ -69,6 +71,7 @@ export default function EventAdminLayout() {
 
   const [eventName, setEventName] = useState<string>("");
   const [isIndoor, setIsIndoor] = useState<boolean>(false);
+  const [isMer, setIsMer] = useState<boolean>(false);
 
   // Vérifier si l'utilisateur est admin global
   const { user, loading } = useAuth();
@@ -97,11 +100,17 @@ export default function EventAdminLayout() {
     
     // Filtrer selon le type d'événement
     if (isIndoor) {
-      // Si indoor : cacher "Points" et "Chrono"
-      items = items.filter(item => item.to !== "timingPoint" && item.to !== "timing");
+      // Si indoor : cacher "Points", "Chrono" et "Résultats Mer"
+      items = items.filter(item => item.to !== "timingPoint" && item.to !== "timing" && item.to !== "endurance-mer");
     } else {
       // Si pas indoor : cacher "Indoor"
       items = items.filter(item => item.to !== "indoor");
+    }
+    // Pour les événements mer : afficher "Résultats Mer", masquer "Résultats" classique
+    if (isMer) {
+      items = items.filter(item => item.to !== "results");
+    } else {
+      items = items.filter(item => item.to !== "endurance-mer");
     }
     
     // Filtrer "Résultats" - pour organisateur, admin et superadmin
@@ -124,7 +133,7 @@ export default function EventAdminLayout() {
     // Pour les autres rôles, filtrer selon les permissions
     const permissions = ROLE_PERMISSIONS[eventRole] || [];
     return items.filter(item => permissions.includes(item.permission));
-  }, [eventRole, isGlobalAdmin, isIndoor]);
+  }, [eventRole, isGlobalAdmin, isIndoor, isMer]);
 
   useEffect(() => {
     if (!eventId) return;
@@ -137,6 +146,7 @@ export default function EventAdminLayout() {
         // On vérifie si race_type contient "indoor" (insensible à la casse)
         const raceType = eventData.race_type?.toLowerCase() || "";
         setIsIndoor(raceType.includes("indoor"));
+        setIsMer(raceType.includes("mer") || raceType.includes("coastal"));
       })
       .catch(() => {
         setEventName(`Événement ${eventId}`);
