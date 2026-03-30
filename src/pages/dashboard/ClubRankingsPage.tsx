@@ -112,7 +112,7 @@ export default function ClubRankingsPage() {
                 results_count: 0,
               }))
               // Même logique que la page Résultats : sans club, pas de points / pas de classement club
-              .filter((r) => hasClubCode(r.club_code));
+              .filter((r: ClubRanking) => hasClubCode(r.club_code));
 
               return {
                 event: {
