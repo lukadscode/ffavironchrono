@@ -59,6 +59,46 @@ type EventTypeFilter = "indoor" | "mer" | "riviere";
 const hasClubCode = (clubCode: string | null | undefined): boolean =>
   Boolean((clubCode || "").trim());
 
+/**
+ * Championnat de France indoor MAIF (à additionner au meilleur score régional).
+ * Ex. « MAIF AVIRON INDOOR – CHAMPIONNATS DE FRANCE U17, U19, SENIOR, MASTER ET PARA-AVIRON »
+ */
+function isMaifNationalIndoorEventName(eventName: string): boolean {
+  const n = eventName
+    .toUpperCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[–—−]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  return (
+    n.includes("MAIF") &&
+    n.includes("AVIRON INDOOR") &&
+    n.includes("CHAMPIONNATS DE FRANCE")
+  );
+}
+
+/** Ligne affichée pour l’onglet classement général */
+type GlobalRankingRow = {
+  key: string;
+  club_name: string;
+  club_code: string;
+  global_rank: number;
+  best_points: number;
+  best_results_count: number;
+  best_event_name: string;
+  best_event_date: string;
+  /** indoor : total = meilleur régional + France MAIF */
+  indoorDetail?: {
+    regionalPoints: number;
+    regionalEventName: string;
+    regionalEventDate: string;
+    regionalResultsCount: number;
+    maifPoints: number;
+    maifEventName: string;
+  };
+};
+
 export default function ClubRankingsPage() {
   const { user } = useAuth();
   const navigate = useNavigate();
@@ -174,27 +214,110 @@ export default function ClubRankingsPage() {
     }
   };
 
-  // Calculer le classement global (meilleur score par code club)
-  const globalRanking = useMemo(() => {
-    const clubBestScores: Record<string, {
-      key: string;
-      club_name: string;
-      club_code: string;
-      best_points: number;
-      best_event_name: string;
-      best_event_date: string;
-      best_results_count: number;
-    }> = {};
+  // Classement global : indoor = max(régional) + France MAIF ; sinon = meilleur score parmi tous les événements
+  const globalRanking = useMemo((): GlobalRankingRow[] => {
+    if (eventType === "indoor") {
+      type Acc = {
+        key: string;
+        club_name: string;
+        club_code: string;
+        regionalMax: number;
+        regionalEventName: string;
+        regionalEventDate: string;
+        regionalResultsCount: number;
+        maifPoints: number;
+        maifEventName: string;
+      };
+      const byCode = new Map<string, Acc>();
 
-    // Pour chaque événement, trouver le meilleur score de chaque club
+      data.forEach((eventRankings) => {
+        const isNational = isMaifNationalIndoorEventName(eventRankings.event.name);
+        eventRankings.rankings.forEach((ranking) => {
+          const clubCode = (ranking.club_code || "").trim();
+          if (!clubCode) return;
+
+          if (!byCode.has(clubCode)) {
+            byCode.set(clubCode, {
+              key: clubCode,
+              club_name: ranking.club_name,
+              club_code: clubCode,
+              regionalMax: 0,
+              regionalEventName: "",
+              regionalEventDate: "",
+              regionalResultsCount: 0,
+              maifPoints: 0,
+              maifEventName: "",
+            });
+          }
+          const acc = byCode.get(clubCode)!;
+
+          if (isNational) {
+            const pts = Number(ranking.total_points ?? 0);
+            if (pts > acc.maifPoints) {
+              acc.maifPoints = pts;
+              acc.maifEventName = eventRankings.event.name;
+            }
+          } else {
+            const pts = Number(ranking.total_points ?? 0);
+            if (pts > acc.regionalMax) {
+              acc.regionalMax = pts;
+              acc.regionalEventName = eventRankings.event.name;
+              acc.regionalEventDate = eventRankings.event.start_date;
+              acc.regionalResultsCount = ranking.results_count || 0;
+            }
+          }
+        });
+      });
+
+      const rows: GlobalRankingRow[] = Array.from(byCode.values()).map((acc) => {
+        const total = acc.regionalMax + acc.maifPoints;
+        return {
+          key: acc.key,
+          club_name: acc.club_name,
+          club_code: acc.club_code,
+          global_rank: 0,
+          best_points: total,
+          best_results_count: acc.regionalResultsCount,
+          best_event_name: acc.regionalEventName || acc.maifEventName || "—",
+          best_event_date: acc.regionalEventDate || "",
+          indoorDetail: {
+            regionalPoints: acc.regionalMax,
+            regionalEventName: acc.regionalEventName,
+            regionalEventDate: acc.regionalEventDate,
+            regionalResultsCount: acc.regionalResultsCount,
+            maifPoints: acc.maifPoints,
+            maifEventName: acc.maifEventName,
+          },
+        };
+      });
+
+      return rows
+        .sort((a, b) => b.best_points - a.best_points)
+        .map((club, index) => ({
+          ...club,
+          global_rank: index + 1,
+        }));
+    }
+
+    const clubBestScores: Record<
+      string,
+      {
+        key: string;
+        club_name: string;
+        club_code: string;
+        best_points: number;
+        best_event_name: string;
+        best_event_date: string;
+        best_results_count: number;
+      }
+    > = {};
+
     data.forEach((eventRankings) => {
       eventRankings.rankings.forEach((ranking) => {
         const clubCode = (ranking.club_code || "").trim();
-        // Classement général basé sur le code club uniquement
         if (!clubCode) return;
         const key = clubCode;
-        
-        // Si le club n'existe pas encore ou si ce score est meilleur
+
         if (!clubBestScores[key] || ranking.total_points > clubBestScores[key].best_points) {
           clubBestScores[key] = {
             key,
@@ -209,14 +332,19 @@ export default function ClubRankingsPage() {
       });
     });
 
-    // Trier par points décroissants et ajouter le rang
     return Object.values(clubBestScores)
       .sort((a, b) => b.best_points - a.best_points)
       .map((club, index) => ({
-        ...club,
+        key: club.key,
+        club_name: club.club_name,
+        club_code: club.club_code,
         global_rank: index + 1,
+        best_points: club.best_points,
+        best_results_count: club.best_results_count,
+        best_event_name: club.best_event_name,
+        best_event_date: club.best_event_date,
       }));
-  }, [data]);
+  }, [data, eventType]);
 
   if (loading) {
     return (
@@ -306,7 +434,14 @@ export default function ClubRankingsPage() {
               Classement Global ({eventType.toUpperCase()})
             </CardTitle>
             <CardDescription>
-              Classement basé sur le meilleur score de chaque club parmi tous les événements
+              {eventType === "indoor" ? (
+                <>
+                  Total = meilleur score parmi les compétitions <strong>régionales</strong> + points du championnat de France{" "}
+                  <strong>MAIF AVIRON INDOOR</strong> (Championnats de France).
+                </>
+              ) : (
+                <>Classement basé sur le meilleur score de chaque club parmi tous les événements</>
+              )}
             </CardDescription>
           </CardHeader>
           <CardContent className="p-0">
@@ -316,10 +451,30 @@ export default function ClubRankingsPage() {
                   <TableRow className="bg-muted/50">
                     <TableHead className="w-20 text-center font-semibold">Rang</TableHead>
                     <TableHead className="min-w-[250px] font-semibold">Club</TableHead>
-                    <TableHead className="w-32 text-center font-semibold">Meilleur score</TableHead>
-                    <TableHead className="w-32 text-center font-semibold">Nb résultats</TableHead>
-                    <TableHead className="min-w-[200px] font-semibold">Événement</TableHead>
-                    <TableHead className="w-32 text-center font-semibold">Date</TableHead>
+                    <TableHead className="w-36 text-center font-semibold">
+                      {eventType === "indoor" ? "Total points" : "Meilleur score"}
+                    </TableHead>
+                    {eventType === "indoor" ? (
+                      <>
+                        <TableHead className="min-w-[180px] text-center font-semibold">
+                          Meilleur régional
+                        </TableHead>
+                        <TableHead className="min-w-[180px] text-center font-semibold">
+                          France MAIF
+                        </TableHead>
+                        <TableHead className="min-w-[220px] font-semibold">
+                          Événement (meilleur régional)
+                        </TableHead>
+                        <TableHead className="w-32 text-center font-semibold">Date</TableHead>
+                      </>
+                    ) : (
+                      <>
+                        <TableHead className="w-32 text-center font-semibold">Meilleur score</TableHead>
+                        <TableHead className="w-32 text-center font-semibold">Nb résultats</TableHead>
+                        <TableHead className="min-w-[200px] font-semibold">Événement</TableHead>
+                        <TableHead className="w-32 text-center font-semibold">Date</TableHead>
+                      </>
+                    )}
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -352,21 +507,58 @@ export default function ClubRankingsPage() {
                           {club.best_points.toFixed(1)}
                         </span>
                       </TableCell>
-                      <TableCell className="text-center">
-                        <span className="text-muted-foreground">
-                          {club.best_results_count} résultat{club.best_results_count > 1 ? "s" : ""}
-                        </span>
-                      </TableCell>
-                      <TableCell>
-                        <div className="text-sm">
-                          {club.best_event_name}
-                        </div>
-                      </TableCell>
-                      <TableCell className="text-center">
-                        <span className="text-sm text-muted-foreground">
-                          {dayjs(club.best_event_date).format("DD/MM/YYYY")}
-                        </span>
-                      </TableCell>
+                      {eventType === "indoor" && club.indoorDetail ? (
+                        <>
+                          <TableCell className="text-center">
+                            <span className="font-semibold">
+                              {club.indoorDetail.regionalPoints.toFixed(1)}
+                            </span>
+                          </TableCell>
+                          <TableCell className="text-center">
+                            <span className="font-semibold">
+                              {club.indoorDetail.maifPoints.toFixed(1)}
+                            </span>
+                            {club.indoorDetail.maifEventName ? (
+                              <div className="text-xs text-muted-foreground mt-1 line-clamp-2 max-w-[200px] mx-auto">
+                                {club.indoorDetail.maifEventName}
+                              </div>
+                            ) : null}
+                          </TableCell>
+                          <TableCell>
+                            <div className="text-sm">
+                              {club.indoorDetail.regionalEventName || "—"}
+                            </div>
+                          </TableCell>
+                          <TableCell className="text-center">
+                            <span className="text-sm text-muted-foreground">
+                              {club.indoorDetail.regionalEventDate &&
+                              dayjs(club.indoorDetail.regionalEventDate).isValid()
+                                ? dayjs(club.indoorDetail.regionalEventDate).format("DD/MM/YYYY")
+                                : "—"}
+                            </span>
+                          </TableCell>
+                        </>
+                      ) : (
+                        <>
+                          <TableCell className="text-center">
+                            <span className="text-muted-foreground">
+                              {club.best_results_count} résultat{club.best_results_count > 1 ? "s" : ""}
+                            </span>
+                          </TableCell>
+                          <TableCell>
+                            <div className="text-sm">
+                              {club.best_event_name}
+                            </div>
+                          </TableCell>
+                          <TableCell className="text-center">
+                            <span className="text-sm text-muted-foreground">
+                              {club.best_event_date && dayjs(club.best_event_date).isValid()
+                                ? dayjs(club.best_event_date).format("DD/MM/YYYY")
+                                : "—"}
+                            </span>
+                          </TableCell>
+                        </>
+                      )}
                     </TableRow>
                   ))}
                 </TableBody>
