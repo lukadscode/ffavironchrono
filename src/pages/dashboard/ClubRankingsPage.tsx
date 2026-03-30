@@ -58,6 +58,10 @@ interface EventListItem {
 type EventTypeFilter = "indoor" | "mer" | "riviere";
 const hasClubCode = (clubCode: string | null | undefined): boolean =>
   Boolean((clubCode || "").trim());
+const hasClubIdentity = (
+  clubCode: string | null | undefined,
+  clubName: string | null | undefined
+): boolean => Boolean((clubCode || "").trim() || (clubName || "").trim());
 
 /**
  * Championnat de France indoor MAIF (à additionner au meilleur score régional).
@@ -76,6 +80,95 @@ function isMaifNationalIndoorEventName(eventName: string): boolean {
     n.includes("AVIRON INDOOR") &&
     n.includes("CHAMPIONNATS DE FRANCE")
   );
+}
+
+/**
+ * Recalcule le total points d'un événement indoor comme la page résultats :
+ * - lignes sans club ignorées
+ * - réattribution des points par catégorie en sautant les lignes sans club
+ */
+function computeIndoorEventRankingsFromByCategory(
+  rawByCategory: any[]
+): ClubRanking[] {
+  const clubTotals = new Map<
+    string,
+    { club_name: string; club_code: string; total_points: number; results_count: number }
+  >();
+
+  const addClubPoints = (
+    clubCode: string,
+    clubName: string,
+    points: number
+  ) => {
+    if (!clubTotals.has(clubCode)) {
+      clubTotals.set(clubCode, {
+        club_name: clubName || clubCode,
+        club_code: clubCode,
+        total_points: 0,
+        results_count: 0,
+      });
+    }
+    const row = clubTotals.get(clubCode)!;
+    row.total_points += points;
+    row.results_count += 1;
+    if (!row.club_name && clubName) row.club_name = clubName;
+  };
+
+  rawByCategory.forEach((cat: any) => {
+    const rows = Array.isArray(cat?.results) ? cat.results : [];
+    const sorted = [...rows].sort(
+      (a, b) => Number(a?.position ?? 9999) - Number(b?.position ?? 9999)
+    );
+
+    // Barème de points par place absolue (issu API), uniquement lignes éligibles
+    const rankPoints: Record<number, number | null> = {};
+    sorted.forEach((r) => {
+      const pos = Number(r?.position ?? 0);
+      if (!Number.isFinite(pos) || pos <= 0) return;
+      const eligible = Boolean(r?.is_eligible_for_points);
+      const p = Number(r?.points ?? 0);
+      if (eligible && Number.isFinite(p)) {
+        rankPoints[pos] = p;
+      } else {
+        rankPoints[pos] = null;
+      }
+    });
+
+    // Concurrents qui comptent pour le classement club
+    const withClub = sorted.filter((r) => {
+      const clubCode = (r?.crew?.club_code || "").trim();
+      const clubName = (r?.crew?.club_name || "").trim();
+      return (
+        hasClubIdentity(clubCode, clubName) &&
+        Boolean(r?.is_eligible_for_points)
+      );
+    });
+
+    withClub.forEach((r, idx) => {
+      const clubCode = (r?.crew?.club_code || "").trim();
+      const clubName = (r?.crew?.club_name || "").trim();
+      // Dashboard global basé sur code club : on ignore les lignes sans code
+      if (!hasClubCode(clubCode)) return;
+
+      const rankingAmongClubs = idx + 1;
+      const pointsForThisClubRank = rankPoints[rankingAmongClubs];
+      if (typeof pointsForThisClubRank !== "number") return;
+
+      addClubPoints(clubCode, clubName || clubCode, pointsForThisClubRank);
+    });
+  });
+
+  return Array.from(clubTotals.values())
+    .sort((a, b) => b.total_points - a.total_points)
+    .map((r, index) => ({
+      id: `${r.club_code}-${index}`,
+      club_name: r.club_name,
+      club_code: r.club_code,
+      total_points: r.total_points,
+      rank: index + 1,
+      points_count: 0,
+      results_count: r.results_count,
+    }));
 }
 
 /** Ligne affichée pour l’onglet classement général */
@@ -131,6 +224,57 @@ export default function ClubRankingsPage() {
     setLoading(true);
     setError(null);
     try {
+      if (eventType === "indoor") {
+        const eventsRes = await api.get("/events");
+        const allEvents = (eventsRes.data?.data ?? []) as EventListItem[];
+        const indoorEvents = allEvents.filter((event) => {
+          const rt = (event.race_type || "").toLowerCase();
+          return rt === "indoor";
+        });
+
+        const rankingsByEvent = await Promise.all(
+          indoorEvents.map(async (event) => {
+            try {
+              const byCatRes = await api.get(
+                `/indoor-results/event/${event.id}/bycategorie`
+              );
+              const byCatData = Array.isArray(byCatRes.data?.data)
+                ? byCatRes.data.data
+                : [];
+              const normalizedRankings =
+                computeIndoorEventRankingsFromByCategory(byCatData);
+
+              return {
+                event: {
+                  id: event.id,
+                  name: event.name,
+                  location: event.location,
+                  start_date: event.start_date,
+                  end_date: event.end_date,
+                  race_type: event.race_type ?? "indoor",
+                },
+                rankings: normalizedRankings,
+              } satisfies EventRankings;
+            } catch {
+              return {
+                event: {
+                  id: event.id,
+                  name: event.name,
+                  location: event.location,
+                  start_date: event.start_date,
+                  end_date: event.end_date,
+                  race_type: event.race_type ?? "indoor",
+                },
+                rankings: [],
+              } satisfies EventRankings;
+            }
+          })
+        );
+
+        setData(rankingsByEvent);
+        return;
+      }
+
       if (eventType === "mer") {
         const eventsRes = await api.get("/events");
         const allEvents = (eventsRes.data?.data ?? []) as EventListItem[];
@@ -186,12 +330,7 @@ export default function ClubRankingsPage() {
       }
 
       const raceTypeParam = eventType === "riviere" ? "rivière" : eventType;
-      const params = new URLSearchParams();
-      if (eventType === "indoor") {
-        params.set("ranking_type", "indoor_points");
-      }
-      const query = params.toString();
-      const response = await api.get(`/rankings/clubs/by-type/${raceTypeParam}${query ? `?${query}` : ""}`);
+      const response = await api.get(`/rankings/clubs/by-type/${raceTypeParam}`);
       
       if (response.data.status === "success") {
         const rawData = (response.data.data || []) as EventRankings[];
