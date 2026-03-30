@@ -150,6 +150,78 @@ function buildIndoorCategoryCode(
   return `${base}1I_${d}m`;
 }
 
+function normalizeCategoryCodeForMatch(code: string): string {
+  return code
+    .toUpperCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^A-Z0-9]/g, "");
+}
+
+function isRelayClass(ergClass: string | undefined): boolean {
+  const v = (ergClass ?? "").toUpperCase();
+  return /\bR4\b/.test(v);
+}
+
+function findCategoryForErgClass(
+  ergClass: string | undefined,
+  distanceMeters: number,
+  categories: Array<{ id: string; code: string }>
+): { id: string; code: string } | undefined {
+  const raw = (ergClass ?? "").trim();
+
+  // Cas standard (non-relais) : logique existante stricte
+  if (!isRelayClass(raw)) {
+    const catCode = buildIndoorCategoryCode(raw, distanceMeters);
+    return categories.find(
+      (c) =>
+        c.code === catCode ||
+        c.code.toLowerCase() === catCode.toLowerCase()
+    );
+  }
+
+  // Cas relais R4 :
+  // Exemples attendus côté BDD : SFRA, SHR4, U17MR4 50%H/F_17m, etc.
+  // => matching souple sans imposer le suffixe de distance.
+  const normalizedClass = normalizeCategoryCodeForMatch(raw);
+  const compactClass = raw.replace(/\s+/g, "");
+  const compactNormalized = normalizeCategoryCodeForMatch(compactClass);
+  const raVariant = compactClass.replace(/R4/gi, "RA");
+  const raNormalized = normalizeCategoryCodeForMatch(raVariant);
+
+  const candidates = Array.from(
+    new Set(
+      [normalizedClass, compactNormalized, raNormalized].filter(
+        (v) => v.length > 0
+      )
+    )
+  );
+
+  const scored = categories
+    .map((c) => {
+      const cc = normalizeCategoryCodeForMatch(c.code || "");
+      let score = 0;
+
+      // Priorité aux catégories contenant explicitement R4/RA
+      if (cc.includes("R4")) score += 20;
+      if (cc.includes("RA")) score += 15;
+
+      for (const cand of candidates) {
+        if (!cand) continue;
+        if (cc === cand) score = Math.max(score, 200);
+        else if (cc.startsWith(cand)) score = Math.max(score, 180);
+        else if (cc.includes(cand)) score = Math.max(score, 160);
+        else if (cand.startsWith(cc)) score = Math.max(score, 140);
+      }
+
+      return { category: c, score };
+    })
+    .filter((x) => x.score > 0)
+    .sort((a, b) => b.score - a.score);
+
+  return scored[0]?.category;
+}
+
 function normalizeParticipantsForBackend(
   participants: ErgRaceParticipant[]
 ): ErgRaceParticipant[] {
@@ -250,9 +322,9 @@ function resolveLicenseNumber(
  */
 function inferGenderFromErgClass(
   ergClass: string | undefined
-): "Homme" | "Femme" | "Mixte" {
+): "Homme" | "Femme" {
   const raw = (ergClass ?? "").trim();
-  if (!raw) return "Mixte";
+  if (!raw) return "Homme";
   if (/FEMME|DAMES?|FÉMININ|FEMININ/i.test(raw)) return "Femme";
   if (/HOMME|MESSIEURS?|MASCULIN/i.test(raw)) return "Homme";
 
@@ -263,7 +335,8 @@ function inferGenderFromErgClass(
   if (compact.endsWith("H")) return "Homme";
   if (compact.endsWith("M")) return "Homme";
 
-  return "Mixte";
+  // Fallback API-compatible (l'API n'accepte pas "Mixte")
+  return "Homme";
 }
 
 /** Message API lisible (toast / debug) */
@@ -301,7 +374,7 @@ async function createParticipantWithApiCompatibility(
     first_name: string;
     last_name: string;
     license_number: string;
-    gender: "Homme" | "Femme" | "Mixte";
+    gender: "Homme" | "Femme";
     club_name?: string;
   }
 ) {
@@ -657,12 +730,14 @@ export default function ImportErgRaceResultsSuperAdminPage() {
         const affiliation = row.affiliation ? String(row.affiliation).trim() : "";
         const ergClass = row.class ? String(row.class) : "";
         const catCode = buildIndoorCategoryCode(ergClass, duration);
-        const category = categories.find(
-          (c) => c.code === catCode || c.code.toLowerCase() === catCode.toLowerCase()
+        const category = findCategoryForErgClass(
+          ergClass,
+          duration,
+          categories
         );
         if (!category) {
           throw new Error(
-            `Catégorie introuvable pour le code « ${catCode} » (classe ErgRace « ${ergClass} », ${duration} m). Créez-la dans l’événement.`
+            `Catégorie introuvable pour la classe ErgRace « ${ergClass} » (code attendu standard « ${catCode} », ${duration} m). Créez-la dans l’événement.`
           );
         }
 

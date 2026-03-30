@@ -56,6 +56,8 @@ interface EventListItem {
 }
 
 type EventTypeFilter = "indoor" | "mer" | "riviere";
+const hasClubCode = (clubCode: string | null | undefined): boolean =>
+  Boolean((clubCode || "").trim());
 
 export default function ClubRankingsPage() {
   const { user } = useAuth();
@@ -108,7 +110,9 @@ export default function ClubRankingsPage() {
                 rank: typeof row.rank === "number" ? row.rank : index + 1,
                 points_count: 0,
                 results_count: 0,
-              }));
+              }))
+              // Même logique que la page Résultats : sans club, pas de points / pas de classement club
+              .filter((r) => hasClubCode(r.club_code));
 
               return {
                 event: {
@@ -150,7 +154,14 @@ export default function ClubRankingsPage() {
       const response = await api.get(`/rankings/clubs/by-type/${raceTypeParam}${query ? `?${query}` : ""}`);
       
       if (response.data.status === "success") {
-        setData(response.data.data || []);
+        const rawData = (response.data.data || []) as EventRankings[];
+        const filteredData = rawData.map((eventRankings) => ({
+          ...eventRankings,
+          rankings: (eventRankings.rankings || []).filter((ranking) =>
+            hasClubCode(ranking.club_code)
+          ),
+        }));
+        setData(filteredData);
       } else {
         setError(response.data.message || "Erreur lors de la récupération des classements");
       }
@@ -163,11 +174,12 @@ export default function ClubRankingsPage() {
     }
   };
 
-  // Calculer le classement global (meilleur score par club)
+  // Calculer le classement global (meilleur score par code club)
   const globalRanking = useMemo(() => {
     const clubBestScores: Record<string, {
+      key: string;
       club_name: string;
-      club_code: string | null;
+      club_code: string;
       best_points: number;
       best_event_name: string;
       best_event_date: string;
@@ -177,13 +189,17 @@ export default function ClubRankingsPage() {
     // Pour chaque événement, trouver le meilleur score de chaque club
     data.forEach((eventRankings) => {
       eventRankings.rankings.forEach((ranking) => {
-        const key = ranking.club_name;
+        const clubCode = (ranking.club_code || "").trim();
+        // Classement général basé sur le code club uniquement
+        if (!clubCode) return;
+        const key = clubCode;
         
         // Si le club n'existe pas encore ou si ce score est meilleur
         if (!clubBestScores[key] || ranking.total_points > clubBestScores[key].best_points) {
           clubBestScores[key] = {
+            key,
             club_name: ranking.club_name,
-            club_code: ranking.club_code,
+            club_code: clubCode,
             best_points: ranking.total_points,
             best_event_name: eventRankings.event.name,
             best_event_date: eventRankings.event.start_date,
@@ -309,7 +325,7 @@ export default function ClubRankingsPage() {
                 <TableBody>
                   {globalRanking.map((club) => (
                     <TableRow
-                      key={club.club_name}
+                      key={club.key}
                       className={`${
                         club.global_rank === 1 ? "bg-amber-50 dark:bg-amber-950/20" :
                         club.global_rank === 2 ? "bg-slate-50 dark:bg-slate-900/20" :
