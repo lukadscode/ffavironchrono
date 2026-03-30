@@ -215,6 +215,110 @@ function resolveErgDistanceMeters(
   return null;
 }
 
+function rowLaneNumber(
+  row: ErgRaceParticipant,
+  index: number
+): number {
+  if (typeof row.lane === "number" && row.lane > 0) return row.lane;
+  if (typeof row.lane_number === "number" && row.lane_number > 0) {
+    return row.lane_number;
+  }
+  return index + 1;
+}
+
+function resolveLicenseNumber(
+  row: ErgRaceParticipant,
+  ergName: string,
+  index: number
+): string {
+  const rawFromRow =
+    row.logbook_id != null ? String(row.logbook_id).trim() : "";
+  if (rawFromRow.length > 0) return rawFromRow;
+
+  const inParens = ergName.match(/\((\d{4,})\)/)?.[1];
+  if (inParens) return inParens;
+
+  const fromId = row.id != null ? String(row.id).match(/\d{4,}/)?.[0] : null;
+  if (fromId) return fromId;
+
+  const lane = rowLaneNumber(row, index);
+  return `ERG-${Date.now()}-${lane}-${index + 1}`;
+}
+
+/**
+ * API : Homme / Femme / Mixte — déduit depuis la classe ErgRace (ex. 60F, J16H, OPEN M).
+ */
+function inferGenderFromErgClass(
+  ergClass: string | undefined
+): "Homme" | "Femme" | "Mixte" {
+  const raw = (ergClass ?? "").trim();
+  if (!raw) return "Mixte";
+  if (/FEMME|DAMES?|FÉMININ|FEMININ/i.test(raw)) return "Femme";
+  if (/HOMME|MESSIEURS?|MASCULIN/i.test(raw)) return "Homme";
+
+  let compact = raw.replace(/\s/g, "").toUpperCase();
+  if (compact.endsWith("PL")) compact = compact.slice(0, -2);
+
+  if (compact.endsWith("F")) return "Femme";
+  if (compact.endsWith("H")) return "Homme";
+  if (compact.endsWith("M")) return "Homme";
+
+  return "Mixte";
+}
+
+/** Message API lisible (toast / debug) */
+function formatAxiosError(err: unknown): string {
+  if (err instanceof Error && !("response" in err)) {
+    return err.message;
+  }
+  const ax = err as {
+    response?: { data?: Record<string, unknown> };
+  };
+  const d = ax.response?.data;
+  if (d && typeof d === "object") {
+    if (typeof d.message === "string") return d.message;
+    if (Array.isArray(d.errors)) {
+      return (d.errors as unknown[])
+        .map((x) => (typeof x === "string" ? x : JSON.stringify(x)))
+        .filter(Boolean)
+        .join("; ");
+    }
+    if (typeof d.error === "string") return d.error;
+    try {
+      const s = JSON.stringify(d);
+      if (s && s !== "{}" && s.length < 800) return s;
+    } catch {
+      /* ignore */
+    }
+  }
+  if (err instanceof Error) return err.message;
+  return "Échec de l’import super admin.";
+}
+
+async function createParticipantWithApiCompatibility(
+  eventId: string,
+  payload: {
+    first_name: string;
+    last_name: string;
+    license_number: string;
+    gender: "Homme" | "Femme" | "Mixte";
+    club_name?: string;
+  }
+) {
+  try {
+    return await api.post("/participants", {
+      event_id: eventId,
+      ...payload,
+    });
+  } catch (err: unknown) {
+    const message = formatAxiosError(err).toLowerCase();
+    if (message.includes('"event_id" is not allowed')) {
+      return await api.post("/participants", payload);
+    }
+    throw err;
+  }
+}
+
 export default function ImportErgRaceResultsSuperAdminPage() {
   const { eventId } = useParams();
   const navigate = useNavigate();
@@ -494,18 +598,28 @@ export default function ImportErgRaceResultsSuperAdminPage() {
         )
         .filter((n): n is number => typeof n === "number" && n > 0);
       const maxLaneAll =
-        allLaneNums.length > 0 ? Math.max(...allLaneNums) : undefined;
+        allLaneNums.length > 0 ? Math.max(...allLaneNums) : 0;
+
+      const maxLaneIncluded = Math.max(
+        0,
+        ...includedParticipants.map((p, i) => rowLaneNumber(p, i))
+      );
+
+      /** Ne jamais sous-dimensionner : ErgRace peut avoir couloir 66 alors que le champ UI vaut 8 */
+      const effectiveLaneCount = Math.max(
+        laneCount ?? 0,
+        maxLaneAll,
+        maxLaneIncluded,
+        includedParticipants.length,
+        8
+      );
 
       const racePayload: Record<string, unknown> = {
         phase_id: phaseId,
         name: raceName.trim(),
         race_number: raceNumber,
         distance_id: selectedDistanceId,
-        lane_count:
-          laneCount ||
-          maxLaneAll ||
-          includedParticipants.length ||
-          8,
+        lane_count: effectiveLaneCount,
         race_type: "course en ligne",
       };
 
@@ -569,20 +683,27 @@ export default function ImportErgRaceResultsSuperAdminPage() {
           participantId = best.id;
         } else {
           const { lastName, firstName } = parseErgRaceName(ergName);
-          const createRes = await api.post("/participants", {
-            event_id: eventId,
-            first_name: firstName || "—",
-            last_name: lastName || "—",
+          const licenseNumber = resolveLicenseNumber(row, ergName, index);
+          const gender = inferGenderFromErgClass(ergClass);
+          const createRes = await createParticipantWithApiCompatibility(
+            eventId,
+            {
+            first_name: (firstName || "").trim() || "Non renseigné",
+            last_name: (lastName || "").trim() || "Non renseigné",
+            license_number: licenseNumber,
+            gender,
             club_name: club?.nom || affiliation || undefined,
-          });
+            }
+          );
           participantId = String(
             createRes.data?.data?.id || createRes.data?.id
           );
           const created: EventParticipant = {
             id: participantId,
-            first_name: firstName || "—",
-            last_name: lastName || "—",
+            first_name: (firstName || "").trim() || "Non renseigné",
+            last_name: (lastName || "").trim() || "Non renseigné",
             club_name: club?.nom || affiliation,
+            license_number: licenseNumber,
           };
           participantCache.push(created);
         }
@@ -602,12 +723,7 @@ export default function ImportErgRaceResultsSuperAdminPage() {
           is_coxswain: false,
         });
 
-        const laneNum =
-          typeof row.lane === "number"
-            ? row.lane
-            : typeof row.lane_number === "number"
-              ? row.lane_number
-              : index + 1;
+        const laneNum = rowLaneNumber(row, index);
 
         await api.post("/race-crews", {
           race_id: selectedRaceId,
@@ -621,12 +737,7 @@ export default function ImportErgRaceResultsSuperAdminPage() {
       const normalizedParticipants = normalizeParticipantsForBackend(
         includedParticipants
       ).map((np, index) => {
-        const laneValue =
-          typeof np.lane === "number"
-            ? np.lane
-            : typeof np.lane_number === "number"
-              ? np.lane_number
-              : index + 1;
+        const laneValue = rowLaneNumber(np, index);
         const crewId = laneToCrewId.get(laneValue);
         if (crewId) {
           return { ...np, crew_id: crewId, id: crewId };
@@ -660,15 +771,10 @@ export default function ImportErgRaceResultsSuperAdminPage() {
       });
       navigate(`/event/${eventId}/indoor/${selectedRaceId}`);
     } catch (err: unknown) {
-      const msg =
-        err instanceof Error
-          ? err.message
-          : (err as { response?: { data?: { message?: string } } })?.response
-              ?.data?.message || "Échec de l’import super admin.";
       console.error(err);
       toast({
         title: "Erreur import",
-        description: msg,
+        description: formatAxiosError(err),
         variant: "destructive",
       });
     } finally {
