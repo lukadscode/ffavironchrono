@@ -55,10 +55,12 @@ interface EventListItem {
   race_type?: string;
 }
 
+type EventTypeFilter = "indoor" | "mer" | "riviere";
+
 export default function ClubRankingsPage() {
   const { user } = useAuth();
   const navigate = useNavigate();
-  const [eventType, setEventType] = useState<"indoor" | "mer" | "riviere">("indoor");
+  const [eventType, setEventType] = useState<EventTypeFilter>("indoor");
   const [data, setData] = useState<EventRankings[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -229,7 +231,10 @@ export default function ClubRankingsPage() {
           </CardTitle>
         </CardHeader>
         <CardContent>
-          <Select value={eventType} onValueChange={setEventType}>
+          <Select
+            value={eventType}
+            onValueChange={(v) => setEventType(v as EventTypeFilter)}
+          >
             <SelectTrigger className="w-full md:w-[300px]">
               <SelectValue placeholder="Sélectionner un type d'événement" />
             </SelectTrigger>
