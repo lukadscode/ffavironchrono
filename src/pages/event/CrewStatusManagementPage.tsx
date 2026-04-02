@@ -22,11 +22,13 @@ import {
   Search,
   UserPlus,
   CheckCircle2,
+  Pencil,
 } from "lucide-react";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Checkbox } from "@/components/ui/checkbox";
 import { CrewStatus, CREW_STATUS_LABELS, NON_PARTICIPATING_STATUSES } from "@/constants/crewStatus";
 import { CrewStatusBadge } from "@/components/crew/CrewStatusBadge";
+import { CrewInfoEditDialog } from "@/components/crew/CrewInfoEditDialog";
 import {
   Alert,
   AlertDescription,
@@ -38,6 +40,7 @@ type Crew = {
   club_name: string;
   club_code?: string;
   status: string;
+  coach_name?: string | null;
   category?: {
     id: string;
     code: string;
@@ -84,6 +87,26 @@ type RaceOption = {
   lane_count?: number;
   race_crews: RaceCrewLite[];
 };
+
+function mapCrewFromApi(data: any): Crew {
+  const cps =
+    data.crew_participants || data.CrewParticipants || data.crewParticipants || [];
+  return {
+    id: data.id,
+    club_name: data.club_name || "",
+    club_code: data.club_code,
+    status: data.status,
+    coach_name: data.coach_name ?? null,
+    category: data.category
+      ? {
+          id: data.category.id,
+          code: data.category.code || "",
+          label: data.category.label || data.category.name || "",
+        }
+      : undefined,
+    crew_participants: Array.isArray(cps) ? cps : [],
+  };
+}
 
 export default function CrewStatusManagementPage() {
   const { eventId } = useParams();
@@ -152,6 +175,7 @@ export default function CrewStatusManagementPage() {
   const [participantResults, setParticipantResults] = useState<any[]>([]);
   const [loadingParticipants, setLoadingParticipants] = useState(false);
   const [selectedSearchParticipant, setSelectedSearchParticipant] = useState<any | null>(null);
+  const [infoEditCrew, setInfoEditCrew] = useState<Crew | null>(null);
 
   useEffect(() => {
     if (!eventId) return;
@@ -1037,9 +1061,21 @@ export default function CrewStatusManagementPage() {
                                 )}
                               </div>
                             </div>
-                            <div className="flex items-center gap-3">
+                            <div className="flex flex-wrap items-center justify-end gap-2 sm:gap-3 flex-shrink-0">
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                className="shrink-0"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setInfoEditCrew(crew);
+                                }}
+                              >
+                                <Pencil className="w-4 h-4 mr-1.5" />
+                                Modifier les infos
+                              </Button>
                               <CrewStatusBadge status={crew.status} />
-                              <ChevronRight className="w-5 h-5 text-muted-foreground" />
+                              <ChevronRight className="w-5 h-5 text-muted-foreground hidden sm:block" />
                             </div>
                           </div>
                         </CardContent>
@@ -1173,9 +1209,21 @@ export default function CrewStatusManagementPage() {
                                     </span>
                                   </div>
                                 </div>
-                                <div className="flex items-center gap-3">
+                                <div className="flex flex-wrap items-center justify-end gap-2 sm:gap-3 flex-shrink-0">
+                                  <Button
+                                    variant="outline"
+                                    size="sm"
+                                    className="shrink-0"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      setInfoEditCrew(crew);
+                                    }}
+                                  >
+                                    <Pencil className="w-4 h-4 mr-1.5" />
+                                    Modifier les infos
+                                  </Button>
                                   <CrewStatusBadge status={crew.status} />
-                                  <ChevronRight className="w-5 h-5 text-muted-foreground" />
+                                  <ChevronRight className="w-5 h-5 text-muted-foreground hidden sm:block" />
                                 </div>
                               </div>
                             </CardContent>
@@ -1195,11 +1243,24 @@ export default function CrewStatusManagementPage() {
       {step === 2 && selectedCrew && (
         <Card>
           <CardHeader>
-            <CardTitle>Étape 2 : Choisir le type de modification</CardTitle>
-            <p className="text-sm text-muted-foreground mt-2">
-              Équipage sélectionné : <strong>{selectedCrew.club_name}</strong>
-              {selectedCrew.category && ` - ${selectedCrew.category.label}`}
-            </p>
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+              <div>
+                <CardTitle>Étape 2 : Choisir le type de modification</CardTitle>
+                <p className="text-sm text-muted-foreground mt-2">
+                  Équipage sélectionné : <strong>{selectedCrew.club_name}</strong>
+                  {selectedCrew.category && ` - ${selectedCrew.category.label}`}
+                </p>
+              </div>
+              <Button
+                variant="outline"
+                size="sm"
+                className="shrink-0 self-start"
+                onClick={() => setInfoEditCrew(selectedCrew)}
+              >
+                <Pencil className="w-4 h-4 mr-2" />
+                Modifier les infos
+              </Button>
+            </div>
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="grid gap-3">
@@ -1982,6 +2043,29 @@ export default function CrewStatusManagementPage() {
             </div>
           </CardContent>
         </Card>
+      )}
+
+      {infoEditCrew && eventId && (
+        <CrewInfoEditDialog
+          open
+          onOpenChange={(o) => {
+            if (!o) setInfoEditCrew(null);
+          }}
+          eventId={eventId}
+          crewId={infoEditCrew.id}
+          initial={{
+            club_name: infoEditCrew.club_name,
+            club_code: infoEditCrew.club_code,
+            category_id: infoEditCrew.category?.id,
+            coach_name: typeof infoEditCrew.coach_name === "string" ? infoEditCrew.coach_name : "",
+          }}
+          onSaved={(data) => {
+            const mapped = mapCrewFromApi(data);
+            setCrews((prev) => prev.map((c) => (c.id === mapped.id ? mapped : c)));
+            setSelectedCrew((prev) => (prev && prev.id === mapped.id ? mapped : prev));
+            setInfoEditCrew((prev) => (prev && prev.id === mapped.id ? mapped : prev));
+          }}
+        />
       )}
     </div>
   );

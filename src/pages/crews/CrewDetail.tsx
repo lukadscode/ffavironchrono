@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
-import { Loader2, Users, Building2, Award, GripVertical, Save, ArrowLeft, AlertTriangle } from "lucide-react";
+import { Loader2, Users, Building2, Award, GripVertical, ArrowLeft, AlertTriangle, Pencil } from "lucide-react";
 import { DndContext, closestCenter } from "@dnd-kit/core";
 import {
   arrayMove,
@@ -29,6 +29,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { CrewInfoEditDialog } from "@/components/crew/CrewInfoEditDialog";
 
 function SortableRow({ participant, onRemove }: { participant: any; onRemove: (id: string) => void }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
@@ -146,6 +147,7 @@ export default function CrewDetail() {
   const [isAddingParticipant, setIsAddingParticipant] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [editInfoOpen, setEditInfoOpen] = useState(false);
 
   useEffect(() => {
     async function fetchCrew() {
@@ -632,11 +634,20 @@ export default function CrewDetail() {
               </div>
               <p className="text-blue-100 text-sm sm:text-base md:text-lg break-words">{crew.club_name}</p>
             </div>
-            <div className="text-right flex items-center gap-3">
+            <div className="text-right flex flex-wrap items-center justify-end gap-2 sm:gap-3">
               <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-white/20 backdrop-blur-md border border-white/30">
                 <Users className="w-5 h-5" />
                 <span className="font-semibold">{participants.length} participant{participants.length > 1 ? 's' : ''}</span>
               </div>
+              <Button
+                variant="secondary"
+                size="sm"
+                className="bg-white/20 hover:bg-white/30 text-white border border-white/40"
+                onClick={() => setEditInfoOpen(true)}
+              >
+                <Pencil className="w-4 h-4 mr-2" />
+                Modifier les infos
+              </Button>
               <Button
                 variant="destructive"
                 size="sm"
@@ -1079,6 +1090,33 @@ export default function CrewDetail() {
           Retour
         </Button>
       </div>
+
+      {crew && crewId && eventId && (
+        <CrewInfoEditDialog
+          open={editInfoOpen}
+          onOpenChange={setEditInfoOpen}
+          eventId={eventId}
+          crewId={crewId}
+          initial={{
+            club_name: crew.club_name || "",
+            club_code: crew.club_code || "",
+            category_id: crew.category_id || crew.category?.id || "",
+            coach_name: typeof crew.coach_name === "string" ? crew.coach_name : "",
+          }}
+          onSaved={(crewData) => {
+            setCrew(crewData);
+            const crewParticipants =
+              crewData.crew_participants ||
+              crewData.CrewParticipants ||
+              crewData.crewParticipants ||
+              [];
+            const sortedParticipants = [...crewParticipants].sort(
+              (a: any, b: any) => (a.seat_position || 0) - (b.seat_position || 0)
+            );
+            setParticipants(sortedParticipants);
+          }}
+        />
+      )}
 
       {/* Dialog de confirmation de suppression */}
       <Dialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>

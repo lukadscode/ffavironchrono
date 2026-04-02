@@ -1,6 +1,6 @@
 import { useEffect, useState, useMemo } from "react";
 import { useParams, useNavigate } from "react-router-dom";
-import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import api from "@/lib/axios";
@@ -27,7 +27,30 @@ import {
   Plus,
 } from "lucide-react";
 import { CrewStatusBadge } from "@/components/crew/CrewStatusBadge";
-import { isParticipatingCrew } from "@/constants/crewStatus";
+
+function getCrewParticipantsRaw(crew: any): any[] {
+  const raw =
+    crew.crew_participants ??
+    crew.CrewParticipants ??
+    crew.crewParticipants ??
+    [];
+  return Array.isArray(raw) ? raw : [];
+}
+
+/** Prénom + nom, tri par place (barreur en dernier si siège plus grand). */
+function getSortedParticipantEntries(crew: any) {
+  return [...getCrewParticipantsRaw(crew)].sort(
+    (a, b) => (a.seat_position ?? 0) - (b.seat_position ?? 0)
+  );
+}
+
+function participantDisplayName(cp: any): string {
+  const p = cp?.participant ?? cp;
+  const first = (p?.first_name ?? "").trim();
+  const last = (p?.last_name ?? "").trim();
+  const full = `${first} ${last}`.trim();
+  return full || "—";
+}
 
 export default function CrewList() {
   const { eventId } = useParams();
@@ -47,10 +70,13 @@ export default function CrewList() {
 
       try {
         console.log("🔍 Récupération des équipages pour l'événement:", eventId);
-        const res = await api.get(`/crews/event/${eventId}`);
+        const res = await api.get(`/crews/event/${eventId}/with-participants`);
         console.log("✅ Réponse API crews:", res.data);
-        
-        const crewsData = res.data.data || [];
+
+        const crewsData = (res.data.data || []).map((c: any) => ({
+          ...c,
+          crew_participants: getCrewParticipantsRaw(c),
+        }));
         
         // Trier par catégorie puis par club
         const sorted = crewsData.sort((a: any, b: any) => {
@@ -92,27 +118,21 @@ export default function CrewList() {
         const clubCode = (crew.club_code || "").toLowerCase();
         const categoryCode = (crew.category?.code || "").toLowerCase();
         const categoryLabel = (crew.category?.label || "").toLowerCase();
+        const namesBlob = getSortedParticipantEntries(crew)
+          .map((cp) => participantDisplayName(cp).toLowerCase())
+          .join(" ");
         return (
           club.includes(query) ||
           clubCode.includes(query) ||
           categoryCode.includes(query) ||
-          categoryLabel.includes(query)
+          categoryLabel.includes(query) ||
+          namesBlob.includes(query)
         );
       });
     }
 
     return filtered;
   }, [crews, searchQuery]);
-
-  // Vérifier si les données de participants sont disponibles
-  const hasParticipantsData = useMemo(() => {
-    return crews.some((crew) => {
-      const participants = crew.crew_participants || 
-                          crew.CrewParticipants || 
-                          crew.crewParticipants;
-      return participants && Array.isArray(participants) && participants.length > 0;
-    });
-  }, [crews]);
 
   // Statistiques
   const stats = useMemo(() => {
@@ -121,20 +141,13 @@ export default function CrewList() {
     const uniqueCategories = new Set(
       crews.map((c) => c.category?.code).filter(Boolean)
     ).size;
-    
-    let totalParticipants = 0;
-    if (hasParticipantsData) {
-      totalParticipants = crews.reduce((sum, crew) => {
-        const participants = crew.crew_participants || 
-                            crew.CrewParticipants || 
-                            crew.crewParticipants || 
-                            [];
-        return sum + (Array.isArray(participants) ? participants.length : 0);
-      }, 0);
-    }
 
-    return { total, uniqueClubs, uniqueCategories, totalParticipants, hasParticipantsData };
-  }, [crews, hasParticipantsData]);
+    const totalParticipants = crews.reduce((sum, crew) => {
+      return sum + getCrewParticipantsRaw(crew).length;
+    }, 0);
+
+    return { total, uniqueClubs, uniqueCategories, totalParticipants };
+  }, [crews]);
 
   if (loading) {
     return (
@@ -157,7 +170,7 @@ export default function CrewList() {
             Équipages
           </h1>
 
-          <div className={`grid grid-cols-1 gap-4 ${stats.hasParticipantsData ? 'md:grid-cols-4' : 'md:grid-cols-3'}`}>
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-4">
             <div className="bg-white/10 backdrop-blur-md rounded-lg p-4 border border-white/20">
               <div className="text-sm text-blue-100 mb-1">Total équipages</div>
               <div className="text-3xl font-bold">{stats.total}</div>
@@ -170,12 +183,10 @@ export default function CrewList() {
               <div className="text-sm text-blue-100 mb-1">Catégories</div>
               <div className="text-3xl font-bold">{stats.uniqueCategories}</div>
             </div>
-            {stats.hasParticipantsData && (
-              <div className="bg-white/10 backdrop-blur-md rounded-lg p-4 border border-white/20">
-                <div className="text-sm text-blue-100 mb-1">Total participants</div>
-                <div className="text-3xl font-bold">{stats.totalParticipants}</div>
-              </div>
-            )}
+            <div className="bg-white/10 backdrop-blur-md rounded-lg p-4 border border-white/20">
+              <div className="text-sm text-blue-100 mb-1">Total participants</div>
+              <div className="text-3xl font-bold">{stats.totalParticipants}</div>
+            </div>
           </div>
         </div>
       </div>
@@ -187,7 +198,7 @@ export default function CrewList() {
             <div className="relative flex-1">
               <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground w-5 h-5" />
               <Input
-                placeholder="Rechercher par club, code club ou catégorie..."
+                placeholder="Rechercher par club, catégorie ou nom de participant..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 className="pl-10"
@@ -256,11 +267,8 @@ export default function CrewList() {
         // Vue en cartes
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
           {filteredAndSortedCrews.map((crew) => {
-            const participants = crew.crew_participants || 
-                                crew.CrewParticipants || 
-                                crew.crewParticipants || 
-                                [];
-            const participantsCount = participants.length;
+            const sortedEntries = getSortedParticipantEntries(crew);
+            const participantsCount = sortedEntries.length;
 
             return (
               <Card
@@ -310,12 +318,24 @@ export default function CrewList() {
                       </div>
                     )}
 
-                    {hasParticipantsData && participantsCount > 0 && (
-                      <div className="flex items-center gap-2 text-sm">
-                        <Users className="w-4 h-4 text-muted-foreground" />
-                        <span className="text-muted-foreground">
-                          {participantsCount} participant{participantsCount > 1 ? 's' : ''}
-                        </span>
+                    {participantsCount > 0 && (
+                      <div className="space-y-1 text-sm">
+                        <div className="flex items-center gap-2">
+                          <Users className="w-4 h-4 shrink-0 text-muted-foreground" />
+                          <span className="text-muted-foreground font-medium">
+                            {participantsCount} participant{participantsCount > 1 ? "s" : ""}
+                          </span>
+                        </div>
+                        <ul className="pl-6 space-y-0.5 text-slate-700">
+                          {sortedEntries.map((cp) => (
+                            <li key={cp.id ?? `${cp.participant_id}-${cp.seat_position}`}>
+                              {participantDisplayName(cp)}
+                              {cp.is_coxswain ? (
+                                <span className="text-muted-foreground text-xs ml-1">(barreur)</span>
+                              ) : null}
+                            </li>
+                          ))}
+                        </ul>
                       </div>
                     )}
 
@@ -362,18 +382,14 @@ export default function CrewList() {
                     <TableHead>Club</TableHead>
                     <TableHead>Code club</TableHead>
                     <TableHead>Statut</TableHead>
-                    {hasParticipantsData && <TableHead>Participants</TableHead>}
+                    <TableHead>Participants</TableHead>
                     <TableHead>Places</TableHead>
                     <TableHead className="text-right">Actions</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {filteredAndSortedCrews.map((crew) => {
-                    const participants = crew.crew_participants || 
-                                        crew.CrewParticipants || 
-                                        crew.crewParticipants || 
-                                        [];
-                    const participantsCount = participants.length;
+                    const sortedEntries = getSortedParticipantEntries(crew);
 
                     return (
                       <TableRow
@@ -416,14 +432,25 @@ export default function CrewList() {
                         <TableCell>
                           {crew.status && <CrewStatusBadge status={crew.status} />}
                         </TableCell>
-                        {hasParticipantsData && (
-                          <TableCell>
-                            <div className="flex items-center gap-2">
-                              <Users className="w-4 h-4 text-muted-foreground" />
-                              <span>{participantsCount}</span>
-                            </div>
-                          </TableCell>
-                        )}
+                        <TableCell className="max-w-[min(28rem,55vw)] align-top">
+                          {sortedEntries.length === 0 ? (
+                            <span className="text-muted-foreground">—</span>
+                          ) : (
+                            <ul className="text-sm space-y-0.5">
+                              {sortedEntries.map((cp) => (
+                                <li
+                                  key={cp.id ?? `${cp.participant_id}-${cp.seat_position}`}
+                                  className="flex flex-wrap items-baseline gap-x-1 gap-y-0"
+                                >
+                                  <span>{participantDisplayName(cp)}</span>
+                                  {cp.is_coxswain ? (
+                                    <span className="text-xs text-muted-foreground">(barreur)</span>
+                                  ) : null}
+                                </li>
+                              ))}
+                            </ul>
+                          )}
+                        </TableCell>
                         <TableCell>
                           {crew.category?.boat_seats ? (
                             <div className="flex items-center gap-2">
