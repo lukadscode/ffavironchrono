@@ -120,10 +120,6 @@ export default function EventsManagementPage() {
   /** Filtres relayés tels quels vers l’intranet FFA (sauf par_page, page, fetch_all gérés localement). */
   const [ffaDateDebut, setFfaDateDebut] = useState("");
   const [ffaDateFin, setFfaDateFin] = useState("");
-  const [ffaModeleId, setFfaModeleId] = useState("");
-  const [ffaStructureId, setFfaStructureId] = useState("");
-  const [ffaDisciplineCode, setFfaDisciplineCode] = useState("");
-  const [ffaTourId, setFfaTourId] = useState("");
   const [ffaInclude, setFfaInclude] = useState("");
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [eventToDelete, setEventToDelete] = useState<Event | null>(null);
@@ -199,10 +195,6 @@ export default function EventsManagementPage() {
       };
       appendFfa("date_debut", ffaDateDebut);
       appendFfa("date_fin", ffaDateFin);
-      appendFfa("modele_id", ffaModeleId);
-      appendFfa("structure_id", ffaStructureId);
-      appendFfa("discipline_code", ffaDisciplineCode);
-      appendFfa("tour_id", ffaTourId);
       appendFfa("include", ffaInclude);
 
       const res = await api.get("/import/manifestations", { params });
@@ -237,10 +229,6 @@ export default function EventsManagementPage() {
     manifestPage,
     ffaDateDebut,
     ffaDateFin,
-    ffaModeleId,
-    ffaStructureId,
-    ffaDisciplineCode,
-    ffaTourId,
     ffaInclude,
   ]);
 
@@ -434,10 +422,6 @@ export default function EventsManagementPage() {
               setManifestListError(null);
               setFfaDateDebut("");
               setFfaDateFin("");
-              setFfaModeleId("");
-              setFfaStructureId("");
-              setFfaDisciplineCode("");
-              setFfaTourId("");
               setFfaInclude("");
             }
           }}
@@ -454,8 +438,8 @@ export default function EventsManagementPage() {
               <DialogTitle className="text-lg sm:text-xl">Importer une manifestation FFA</DialogTitle>
               <DialogDescription className="text-sm">
                 Saisissez l’identifiant FFA ou chargez la liste fédérale (<code className="text-xs">GET /import/manifestations</code>
-                ). Les filtres ci-dessous sont recopiés vers l’intranet (dates <code className="text-xs">yyyy-mm-dd</code>,{" "}
-                <code className="text-xs">modele_id</code>, <code className="text-xs">structure_id</code>, etc.).{" "}
+                ). Les filtres ci-dessous sont recopiés vers l’intranet (<code className="text-xs">date_debut</code>,{" "}
+                <code className="text-xs">date_fin</code>, <code className="text-xs">include</code> si renseignés).{" "}
                 <code className="text-xs">par_page</code>, <code className="text-xs">page</code> et{" "}
                 <code className="text-xs">fetch_all</code> restent gérés par l’API chrono.
               </DialogDescription>
@@ -476,7 +460,7 @@ export default function EventsManagementPage() {
               <div className="rounded-lg border bg-muted/30 p-3 space-y-3">
                 <div>
                   <p className="text-xs font-medium text-muted-foreground mb-2">Filtres intranet FFA</p>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     <div className="space-y-1">
                       <Label htmlFor="ffa-date-debut" className="text-xs">
                         date_debut
@@ -503,62 +487,7 @@ export default function EventsManagementPage() {
                         disabled={manifestListLoading || isImporting}
                       />
                     </div>
-                    <div className="space-y-1">
-                      <Label htmlFor="ffa-modele-id" className="text-xs">
-                        modele_id
-                      </Label>
-                      <Input
-                        id="ffa-modele-id"
-                        inputMode="numeric"
-                        placeholder="ex. 12"
-                        className="font-mono text-sm"
-                        value={ffaModeleId}
-                        onChange={(e) => setFfaModeleId(e.target.value)}
-                        disabled={manifestListLoading || isImporting}
-                      />
-                    </div>
-                    <div className="space-y-1">
-                      <Label htmlFor="ffa-structure-id" className="text-xs">
-                        structure_id
-                      </Label>
-                      <Input
-                        id="ffa-structure-id"
-                        inputMode="numeric"
-                        placeholder="ex. 34"
-                        className="font-mono text-sm"
-                        value={ffaStructureId}
-                        onChange={(e) => setFfaStructureId(e.target.value)}
-                        disabled={manifestListLoading || isImporting}
-                      />
-                    </div>
-                    <div className="space-y-1">
-                      <Label htmlFor="ffa-discipline-code" className="text-xs">
-                        discipline_code
-                      </Label>
-                      <Input
-                        id="ffa-discipline-code"
-                        placeholder="ex. MER"
-                        className="font-mono text-sm"
-                        value={ffaDisciplineCode}
-                        onChange={(e) => setFfaDisciplineCode(e.target.value)}
-                        disabled={manifestListLoading || isImporting}
-                      />
-                    </div>
-                    <div className="space-y-1">
-                      <Label htmlFor="ffa-tour-id" className="text-xs">
-                        tour_id
-                      </Label>
-                      <Input
-                        id="ffa-tour-id"
-                        inputMode="numeric"
-                        placeholder="ex. 5"
-                        className="font-mono text-sm"
-                        value={ffaTourId}
-                        onChange={(e) => setFfaTourId(e.target.value)}
-                        disabled={manifestListLoading || isImporting}
-                      />
-                    </div>
-                    <div className="space-y-1 lg:col-span-2">
+                    <div className="space-y-1 sm:col-span-2">
                       <Label htmlFor="ffa-include" className="text-xs">
                         include
                       </Label>
@@ -743,10 +672,6 @@ export default function EventsManagementPage() {
                   setManifestListError(null);
                   setFfaDateDebut("");
                   setFfaDateFin("");
-                  setFfaModeleId("");
-                  setFfaStructureId("");
-                  setFfaDisciplineCode("");
-                  setFfaTourId("");
                   setFfaInclude("");
                 }}
                 disabled={isImporting}

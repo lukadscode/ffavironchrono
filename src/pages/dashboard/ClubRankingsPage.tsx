@@ -85,6 +85,28 @@ function parseCalendarYearOnCommit(raw: string): string {
   return currentCalendarYearString();
 }
 
+/**
+ * Année de libellé de la saison mer « N » : du 01/09/(N-1) au 31/08/N (ex. saison 2026).
+ * À la date courante : sept.–déc. → N = année civile + 1 ; janv.–août → N = année civile.
+ */
+function currentMerSeasonLabelYear(): string {
+  const d = new Date();
+  const y = d.getFullYear();
+  const m = d.getMonth();
+  if (m >= 8) return String(y + 1);
+  return String(y);
+}
+
+/** Période affichée pour une saison mer de libellé N. */
+function formatMerSeasonRangeFromLabel(yearStr: string): string {
+  const y = parseInt(String(yearStr).trim(), 10);
+  if (!Number.isFinite(y) || y < 1900 || y > 2100) return "—";
+  const start = dayjs(`${y - 1}-09-01`);
+  const end = dayjs(`${y}-08-31`);
+  if (!start.isValid() || !end.isValid()) return "—";
+  return `${start.format("DD/MM/YYYY")} au ${end.format("DD/MM/YYYY")}`;
+}
+
 function mapDashboardByEvent(items: any[] | undefined, eventType: EventTypeFilter): EventRankings[] {
   if (!Array.isArray(items)) return [];
   return items.map((item) => {
@@ -369,7 +391,7 @@ export default function ClubRankingsPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<"global" | "by-event" | "club-detail">("global");
-  /** Année calendaire validée (rechargement API) — la saisie se fait dans `calendarYearDraft` jusqu’au blur. */
+  /** Pour indoor / rivière : année civile. Pour mer : libellé de saison (N = fin au 31/08/N). Rechargement au blur du brouillon. */
   const [calendarYear, setCalendarYear] = useState(currentCalendarYearString);
   const [calendarYearDraft, setCalendarYearDraft] = useState(currentCalendarYearString);
   const [includeTerritorialBonus, setIncludeTerritorialBonus] = useState(true);
@@ -493,7 +515,15 @@ export default function ClubRankingsPage() {
         <CardContent className="space-y-4">
           <Select
             value={eventType}
-            onValueChange={(v) => setEventType(v as EventTypeFilter)}
+            onValueChange={(v) => {
+              const next = v as EventTypeFilter;
+              setEventType(next);
+              if (next === "mer") {
+                const def = currentMerSeasonLabelYear();
+                setCalendarYear(def);
+                setCalendarYearDraft(def);
+              }
+            }}
           >
             <SelectTrigger className="w-full md:w-[300px]">
               <SelectValue placeholder="Sélectionner un type d'événement" />
@@ -507,7 +537,9 @@ export default function ClubRankingsPage() {
 
           <div className="flex flex-col sm:flex-row sm:flex-wrap gap-4 items-start">
             <div className="space-y-2">
-              <Label htmlFor="club-rank-calendar-year">Année calendaire</Label>
+              <Label htmlFor="club-rank-calendar-year">
+                {eventType === "mer" ? "Saison mer" : "Année calendaire"}
+              </Label>
               <Input
                 id="club-rank-calendar-year"
                 className="w-40"
@@ -516,13 +548,33 @@ export default function ClubRankingsPage() {
                 value={calendarYearDraft}
                 onChange={(e) => setCalendarYearDraft(e.target.value)}
                 onBlur={commitCalendarYearFromDraft}
-                placeholder={currentCalendarYearString()}
+                placeholder={
+                  eventType === "mer" ? currentMerSeasonLabelYear() : currentCalendarYearString()
+                }
               />
-              <p className="text-xs text-muted-foreground max-w-md">
-                La recherche se lance à la sortie du champ. Le paramètre{" "}
-                <code className="text-xs">season</code> envoyé est l’année saisie (ex.{" "}
-                <code className="text-xs">2026</code>) pour tous les types.
-              </p>
+              {eventType === "mer" ? (
+                <p className="text-xs text-muted-foreground max-w-lg space-y-1">
+                  <span className="block">
+                    Une <strong>saison</strong> <code className="text-xs">N</code> court du{" "}
+                    <strong>01/09/(N-1)</strong> au <strong>31/08/N</strong> (ex. saison{" "}
+                    <code className="text-xs">2026</code> : du{" "}
+                    <code className="text-xs">01/09/2025</code> au <code className="text-xs">31/08/2026</code>
+                    ). Le paramètre <code className="text-xs">season</code> envoyé est ce numéro{" "}
+                    <code className="text-xs">N</code>.
+                  </span>
+                  <span className="block text-foreground/90">
+                    Période pour <code className="text-xs">{parseCalendarYearOnCommit(calendarYearDraft)}</code> :{" "}
+                    {formatMerSeasonRangeFromLabel(parseCalendarYearOnCommit(calendarYearDraft))}
+                  </span>
+                  <span className="block">La recherche se lance à la sortie du champ.</span>
+                </p>
+              ) : (
+                <p className="text-xs text-muted-foreground max-w-md">
+                  La recherche se lance à la sortie du champ. Le paramètre{" "}
+                  <code className="text-xs">season</code> envoyé est l’année saisie (ex.{" "}
+                  <code className="text-xs">2026</code>) pour indoor et rivière.
+                </p>
+              )}
             </div>
             {eventType === "mer" && (
               <div className="flex items-center gap-2 pt-6 sm:pt-8">
@@ -948,7 +1000,7 @@ export default function ClubRankingsPage() {
                         ) : null}
                         {apiPayloadSeason ? (
                           <span className="inline-flex items-center rounded-md border bg-muted/50 px-2 py-0.5 text-xs font-medium">
-                            Filtre API : {apiPayloadSeason}
+                            {eventType === "mer" ? "Saison (requête)" : "Filtre API"} : {apiPayloadSeason}
                           </span>
                         ) : null}
                       </div>

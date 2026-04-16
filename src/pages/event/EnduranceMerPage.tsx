@@ -202,6 +202,14 @@ export default function EnduranceMerPage() {
   const [filterClub, setFilterClub] = useState("");
   const [resultsViewMode, setResultsViewMode] = useState<"general" | "by_category">("general");
 
+  /** Mêmes filtres query pour import-results et ranking (epreuve_code, club_code). */
+  const merListQueryParams = useMemo(() => {
+    const params: Record<string, string> = {};
+    if (filterEpreuve) params.epreuve_code = filterEpreuve;
+    if (filterClub.trim()) params.club_code = filterClub.trim();
+    return params;
+  }, [filterEpreuve, filterClub]);
+
   const fetchEvent = async () => {
     if (!eventId) return;
     try {
@@ -219,10 +227,9 @@ export default function EnduranceMerPage() {
     if (!eventId) return;
     setLoadingResults(true);
     try {
-      const params: Record<string, string> = {};
-      if (filterEpreuve) params.epreuve_code = filterEpreuve;
-      if (filterClub.trim()) params.club_code = filterClub.trim();
-      const res = await api.get(`/events/${eventId}/endurance-mer/import-results`, { params });
+      const res = await api.get(`/events/${eventId}/endurance-mer/import-results`, {
+        params: merListQueryParams,
+      });
       const data = res.data.data ?? [];
       setResults(Array.isArray(data) ? data : []);
     } catch (err: unknown) {
@@ -240,7 +247,9 @@ export default function EnduranceMerPage() {
     if (!eventId) return;
     setLoadingRanking(true);
     try {
-      const res = await api.get(`/events/${eventId}/endurance-mer/ranking`);
+      const res = await api.get(`/events/${eventId}/endurance-mer/ranking`, {
+        params: merListQueryParams,
+      });
       const data = res.data.data ?? [];
       setRanking(Array.isArray(data) ? data : []);
     } catch (err: unknown) {
@@ -264,7 +273,7 @@ export default function EnduranceMerPage() {
 
   useEffect(() => {
     fetchRanking();
-  }, [eventId]);
+  }, [eventId, filterEpreuve, filterClub]);
 
   const epreuvesList = useMemo(() => {
     const codes = new Set(results.map((r) => r.epreuve_code));
