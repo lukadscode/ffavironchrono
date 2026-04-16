@@ -92,8 +92,8 @@ function manifestationMatchesQuery(m: FfaManifestation, q: string): boolean {
 
 /** Compare le type d'événement (casse / accents) pour l'UI */
 function raceTypeMatches(current: string | undefined, mode: "rivière" | "mer" | "indoor") {
-  const n = (s: string) =>
-    (s || "")
+  const n = (s: string | undefined) =>
+    (s ?? "")
       .toLowerCase()
       .normalize("NFD")
       .replace(/\p{M}/gu, "");
