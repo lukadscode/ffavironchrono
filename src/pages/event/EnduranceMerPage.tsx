@@ -51,11 +51,34 @@ interface RankingRow {
   rank: number;
 }
 
-const CODE_CLUB_REGEX = /^C\d{6}$/i;
+/** Un seul code FFAviron : C + 6 chiffres */
+const SINGLE_CLUB_CODE_REGEX = /^C\d{6}$/i;
+/**
+ * Segment d’un code mixte inline dans une cellule (ex. C029009(2)/C029028(3)).
+ * Voir FRONTEND_ENDURANCE_MER_IMPORT.md — ne pas vider ces lignes avant le POST.
+ */
+const MIXED_CLUB_CODE_SEGMENT_REGEX = /^C\d{6}\(\d+\)$/i;
 const MIXTE_NOM_CLUB_REGEX = /\([^()]+\)\s*\/\s*.*\([^()]+\)/;
 
 function normalizeCellValue(value: unknown): string {
   return String(value ?? "").trim();
+}
+
+/**
+ * Code club « valide » pour la sanitization : soit un code seul, soit mixte inline
+ * (au moins 2 segments séparés par /, chaque segment C######(n)).
+ */
+function isValidCodeClubCell(codeClub: string): boolean {
+  const code = normalizeCellValue(codeClub);
+  if (!code) return false;
+  if (SINGLE_CLUB_CODE_REGEX.test(code)) return true;
+  if (!code.includes("/")) return false;
+  const segments = code
+    .split("/")
+    .map((s) => s.trim())
+    .filter(Boolean);
+  if (segments.length < 2) return false;
+  return segments.every((seg) => MIXED_CLUB_CODE_SEGMENT_REGEX.test(seg));
 }
 
 function sanitizeWorkbookBeforeImport(file: File): Promise<{
@@ -113,10 +136,13 @@ function sanitizeWorkbookBeforeImport(file: File): Promise<{
             const hasSomeContent = row.some((cell) => normalizeCellValue(cell) !== "");
             if (!hasSomeContent) continue;
 
-            const isValidCodeClub = CODE_CLUB_REGEX.test(codeClub);
+            const isValidCodeClub = isValidCodeClubCell(codeClub);
             const isValidRow = isValidCodeClub && nomClub !== "";
 
             if (MIXTE_NOM_CLUB_REGEX.test(nomClub)) {
+              mixedRowsDetected += 1;
+            } else if (isValidRow && codeClub.includes("/")) {
+              // Mixte inline sur la colonne code club (ex. C029009(2)/C029028(3))
               mixedRowsDetected += 1;
             }
 
@@ -304,7 +330,7 @@ export default function EnduranceMerPage() {
       if (removedRows > 0) {
         toast({
           title: "Lignes ignorées avant import",
-          description: `${removedRows} ligne(s) sans code club valide ou sans nom club ont été neutralisées.`,
+          description: `${removedRows} ligne(s) sans code club valide (C + 6 chiffres ou mixte C######(n)/…) ou sans nom club ont été neutralisées.`,
         });
       }
 
@@ -312,7 +338,7 @@ export default function EnduranceMerPage() {
         toast({
           title: "Lignes mixtes détectées",
           description:
-            "Les lignes de type CLUB A(x)/CLUB B(y) ont été envoyées. La répartition des points reste calculée côté API.",
+            "Lignes multi-clubs (nom ou code inline type C######(n)/…). Elles sont conservées dans le fichier envoyé ; la répartition des points est calculée côté API.",
         });
       }
 

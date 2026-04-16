@@ -1,4 +1,4 @@
-import { useEffect, useState, useMemo } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/context/AuthContext";
 import api from "@/lib/axios";
@@ -18,9 +18,13 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Loader2, Trophy, Calendar, MapPin, Award, ExternalLink } from "lucide-react";
+import { Loader2, Trophy, Calendar, MapPin, Award, ExternalLink, Info, LayoutList } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Badge } from "@/components/ui/badge";
 import { Link } from "react-router-dom";
 import dayjs from "dayjs";
 
@@ -42,133 +46,201 @@ interface EventRankings {
     start_date: string;
     end_date: string;
     race_type: string;
+    season: string | null;
   };
   rankings: ClubRanking[];
 }
 
-interface EventListItem {
-  id: string;
-  name: string;
-  location: string;
-  start_date: string;
-  end_date: string;
-  race_type?: string;
+type SeasonFilterMeta = {
+  mode?: string;
+  description?: string;
+};
+
+function normalizeRaceType(rt: string | undefined | null): string {
+  return String(rt ?? "").trim().toLowerCase();
+}
+
+function eventSupportsEnduranceMerLink(raceType: string): boolean {
+  const r = normalizeRaceType(raceType);
+  if (!r) return false;
+  const tokens = r.split(/[\s/_-·]+/).filter(Boolean);
+  return tokens.includes("mer");
 }
 
 type EventTypeFilter = "indoor" | "mer" | "riviere";
+
 const hasClubCode = (clubCode: string | null | undefined): boolean =>
   Boolean((clubCode || "").trim());
-const hasClubIdentity = (
-  clubCode: string | null | undefined,
-  clubName: string | null | undefined
-): boolean => Boolean((clubCode || "").trim() || (clubName || "").trim());
 
-/**
- * Championnat de France indoor MAIF (à additionner au meilleur score régional).
- * Ex. « MAIF AVIRON INDOOR – CHAMPIONNATS DE FRANCE U17, U19, SENIOR, MASTER ET PARA-AVIRON »
- */
-function isMaifNationalIndoorEventName(eventName: string): boolean {
-  const n = eventName
-    .toUpperCase()
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .replace(/[–—−]/g, " ")
-    .replace(/\s+/g, " ")
-    .trim();
-  return (
-    n.includes("MAIF") &&
-    n.includes("AVIRON INDOOR") &&
-    n.includes("CHAMPIONNATS DE FRANCE")
-  );
+function currentCalendarYearString(): string {
+  return String(new Date().getFullYear());
 }
 
-/**
- * Recalcule le total points d'un événement indoor comme la page résultats :
- * - lignes sans club ignorées
- * - réattribution des points par catégorie en sautant les lignes sans club
- */
-function computeIndoorEventRankingsFromByCategory(
-  rawByCategory: any[]
-): ClubRanking[] {
-  const clubTotals = new Map<
-    string,
-    { club_name: string; club_code: string; total_points: number; results_count: number }
-  >();
+function parseCalendarYearOnCommit(raw: string): string {
+  const digits = String(raw).replace(/\D/g, "");
+  if (digits.length >= 4) {
+    const y = parseInt(digits.slice(0, 4), 10);
+    if (Number.isFinite(y) && y >= 1900 && y <= 2100) return String(y);
+  }
+  return currentCalendarYearString();
+}
 
-  const addClubPoints = (
-    clubCode: string,
-    clubName: string,
-    points: number
-  ) => {
-    if (!clubTotals.has(clubCode)) {
-      clubTotals.set(clubCode, {
-        club_name: clubName || clubCode,
-        club_code: clubCode,
-        total_points: 0,
-        results_count: 0,
-      });
-    }
-    const row = clubTotals.get(clubCode)!;
-    row.total_points += points;
-    row.results_count += 1;
-    if (!row.club_name && clubName) row.club_name = clubName;
-  };
+function mapDashboardByEvent(items: any[] | undefined, eventType: EventTypeFilter): EventRankings[] {
+  if (!Array.isArray(items)) return [];
+  return items.map((item) => {
+    const ev = item.event ?? {};
+    const rt =
+      ev.race_type ||
+      (eventType === "mer" ? "mer" : eventType === "indoor" ? "indoor" : "rivière");
+    return {
+      event: {
+        id: ev.id,
+        name: ev.name ?? "",
+        location: ev.location ?? "",
+        start_date: ev.start_date ?? "",
+        end_date: ev.end_date ?? "",
+        race_type: rt,
+        season: ev.season != null && ev.season !== "" ? String(ev.season) : null,
+      },
+      rankings: (item.rankings ?? [])
+        .map((row: any, index: number) => ({
+          id: `${ev.id}-${row.club_code ?? row.club_name ?? index}`,
+          club_name: row.club_name ?? "Club inconnu",
+          club_code: row.club_code ?? null,
+          total_points: Number(row.total_points ?? 0),
+          rank: typeof row.rank === "number" ? row.rank : index + 1,
+          points_count: Number(row.points_count ?? 0),
+          results_count: Number(row.results_count ?? 0),
+        }))
+        .filter((r: ClubRanking) => hasClubCode(r.club_code)),
+    };
+  });
+}
 
-  rawByCategory.forEach((cat: any) => {
-    const rows = Array.isArray(cat?.results) ? cat.results : [];
-    const sorted = [...rows].sort(
-      (a, b) => Number(a?.position ?? 9999) - Number(b?.position ?? 9999)
-    );
+type MerBreakdown = {
+  enduro_top4?: number;
+  brs_top1?: number;
+  championnat_france_enduro?: number;
+  championnat_france_brs?: number;
+  championnat_france?: number;
+  territorial_bonus?: number;
+};
 
-    // Barème de points par place absolue (issu API), uniquement lignes éligibles
-    const rankPoints: Record<number, number | null> = {};
-    sorted.forEach((r) => {
-      const pos = Number(r?.position ?? 0);
-      if (!Number.isFinite(pos) || pos <= 0) return;
-      const eligible = Boolean(r?.is_eligible_for_points);
-      const p = Number(r?.points ?? 0);
-      if (eligible && Number.isFinite(p)) {
-        rankPoints[pos] = p;
-      } else {
-        rankPoints[pos] = null;
-      }
-    });
+/** Une ligne de compétition pour l’onglet détail par club (points + compté ou non). */
+type ClubCompetitionLine = {
+  lineKey: string;
+  eventId?: string;
+  eventName: string;
+  startDate?: string;
+  points: number;
+  counted: boolean;
+  detail: string;
+};
 
-    // Concurrents qui comptent pour le classement club
-    const withClub = sorted.filter((r) => {
-      const clubCode = (r?.crew?.club_code || "").trim();
-      const clubName = (r?.crew?.club_name || "").trim();
-      return (
-        hasClubIdentity(clubCode, clubName) &&
-        Boolean(r?.is_eligible_for_points)
-      );
-    });
+function sortClubCompetitionLines(lines: ClubCompetitionLine[]): ClubCompetitionLine[] {
+  return [...lines].sort((a, b) => {
+    const ta = a.startDate && dayjs(a.startDate).isValid() ? dayjs(a.startDate).valueOf() : 0;
+    const tb = b.startDate && dayjs(b.startDate).isValid() ? dayjs(b.startDate).valueOf() : 0;
+    if (ta !== tb) return ta - tb;
+    return a.eventName.localeCompare(b.eventName, "fr");
+  });
+}
 
-    withClub.forEach((r, idx) => {
-      const clubCode = (r?.crew?.club_code || "").trim();
-      const clubName = (r?.crew?.club_name || "").trim();
-      // Dashboard global basé sur code club : on ignore les lignes sans code
-      if (!hasClubCode(clubCode)) return;
-
-      const rankingAmongClubs = idx + 1;
-      const pointsForThisClubRank = rankPoints[rankingAmongClubs];
-      if (typeof pointsForThisClubRank !== "number") return;
-
-      addClubPoints(clubCode, clubName || clubCode, pointsForThisClubRank);
+function buildMerClubCompetitionLines(row: any): ClubCompetitionLine[] {
+  const lines: ClubCompetitionLine[] = [];
+  const contributions = Array.isArray(row.contributions) ? row.contributions : [];
+  contributions.forEach((c: any, idx: number) => {
+    const detailParts: string[] = ["Compté dans le total saison"];
+    if (c.kind) detailParts.push(`type : ${c.kind}`);
+    if (c.rule) detailParts.push(`règle : ${c.rule}`);
+    if (typeof c.selection_rank === "number") detailParts.push(`rang de sélection ${c.selection_rank}`);
+    lines.push({
+      lineKey: `mer-c-${String(c.event_id ?? "noid")}-${idx}`,
+      eventId: c.event_id ? String(c.event_id) : undefined,
+      eventName: String(c.event_name ?? "—"),
+      startDate: c.start_date ? String(c.start_date) : undefined,
+      points: Number(c.points ?? 0),
+      counted: true,
+      detail: detailParts.join(" · "),
     });
   });
 
-  return Array.from(clubTotals.values())
-    .sort((a, b) => b.total_points - a.total_points)
-    .map((r, index) => ({
-      id: `${r.club_code}-${index}`,
-      club_name: r.club_name,
-      club_code: r.club_code,
-      total_points: r.total_points,
-      rank: index + 1,
-      points_count: 0,
-      results_count: r.results_count,
-    }));
+  const otherE = Array.isArray(row.other_enduro_territorial) ? row.other_enduro_territorial : [];
+  otherE.forEach((o: any, idx: number) => {
+    lines.push({
+      lineKey: `mer-oe-${String(o.event_id ?? idx)}-${idx}`,
+      eventId: o.event_id ? String(o.event_id) : undefined,
+      eventName: String(o.event_name ?? "—"),
+      startDate: o.start_date ? String(o.start_date) : undefined,
+      points: Number(o.points ?? 0),
+      counted: false,
+      detail:
+        "Non compté : enduro territoriale en dehors des 4 meilleures retenues pour le classement général",
+    });
+  });
+
+  const otherB = Array.isArray(row.other_brs_territorial) ? row.other_brs_territorial : [];
+  otherB.forEach((o: any, idx: number) => {
+    lines.push({
+      lineKey: `mer-ob-${String(o.event_id ?? idx)}-${idx}`,
+      eventId: o.event_id ? String(o.event_id) : undefined,
+      eventName: String(o.event_name ?? "—"),
+      startDate: o.start_date ? String(o.start_date) : undefined,
+      points: Number(o.points ?? 0),
+      counted: false,
+      detail:
+        "Non compté : BRS territoriale en dehors de la meilleure retenue pour le classement général",
+    });
+  });
+
+  const bonus = Number(row.breakdown?.territorial_bonus ?? 0);
+  const hasBonusContribution = contributions.some((c: any) =>
+    String(c.kind ?? "")
+      .toLowerCase()
+      .includes("bonus")
+  );
+  if (Math.abs(bonus) > 1e-9 && !hasBonusContribution) {
+    lines.push({
+      lineKey: "mer-bonus-territorial",
+      eventName: "Bonus territorial mer",
+      points: bonus,
+      counted: true,
+      detail: "Compté : bonus territorial mer actifs en base pour la saison (sans événement associé)",
+    });
+  }
+
+  return sortClubCompetitionLines(lines);
+}
+
+function indoorContributionDetail(kind: string | undefined): string {
+  if (kind === "meeting_standard_max")
+    return "Compté : meilleur meeting standard de la saison (barème Points Indoor)";
+  if (kind === "championnat_france_indoor")
+    return "Compté : points championnat de France indoor agrégés sur la saison";
+  if (kind === "defis_capitaux")
+    return "Compté : contribution « défis capitaux » (N meilleurs de la saison selon le barème API)";
+  return "Compté dans le total général indoor";
+}
+
+function indoorKindTitle(kind: string | undefined): string {
+  if (kind === "meeting_standard_max") return "Meeting standard (meilleur de la saison)";
+  if (kind === "championnat_france_indoor") return "Championnat de France indoor";
+  if (kind === "defis_capitaux") return "Défis capitaux";
+  return kind ? String(kind) : "Contribution";
+}
+
+function buildIndoorClubCompetitionLines(contributions: any[] | undefined): ClubCompetitionLine[] {
+  if (!Array.isArray(contributions)) return [];
+  const lines: ClubCompetitionLine[] = contributions.map((c: any, idx: number) => ({
+    lineKey: `in-${String(c.event_id ?? idx)}-${idx}`,
+    eventId: c.event_id ? String(c.event_id) : undefined,
+    eventName: String(c.event_name ?? indoorKindTitle(c.kind)),
+    startDate: c.start_date ? String(c.start_date) : undefined,
+    points: Number(c.points ?? 0),
+    counted: true,
+    detail: indoorContributionDetail(c.kind),
+  }));
+  return sortClubCompetitionLines(lines);
 }
 
 /** Ligne affichée pour l’onglet classement général */
@@ -181,7 +253,7 @@ type GlobalRankingRow = {
   best_results_count: number;
   best_event_name: string;
   best_event_date: string;
-  /** indoor : total = meilleur régional + France MAIF */
+  /** indoor (API dashboard) : aperçu meeting + CF / défis depuis contributions */
   indoorDetail?: {
     regionalPoints: number;
     regionalEventName: string;
@@ -190,16 +262,123 @@ type GlobalRankingRow = {
     maifPoints: number;
     maifEventName: string;
   };
+  merBreakdown?: MerBreakdown;
+  contributions?: any[];
+  otherEnduroTerritorial?: any[];
+  otherBrsTerritorial?: any[];
+  /** Ventilation par compétition (onglet détail par club). */
+  competitionLines: ClubCompetitionLine[];
 };
+
+function mapDashboardGlobal(globalPayload: any, eventType: EventTypeFilter): GlobalRankingRow[] {
+  const rankings = Array.isArray(globalPayload?.rankings) ? globalPayload.rankings : [];
+  return rankings.map((row: any, index: number) => {
+    const clubCode = String(row.club_code ?? "").trim();
+    const contributions = row.contributions;
+
+    let best_event_name = "";
+    let best_event_date = "";
+    const results_count = Number(row.results_count ?? 0);
+
+    if (eventType === "indoor" && Array.isArray(contributions)) {
+      const meeting = contributions.find((c: any) => c.kind === "meeting_standard_max");
+      best_event_name = meeting?.event_name || "";
+      best_event_date = meeting?.start_date || "";
+    } else if (eventType === "mer" && Array.isArray(contributions) && contributions.length) {
+      const withEvent = contributions.find((c: any) => c.event_name);
+      best_event_name = withEvent?.event_name ?? "Saison (contributions)";
+      best_event_date = withEvent?.start_date ?? "";
+    }
+
+    let indoorDetail: GlobalRankingRow["indoorDetail"];
+    if (eventType === "indoor" && Array.isArray(contributions)) {
+      const meeting = contributions.find((c: any) => c.kind === "meeting_standard_max");
+      const cf = contributions.filter((c: any) => c.kind === "championnat_france_indoor");
+      const defis = contributions.filter((c: any) => c.kind === "defis_capitaux");
+      const regionalPoints = Number(meeting?.points ?? 0);
+      const maifPoints =
+        cf.reduce((s, c) => s + Number(c.points ?? 0), 0) +
+        defis.reduce((s, c) => s + Number(c.points ?? 0), 0);
+      const labels = [cf.length ? "Championnat France indoor" : "", defis.length ? "Défis capitaux" : ""].filter(
+        Boolean
+      );
+      indoorDetail = {
+        regionalPoints,
+        regionalEventName: meeting?.event_name ?? "—",
+        regionalEventDate: meeting?.start_date ?? "",
+        regionalResultsCount: 0,
+        maifPoints,
+        maifEventName: labels.join(" · ") || (maifPoints > 0 ? "CF / défis" : ""),
+      };
+    }
+
+    const competitionLines =
+      eventType === "mer"
+        ? buildMerClubCompetitionLines(row)
+        : eventType === "indoor"
+          ? buildIndoorClubCompetitionLines(contributions)
+          : [];
+
+    return {
+      key: clubCode || `row-${index}`,
+      club_name: row.club_name ?? "",
+      club_code: clubCode,
+      global_rank: typeof row.rank === "number" ? row.rank : index + 1,
+      best_points: Number(row.total_points ?? 0),
+      best_results_count: results_count,
+      best_event_name,
+      best_event_date,
+      indoorDetail,
+      merBreakdown: eventType === "mer" ? row.breakdown : undefined,
+      contributions,
+      otherEnduroTerritorial: eventType === "mer" ? row.other_enduro_territorial : undefined,
+      otherBrsTerritorial: eventType === "mer" ? row.other_brs_territorial : undefined,
+      competitionLines,
+    };
+  });
+}
+
+function formatMerBreakdownLine(b: MerBreakdown | undefined): string | null {
+  if (!b) return null;
+  const parts: string[] = [];
+  const e = b.enduro_top4;
+  const brs = b.brs_top1;
+  const cfe = b.championnat_france_enduro;
+  const cfb = b.championnat_france_brs;
+  const cf = b.championnat_france;
+  const bonus = b.territorial_bonus;
+  if (e != null && Number(e) !== 0) parts.push(`Enduro (top 4) : ${Number(e).toFixed(1)}`);
+  if (brs != null && Number(brs) !== 0) parts.push(`BRS : ${Number(brs).toFixed(1)}`);
+  if (cfe != null && Number(cfe) !== 0) parts.push(`CF enduro : ${Number(cfe).toFixed(1)}`);
+  if (cfb != null && Number(cfb) !== 0) parts.push(`CF BRS : ${Number(cfb).toFixed(1)}`);
+  if (cf != null && Number(cf) !== 0 && cfe == null && cfb == null)
+    parts.push(`CF : ${Number(cf).toFixed(1)}`);
+  if (bonus != null && Number(bonus) !== 0) parts.push(`Bonus terr. : ${Number(bonus).toFixed(1)}`);
+  return parts.length ? parts.join(" · ") : null;
+}
 
 export default function ClubRankingsPage() {
   const { user } = useAuth();
   const navigate = useNavigate();
   const [eventType, setEventType] = useState<EventTypeFilter>("indoor");
   const [data, setData] = useState<EventRankings[]>([]);
+  const [globalRanking, setGlobalRanking] = useState<GlobalRankingRow[]>([]);
+  const [rulesSummary, setRulesSummary] = useState<Record<string, string> | null>(null);
+  const [apiPayloadSeason, setApiPayloadSeason] = useState<string | null>(null);
+  const [seasonFilterMeta, setSeasonFilterMeta] = useState<SeasonFilterMeta | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<"global" | "by-event">("global");
+  const [activeTab, setActiveTab] = useState<"global" | "by-event" | "club-detail">("global");
+  /** Année calendaire validée (rechargement API) — la saisie se fait dans `calendarYearDraft` jusqu’au blur. */
+  const [calendarYear, setCalendarYear] = useState(currentCalendarYearString);
+  const [calendarYearDraft, setCalendarYearDraft] = useState(currentCalendarYearString);
+  const [includeTerritorialBonus, setIncludeTerritorialBonus] = useState(true);
+
+  const commitCalendarYearFromDraft = useCallback(() => {
+    const next = parseCalendarYearOnCommit(calendarYearDraft);
+    setCalendarYearDraft(next);
+    setCalendarYear(next);
+  }, [calendarYearDraft]);
 
   // Vérifier les permissions : admin, superadmin ou commission
   useEffect(() => {
@@ -214,276 +393,74 @@ export default function ClubRankingsPage() {
     }
   }, [user, navigate]);
 
-  useEffect(() => {
-    fetchRankings();
-  }, [eventType]);
-
-  const fetchRankings = async () => {
+  const fetchRankings = useCallback(async () => {
     if (!eventType) return;
 
     setLoading(true);
     setError(null);
     try {
-      if (eventType === "indoor") {
-        const eventsRes = await api.get("/events");
-        const allEvents = (eventsRes.data?.data ?? []) as EventListItem[];
-        const indoorEvents = allEvents.filter((event) => {
-          const rt = (event.race_type || "").toLowerCase();
-          return rt === "indoor";
-        });
+      const typeParam = eventType === "riviere" ? "riviere" : eventType;
+      const params: Record<string, string | boolean> = {
+        type: typeParam,
+      };
 
-        const rankingsByEvent = await Promise.all(
-          indoorEvents.map(async (event) => {
-            try {
-              const byCatRes = await api.get(
-                `/indoor-results/event/${event.id}/bycategorie`
-              );
-              const byCatData = Array.isArray(byCatRes.data?.data)
-                ? byCatRes.data.data
-                : [];
-              const normalizedRankings =
-                computeIndoorEventRankingsFromByCategory(byCatData);
-
-              return {
-                event: {
-                  id: event.id,
-                  name: event.name,
-                  location: event.location,
-                  start_date: event.start_date,
-                  end_date: event.end_date,
-                  race_type: event.race_type ?? "indoor",
-                },
-                rankings: normalizedRankings,
-              } satisfies EventRankings;
-            } catch {
-              return {
-                event: {
-                  id: event.id,
-                  name: event.name,
-                  location: event.location,
-                  start_date: event.start_date,
-                  end_date: event.end_date,
-                  race_type: event.race_type ?? "indoor",
-                },
-                rankings: [],
-              } satisfies EventRankings;
-            }
-          })
-        );
-
-        setData(rankingsByEvent);
-        return;
-      }
-
+      const yearForApi = calendarYear.trim() || currentCalendarYearString();
+      params.season = yearForApi;
       if (eventType === "mer") {
-        const eventsRes = await api.get("/events");
-        const allEvents = (eventsRes.data?.data ?? []) as EventListItem[];
-        const merEvents = allEvents.filter((event) => event.race_type === "mer");
+        params.include_territorial_bonus = includeTerritorialBonus;
+      }
 
-        const rankingsByEvent = await Promise.all(
-          merEvents.map(async (event) => {
-            try {
-              const rankingRes = await api.get(`/events/${event.id}/endurance-mer/ranking`);
-              const rankingData = Array.isArray(rankingRes.data?.data) ? rankingRes.data.data : [];
+      const response = await api.get("/rankings/clubs/dashboard", { params });
+      const body = response.data;
 
-              const normalizedRankings: ClubRanking[] = rankingData.map((row: any, index: number) => ({
-                id: `${event.id}-${row.club_code ?? row.club_name ?? index}`,
-                club_name: row.club_name ?? "Club inconnu",
-                club_code: row.club_code ?? null,
-                total_points: Number(row.total_points ?? 0),
-                rank: typeof row.rank === "number" ? row.rank : index + 1,
-                points_count: 0,
-                results_count: 0,
-              }))
-              // Même logique que la page Résultats : sans club, pas de points / pas de classement club
-              .filter((r: ClubRanking) => hasClubCode(r.club_code));
-
-              return {
-                event: {
-                  id: event.id,
-                  name: event.name,
-                  location: event.location,
-                  start_date: event.start_date,
-                  end_date: event.end_date,
-                  race_type: event.race_type ?? "mer",
-                },
-                rankings: normalizedRankings,
-              } satisfies EventRankings;
-            } catch {
-              return {
-                event: {
-                  id: event.id,
-                  name: event.name,
-                  location: event.location,
-                  start_date: event.start_date,
-                  end_date: event.end_date,
-                  race_type: event.race_type ?? "mer",
-                },
-                rankings: [],
-              } satisfies EventRankings;
-            }
-          })
-        );
-
-        setData(rankingsByEvent);
+      if (body?.status && body.status !== "success") {
+        setError(body.message || "Erreur lors de la récupération des classements");
+        setData([]);
+        setGlobalRanking([]);
+        setRulesSummary(null);
+        setApiPayloadSeason(null);
+        setSeasonFilterMeta(null);
         return;
       }
 
-      const raceTypeParam = eventType === "riviere" ? "rivière" : eventType;
-      const response = await api.get(`/rankings/clubs/by-type/${raceTypeParam}`);
-      
-      if (response.data.status === "success") {
-        const rawData = (response.data.data || []) as EventRankings[];
-        const filteredData = rawData.map((eventRankings) => ({
-          ...eventRankings,
-          rankings: (eventRankings.rankings || []).filter((ranking) =>
-            hasClubCode(ranking.club_code)
-          ),
-        }));
-        setData(filteredData);
+      const payload = body?.data ?? body;
+      const seasonFromPayload =
+        payload?.season != null && String(payload.season).trim() !== ""
+          ? String(payload.season)
+          : null;
+      setApiPayloadSeason(seasonFromPayload);
+      const sf = payload?.season_filter;
+      if (sf && typeof sf === "object") {
+        setSeasonFilterMeta({
+          mode: typeof sf.mode === "string" ? sf.mode : undefined,
+          description: typeof sf.description === "string" ? sf.description : undefined,
+        });
       } else {
-        setError(response.data.message || "Erreur lors de la récupération des classements");
+        setSeasonFilterMeta(null);
       }
+      setRulesSummary(
+        payload?.rules_summary && typeof payload.rules_summary === "object"
+          ? payload.rules_summary
+          : null
+      );
+      setData(mapDashboardByEvent(payload?.byEvent, eventType));
+      setGlobalRanking(mapDashboardGlobal(payload?.global ?? {}, eventType));
     } catch (err: any) {
       console.error("Erreur récupération classements:", err);
       setError(err?.response?.data?.message || "Impossible de charger les classements");
       setData([]);
+      setGlobalRanking([]);
+      setRulesSummary(null);
+      setApiPayloadSeason(null);
+      setSeasonFilterMeta(null);
     } finally {
       setLoading(false);
     }
-  };
+  }, [eventType, calendarYear, includeTerritorialBonus]);
 
-  // Classement global : indoor = max(régional) + France MAIF ; sinon = meilleur score parmi tous les événements
-  const globalRanking = useMemo((): GlobalRankingRow[] => {
-    if (eventType === "indoor") {
-      type Acc = {
-        key: string;
-        club_name: string;
-        club_code: string;
-        regionalMax: number;
-        regionalEventName: string;
-        regionalEventDate: string;
-        regionalResultsCount: number;
-        maifPoints: number;
-        maifEventName: string;
-      };
-      const byCode = new Map<string, Acc>();
-
-      data.forEach((eventRankings) => {
-        const isNational = isMaifNationalIndoorEventName(eventRankings.event.name);
-        eventRankings.rankings.forEach((ranking) => {
-          const clubCode = (ranking.club_code || "").trim();
-          if (!clubCode) return;
-
-          if (!byCode.has(clubCode)) {
-            byCode.set(clubCode, {
-              key: clubCode,
-              club_name: ranking.club_name,
-              club_code: clubCode,
-              regionalMax: 0,
-              regionalEventName: "",
-              regionalEventDate: "",
-              regionalResultsCount: 0,
-              maifPoints: 0,
-              maifEventName: "",
-            });
-          }
-          const acc = byCode.get(clubCode)!;
-
-          if (isNational) {
-            const pts = Number(ranking.total_points ?? 0);
-            if (pts > acc.maifPoints) {
-              acc.maifPoints = pts;
-              acc.maifEventName = eventRankings.event.name;
-            }
-          } else {
-            const pts = Number(ranking.total_points ?? 0);
-            if (pts > acc.regionalMax) {
-              acc.regionalMax = pts;
-              acc.regionalEventName = eventRankings.event.name;
-              acc.regionalEventDate = eventRankings.event.start_date;
-              acc.regionalResultsCount = ranking.results_count || 0;
-            }
-          }
-        });
-      });
-
-      const rows: GlobalRankingRow[] = Array.from(byCode.values()).map((acc) => {
-        const total = acc.regionalMax + acc.maifPoints;
-        return {
-          key: acc.key,
-          club_name: acc.club_name,
-          club_code: acc.club_code,
-          global_rank: 0,
-          best_points: total,
-          best_results_count: acc.regionalResultsCount,
-          best_event_name: acc.regionalEventName || acc.maifEventName || "—",
-          best_event_date: acc.regionalEventDate || "",
-          indoorDetail: {
-            regionalPoints: acc.regionalMax,
-            regionalEventName: acc.regionalEventName,
-            regionalEventDate: acc.regionalEventDate,
-            regionalResultsCount: acc.regionalResultsCount,
-            maifPoints: acc.maifPoints,
-            maifEventName: acc.maifEventName,
-          },
-        };
-      });
-
-      return rows
-        .sort((a, b) => b.best_points - a.best_points)
-        .map((club, index) => ({
-          ...club,
-          global_rank: index + 1,
-        }));
-    }
-
-    const clubBestScores: Record<
-      string,
-      {
-        key: string;
-        club_name: string;
-        club_code: string;
-        best_points: number;
-        best_event_name: string;
-        best_event_date: string;
-        best_results_count: number;
-      }
-    > = {};
-
-    data.forEach((eventRankings) => {
-      eventRankings.rankings.forEach((ranking) => {
-        const clubCode = (ranking.club_code || "").trim();
-        if (!clubCode) return;
-        const key = clubCode;
-
-        if (!clubBestScores[key] || ranking.total_points > clubBestScores[key].best_points) {
-          clubBestScores[key] = {
-            key,
-            club_name: ranking.club_name,
-            club_code: clubCode,
-            best_points: ranking.total_points,
-            best_event_name: eventRankings.event.name,
-            best_event_date: eventRankings.event.start_date,
-            best_results_count: ranking.results_count || 0,
-          };
-        }
-      });
-    });
-
-    return Object.values(clubBestScores)
-      .sort((a, b) => b.best_points - a.best_points)
-      .map((club, index) => ({
-        key: club.key,
-        club_name: club.club_name,
-        club_code: club.club_code,
-        global_rank: index + 1,
-        best_points: club.best_points,
-        best_results_count: club.best_results_count,
-        best_event_name: club.best_event_name,
-        best_event_date: club.best_event_date,
-      }));
-  }, [data, eventType]);
+  useEffect(() => {
+    fetchRankings();
+  }, [fetchRankings]);
 
   if (loading) {
     return (
@@ -513,7 +490,7 @@ export default function ClubRankingsPage() {
             Type d'événement
           </CardTitle>
         </CardHeader>
-        <CardContent>
+        <CardContent className="space-y-4">
           <Select
             value={eventType}
             onValueChange={(v) => setEventType(v as EventTypeFilter)}
@@ -527,6 +504,47 @@ export default function ClubRankingsPage() {
               <SelectItem value="riviere">Rivière</SelectItem>
             </SelectContent>
           </Select>
+
+          <div className="flex flex-col sm:flex-row sm:flex-wrap gap-4 items-start">
+            <div className="space-y-2">
+              <Label htmlFor="club-rank-calendar-year">Année calendaire</Label>
+              <Input
+                id="club-rank-calendar-year"
+                className="w-40"
+                inputMode="numeric"
+                autoComplete="off"
+                value={calendarYearDraft}
+                onChange={(e) => setCalendarYearDraft(e.target.value)}
+                onBlur={commitCalendarYearFromDraft}
+                placeholder={currentCalendarYearString()}
+              />
+              <p className="text-xs text-muted-foreground max-w-md">
+                La recherche se lance à la sortie du champ. Le paramètre{" "}
+                <code className="text-xs">season</code> envoyé est l’année saisie (ex.{" "}
+                <code className="text-xs">2026</code>) pour tous les types.
+              </p>
+            </div>
+            {eventType === "mer" && (
+              <div className="flex items-center gap-2 pt-6 sm:pt-8">
+                <Checkbox
+                  id="club-rank-bonus"
+                  checked={includeTerritorialBonus}
+                  onCheckedChange={(c) => setIncludeTerritorialBonus(c === true)}
+                />
+                <Label htmlFor="club-rank-bonus" className="font-normal cursor-pointer">
+                  Inclure le bonus territorial mer
+                </Label>
+              </div>
+            )}
+          </div>
+
+          {eventType === "riviere" && (
+            <p className="text-sm text-muted-foreground">
+              Agrégation rivière : placeholder côté API — <code className="text-xs">byEvent</code> et{" "}
+              <code className="text-xs">global</code> peuvent être vides (voir{" "}
+              <code className="text-xs">CLUBS_DASHBOARD_RANKINGS.md</code>).
+            </p>
+          )}
         </CardContent>
       </Card>
 
@@ -536,9 +554,31 @@ export default function ClubRankingsPage() {
         </Alert>
       )}
 
+      {(apiPayloadSeason || seasonFilterMeta?.description || seasonFilterMeta?.mode) && (
+        <Alert>
+          <Info className="h-4 w-4" />
+          <AlertDescription className="space-y-1">
+            {apiPayloadSeason ? (
+              <p className="text-sm">
+                <span className="font-medium">Saison renvoyée par l’API :</span>{" "}
+                <code className="text-xs">{apiPayloadSeason}</code>
+              </p>
+            ) : null}
+            {seasonFilterMeta?.mode ? (
+              <p className="text-xs text-muted-foreground">
+                Filtre : <code className="text-xs">{seasonFilterMeta.mode}</code>
+              </p>
+            ) : null}
+            {seasonFilterMeta?.description ? (
+              <p className="text-sm text-muted-foreground">{seasonFilterMeta.description}</p>
+            ) : null}
+          </AlertDescription>
+        </Alert>
+      )}
+
       {/* Onglets */}
       <div className="mb-6">
-        <div className="flex gap-2 border-b bg-muted/30">
+        <div className="flex flex-wrap gap-2 border-b bg-muted/30">
           <button
             onClick={() => setActiveTab("global")}
             className={`px-6 py-3 font-medium flex items-center gap-2 border-b-2 transition-all ${
@@ -561,6 +601,17 @@ export default function ClubRankingsPage() {
             <Trophy className="w-4 h-4" />
             Classement par événement
           </button>
+          <button
+            onClick={() => setActiveTab("club-detail")}
+            className={`px-6 py-3 font-medium flex items-center gap-2 border-b-2 transition-all ${
+              activeTab === "club-detail"
+                ? "border-primary text-primary bg-background"
+                : "border-transparent text-muted-foreground hover:text-foreground hover:bg-muted/50"
+            }`}
+          >
+            <LayoutList className="w-4 h-4" />
+            Détail par club
+          </button>
         </div>
       </div>
 
@@ -572,14 +623,29 @@ export default function ClubRankingsPage() {
               <Award className="w-5 h-5 text-primary" />
               Classement Global ({eventType.toUpperCase()})
             </CardTitle>
-            <CardDescription>
-              {eventType === "indoor" ? (
-                <>
-                  Total = meilleur score parmi les compétitions <strong>régionales</strong> + points du championnat de France{" "}
-                  <strong>MAIF AVIRON INDOOR</strong> (Championnats de France).
-                </>
+            <CardDescription className="space-y-2">
+              {rulesSummary && Object.keys(rulesSummary).length > 0 ? (
+                <ul className="list-disc list-inside text-sm space-y-1">
+                  {Object.entries(rulesSummary).map(([k, v]) => (
+                    <li key={k}>{typeof v === "string" ? v : JSON.stringify(v)}</li>
+                  ))}
+                </ul>
+              ) : eventType === "indoor" ? (
+                <p className="text-sm">
+                  Total = meilleur meeting standard (barème Points Indoor) + somme des points championnat de France indoor +
+                  somme des <em>N</em> meilleurs défis capitaux sur la saison (
+                  <code className="text-xs">GET /rankings/clubs/dashboard?type=indoor</code>).
+                </p>
+              ) : eventType === "mer" ? (
+                <p className="text-sm">
+                  Total saison = 4 meilleures enduro territoriales + 1 meilleure BRS territoriale + CF enduro + CF BRS +
+                  bonus territorial (si activé). Détail par club via <code className="text-xs">breakdown</code> /{" "}
+                  <code className="text-xs">contributions</code>.
+                </p>
               ) : (
-                <>Classement basé sur le meilleur score de chaque club parmi tous les événements</>
+                <p className="text-sm text-muted-foreground">
+                  Agrégation rivière : non implémentée côté API — classements vides attendus.
+                </p>
               )}
             </CardDescription>
           </CardHeader>
@@ -591,7 +657,11 @@ export default function ClubRankingsPage() {
                     <TableHead className="w-20 text-center font-semibold">Rang</TableHead>
                     <TableHead className="min-w-[250px] font-semibold">Club</TableHead>
                     <TableHead className="w-36 text-center font-semibold">
-                      {eventType === "indoor" ? "Total points" : "Meilleur score"}
+                      {eventType === "indoor"
+                        ? "Total points"
+                        : eventType === "mer"
+                          ? "Total saison"
+                          : "Total"}
                     </TableHead>
                     {eventType === "indoor" ? (
                       <>
@@ -601,105 +671,68 @@ export default function ClubRankingsPage() {
                         <TableHead className="min-w-[180px] text-center font-semibold">
                           France MAIF
                         </TableHead>
-                        <TableHead className="min-w-[220px] font-semibold">
-                          Événement (meilleur régional)
-                        </TableHead>
-                        <TableHead className="w-32 text-center font-semibold">Date</TableHead>
                       </>
-                    ) : (
-                      <>
-                        <TableHead className="w-32 text-center font-semibold">Meilleur score</TableHead>
-                        <TableHead className="w-32 text-center font-semibold">Nb résultats</TableHead>
-                        <TableHead className="min-w-[200px] font-semibold">Événement</TableHead>
-                        <TableHead className="w-32 text-center font-semibold">Date</TableHead>
-                      </>
-                    )}
+                    ) : null}
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {globalRanking.map((club) => (
-                    <TableRow
-                      key={club.key}
-                      className={`${
-                        club.global_rank === 1 ? "bg-amber-50 dark:bg-amber-950/20" :
-                        club.global_rank === 2 ? "bg-slate-50 dark:bg-slate-900/20" :
-                        club.global_rank === 3 ? "bg-amber-100 dark:bg-amber-900/20" : ""
-                      }`}
-                    >
-                      <TableCell className="text-center">
-                        <span className="font-bold text-lg text-primary">
-                          {club.global_rank}
-                        </span>
-                      </TableCell>
-                      <TableCell>
-                        <div className="font-medium">
-                          {club.club_name}
-                        </div>
-                        {club.club_code && (
-                          <div className="text-sm text-muted-foreground">
-                            {club.club_code}
-                          </div>
-                        )}
-                      </TableCell>
-                      <TableCell className="text-center">
-                        <span className="font-bold text-xl text-primary">
-                          {club.best_points.toFixed(1)}
-                        </span>
-                      </TableCell>
-                      {eventType === "indoor" && club.indoorDetail ? (
-                        <>
-                          <TableCell className="text-center">
-                            <span className="font-semibold">
-                              {club.indoorDetail.regionalPoints.toFixed(1)}
-                            </span>
-                          </TableCell>
-                          <TableCell className="text-center">
-                            <span className="font-semibold">
-                              {club.indoorDetail.maifPoints.toFixed(1)}
-                            </span>
-                            {club.indoorDetail.maifEventName ? (
-                              <div className="text-xs text-muted-foreground mt-1 line-clamp-2 max-w-[200px] mx-auto">
-                                {club.indoorDetail.maifEventName}
-                              </div>
-                            ) : null}
-                          </TableCell>
-                          <TableCell>
-                            <div className="text-sm">
-                              {club.indoorDetail.regionalEventName || "—"}
-                            </div>
-                          </TableCell>
-                          <TableCell className="text-center">
-                            <span className="text-sm text-muted-foreground">
-                              {club.indoorDetail.regionalEventDate &&
-                              dayjs(club.indoorDetail.regionalEventDate).isValid()
-                                ? dayjs(club.indoorDetail.regionalEventDate).format("DD/MM/YYYY")
-                                : "—"}
-                            </span>
-                          </TableCell>
-                        </>
-                      ) : (
-                        <>
-                          <TableCell className="text-center">
-                            <span className="text-muted-foreground">
-                              {club.best_results_count} résultat{club.best_results_count > 1 ? "s" : ""}
-                            </span>
-                          </TableCell>
-                          <TableCell>
-                            <div className="text-sm">
-                              {club.best_event_name}
-                            </div>
-                          </TableCell>
-                          <TableCell className="text-center">
-                            <span className="text-sm text-muted-foreground">
-                              {club.best_event_date && dayjs(club.best_event_date).isValid()
-                                ? dayjs(club.best_event_date).format("DD/MM/YYYY")
-                                : "—"}
-                            </span>
-                          </TableCell>
-                        </>
-                      )}
-                    </TableRow>
-                  ))}
+                  {globalRanking.map((club) => {
+                    const merDetailLine =
+                      eventType === "mer" ? formatMerBreakdownLine(club.merBreakdown) : null;
+                    return (
+                      <TableRow
+                        key={club.key}
+                        className={`${
+                          club.global_rank === 1
+                            ? "bg-amber-50 dark:bg-amber-950/20"
+                            : club.global_rank === 2
+                              ? "bg-slate-50 dark:bg-slate-900/20"
+                              : club.global_rank === 3
+                                ? "bg-amber-100 dark:bg-amber-900/20"
+                                : ""
+                        }`}
+                      >
+                        <TableCell className="text-center">
+                          <span className="font-bold text-lg text-primary">{club.global_rank}</span>
+                        </TableCell>
+                        <TableCell>
+                          <div className="font-medium">{club.club_name}</div>
+                          {club.club_code && (
+                            <div className="text-sm text-muted-foreground">{club.club_code}</div>
+                          )}
+                          {merDetailLine ? (
+                            <div className="text-xs text-muted-foreground mt-1 max-w-md">{merDetailLine}</div>
+                          ) : null}
+                        </TableCell>
+                        <TableCell className="text-center">
+                          <span className="font-bold text-xl text-primary">
+                            {club.best_points.toFixed(1)}
+                          </span>
+                        </TableCell>
+                        {eventType === "indoor" ? (
+                          <>
+                            <TableCell className="text-center">
+                              <span className="font-semibold">
+                                {club.indoorDetail
+                                  ? club.indoorDetail.regionalPoints.toFixed(1)
+                                  : "—"}
+                              </span>
+                            </TableCell>
+                            <TableCell className="text-center">
+                              <span className="font-semibold">
+                                {club.indoorDetail ? club.indoorDetail.maifPoints.toFixed(1) : "—"}
+                              </span>
+                              {club.indoorDetail?.maifEventName ? (
+                                <div className="text-xs text-muted-foreground mt-1 line-clamp-2 max-w-[200px] mx-auto">
+                                  {club.indoorDetail.maifEventName}
+                                </div>
+                              ) : null}
+                            </TableCell>
+                          </>
+                        ) : null}
+                      </TableRow>
+                    );
+                  })}
                 </TableBody>
               </Table>
             </div>
@@ -717,6 +750,159 @@ export default function ClubRankingsPage() {
         </Card>
       )}
 
+      {activeTab === "club-detail" && globalRanking.length > 0 && (
+        <div className="space-y-4">
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <LayoutList className="w-5 h-5 text-primary" />
+                Détail par club
+              </CardTitle>
+              <CardDescription className="text-sm space-y-2">
+                {eventType === "mer" ? (
+                  <p>
+                    Même ordre que le classement général. Chaque ligne est une compétition (ou le bonus territorial).
+                    Le badge indique si les points de cette ligne sont inclus dans le total saison ou exclus par les
+                    règles (reliquats enduro / BRS territoriaux).
+                  </p>
+                ) : eventType === "indoor" ? (
+                  <p>
+                    Liste dérivée des <code className="text-xs">contributions</code> renvoyées par l’API pour la
+                    saison : chaque bloc affiché est comptabilisé dans le total indoor.
+                  </p>
+                ) : (
+                  <p className="text-muted-foreground">
+                    La réponse rivière ne fournit pas encore de ventilation par compétition dans ce format.
+                  </p>
+                )}
+              </CardDescription>
+            </CardHeader>
+          </Card>
+
+          {globalRanking.map((club) => (
+            <Card key={`club-detail-${club.key}`}>
+              <CardHeader className="pb-2">
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div>
+                    <CardTitle className="text-lg flex flex-wrap items-baseline gap-2">
+                      <span className="font-bold text-primary tabular-nums">#{club.global_rank}</span>
+                      <span>{club.club_name}</span>
+                    </CardTitle>
+                    {club.club_code ? (
+                      <CardDescription className="font-mono text-xs mt-1">{club.club_code}</CardDescription>
+                    ) : null}
+                  </div>
+                  <div className="text-right">
+                    <p className="text-xs text-muted-foreground">Total saison</p>
+                    <p className="text-xl font-bold text-primary tabular-nums">
+                      {club.best_points.toFixed(2)} pts
+                    </p>
+                  </div>
+                </div>
+              </CardHeader>
+              <CardContent className="pt-0">
+                {club.competitionLines.length === 0 ? (
+                  <p className="text-sm text-muted-foreground py-4">
+                    Aucune ventilation par compétition dans la réponse API pour ce club.
+                  </p>
+                ) : (
+                  <div className="overflow-x-auto rounded-md border">
+                    <Table>
+                      <TableHeader>
+                        <TableRow className="bg-muted/50">
+                          <TableHead className="min-w-[220px] font-semibold">Compétition</TableHead>
+                          <TableHead className="w-28 text-center font-semibold">Date</TableHead>
+                          <TableHead className="w-28 text-right font-semibold">Points</TableHead>
+                          <TableHead className="w-36 text-center font-semibold">Comptabilisation</TableHead>
+                          <TableHead className="min-w-[200px] font-semibold">Motif</TableHead>
+                          <TableHead className="w-[200px] font-semibold">Liens</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {club.competitionLines.map((line) => {
+                          const dateStr =
+                            line.startDate && dayjs(line.startDate).isValid()
+                              ? dayjs(line.startDate).format("DD/MM/YYYY")
+                              : "—";
+                          return (
+                            <TableRow
+                              key={line.lineKey}
+                              className={line.counted ? "" : "bg-muted/40"}
+                            >
+                              <TableCell>
+                                <div className="font-medium break-words">{line.eventName}</div>
+                              </TableCell>
+                              <TableCell className="text-center text-sm text-muted-foreground whitespace-nowrap">
+                                {dateStr}
+                              </TableCell>
+                              <TableCell className="text-right font-semibold tabular-nums">
+                                {line.points.toFixed(2)}
+                              </TableCell>
+                              <TableCell className="text-center">
+                                {line.counted ? (
+                                  <Badge className="whitespace-nowrap">Compté</Badge>
+                                ) : (
+                                  <Badge variant="secondary" className="whitespace-nowrap">
+                                    Non compté
+                                  </Badge>
+                                )}
+                              </TableCell>
+                              <TableCell className="text-xs text-muted-foreground max-w-md">
+                                {line.detail}
+                              </TableCell>
+                              <TableCell>
+                                {line.eventId ? (
+                                  <div className="flex flex-col gap-1">
+                                    {eventType === "mer" ? (
+                                      <>
+                                        <Button asChild variant="link" size="sm" className="h-auto p-0 justify-start">
+                                          <Link to={`/event/${line.eventId}/endurance-mer`}>Mer (import)</Link>
+                                        </Button>
+                                        <Button asChild variant="link" size="sm" className="h-auto p-0 justify-start">
+                                          <Link to={`/event/${line.eventId}/results`}>Résultats org.</Link>
+                                        </Button>
+                                        <Button asChild variant="link" size="sm" className="h-auto p-0 justify-start">
+                                          <Link to={`/public/event/${line.eventId}/results`}>Résultats publics</Link>
+                                        </Button>
+                                      </>
+                                    ) : (
+                                      <>
+                                        <Button asChild variant="link" size="sm" className="h-auto p-0 justify-start">
+                                          <Link to={`/event/${line.eventId}/results`}>Résultats org.</Link>
+                                        </Button>
+                                        <Button asChild variant="link" size="sm" className="h-auto p-0 justify-start">
+                                          <Link to={`/public/event/${line.eventId}/results`}>Résultats publics</Link>
+                                        </Button>
+                                      </>
+                                    )}
+                                  </div>
+                                ) : (
+                                  <span className="text-xs text-muted-foreground">—</span>
+                                )}
+                              </TableCell>
+                            </TableRow>
+                          );
+                        })}
+                      </TableBody>
+                    </Table>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      )}
+
+      {activeTab === "club-detail" && globalRanking.length === 0 && (
+        <Card>
+          <CardContent className="py-12 text-center">
+            <p className="text-muted-foreground">
+              Aucune donnée pour le détail par club (classement général vide).
+            </p>
+          </CardContent>
+        </Card>
+      )}
+
       {/* Classements par Événement */}
       {activeTab === "by-event" &&
         (data.length === 0 ? (
@@ -729,40 +915,84 @@ export default function ClubRankingsPage() {
           </Card>
         ) : (
           <div className="space-y-6">
-            {data.map((eventRankings) => (
-              <Card key={eventRankings.event.id}>
+            {data.map((eventRankings) => {
+              const ev = eventRankings.event;
+              const sd = dayjs(ev.start_date);
+              const ed = dayjs(ev.end_date);
+              const startOk = sd.isValid();
+              const endOk = ed.isValid();
+              const dateLabel =
+                startOk && endOk && !sd.isSame(ed, "day")
+                  ? `${sd.format("DD/MM/YYYY")} – ${ed.format("DD/MM/YYYY")}`
+                  : startOk
+                    ? sd.format("DD/MM/YYYY")
+                    : "—";
+              const showMerAdmin = eventSupportsEnduranceMerLink(ev.race_type);
+              return (
+              <Card key={ev.id}>
                 <CardHeader>
-                  <div className="flex items-start justify-between">
-                    <div className="flex-1">
-                      <CardTitle className="flex items-center gap-2">
-                        <Trophy className="w-5 h-5 text-primary" />
-                        {eventRankings.event.name}
+                  <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+                    <div className="flex-1 min-w-0 space-y-2">
+                      <CardTitle className="flex items-center gap-2 flex-wrap">
+                        <Trophy className="w-5 h-5 text-primary shrink-0" />
+                        <span className="break-words">{ev.name}</span>
                       </CardTitle>
-                      <CardDescription className="flex flex-wrap items-center gap-4 mt-2">
-                        <div className="flex items-center gap-2">
-                          <Calendar className="w-4 h-4" />
-                          <span>
-                            {dayjs(eventRankings.event.start_date).format("DD/MM/YYYY")}
-                            {!dayjs(eventRankings.event.start_date).isSame(
-                              dayjs(eventRankings.event.end_date),
-                              "day"
-                            ) && (
-                              <> - {dayjs(eventRankings.event.end_date).format("DD/MM/YYYY")}</>
-                            )}
+                      <div className="flex flex-wrap gap-2">
+                        <span className="inline-flex items-center rounded-md border bg-muted/50 px-2 py-0.5 text-xs font-medium">
+                          Type : {ev.race_type || "—"}
+                        </span>
+                        {ev.season ? (
+                          <span className="inline-flex items-center rounded-md border bg-muted/50 px-2 py-0.5 text-xs font-medium">
+                            Saison (événement) : {ev.season}
                           </span>
-                        </div>
+                        ) : null}
+                        {apiPayloadSeason ? (
+                          <span className="inline-flex items-center rounded-md border bg-muted/50 px-2 py-0.5 text-xs font-medium">
+                            Filtre API : {apiPayloadSeason}
+                          </span>
+                        ) : null}
+                      </div>
+                      <CardDescription className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center sm:gap-4 mt-0">
                         <div className="flex items-center gap-2">
-                          <MapPin className="w-4 h-4" />
-                          <span>{eventRankings.event.location}</span>
+                          <Calendar className="w-4 h-4 shrink-0" />
+                          <span>{dateLabel}</span>
                         </div>
+                        {ev.location ? (
+                          <div className="flex items-start gap-2 min-w-0">
+                            <MapPin className="w-4 h-4 shrink-0 mt-0.5" />
+                            <span className="break-words">{ev.location}</span>
+                          </div>
+                        ) : null}
                       </CardDescription>
+                      <p className="text-xs text-muted-foreground font-mono break-all">
+                        ID événement : {ev.id}
+                      </p>
                     </div>
-                    <Button asChild variant="outline" size="sm" className="ml-4">
-                      <Link to={`/event/${eventRankings.event.id}/results`}>
-                        <ExternalLink className="w-4 h-4 mr-2" />
-                        Voir le détail
-                      </Link>
-                    </Button>
+                    <div className="flex flex-col gap-2 shrink-0 lg:items-end lg:ml-4">
+                      <p className="text-xs text-muted-foreground lg:text-right">Vérifications</p>
+                      <div className="flex flex-wrap gap-2">
+                        {showMerAdmin ? (
+                          <Button asChild variant="default" size="sm">
+                            <Link to={`/event/${ev.id}/endurance-mer`}>
+                              <ExternalLink className="w-4 h-4 mr-2" />
+                              Import / classement mer
+                            </Link>
+                          </Button>
+                        ) : null}
+                        <Button asChild variant="outline" size="sm">
+                          <Link to={`/event/${ev.id}/results`}>
+                            <ExternalLink className="w-4 h-4 mr-2" />
+                            Résultats (org.)
+                          </Link>
+                        </Button>
+                        <Button asChild variant="secondary" size="sm">
+                          <Link to={`/public/event/${ev.id}/results`}>
+                            <ExternalLink className="w-4 h-4 mr-2" />
+                            Résultats publics
+                          </Link>
+                        </Button>
+                      </div>
+                    </div>
                   </div>
                 </CardHeader>
                 <CardContent className="p-0">
@@ -773,14 +1003,21 @@ export default function ClubRankingsPage() {
                           <TableHead className="w-20 text-center font-semibold">Rang</TableHead>
                           <TableHead className="min-w-[250px] font-semibold">Club</TableHead>
                           <TableHead className="w-32 text-center font-semibold">Total points</TableHead>
-                          <TableHead className="w-32 text-center font-semibold">Nb points</TableHead>
-                          <TableHead className="w-32 text-center font-semibold">Nb résultats</TableHead>
+                          {eventType !== "mer" ? (
+                            <>
+                              <TableHead className="w-32 text-center font-semibold">Nb points</TableHead>
+                              <TableHead className="w-32 text-center font-semibold">Nb résultats</TableHead>
+                            </>
+                          ) : null}
                         </TableRow>
                       </TableHeader>
                       <TableBody>
                         {eventRankings.rankings.length === 0 ? (
                           <TableRow>
-                            <TableCell colSpan={5} className="text-center text-muted-foreground py-8">
+                            <TableCell
+                              colSpan={eventType === "mer" ? 3 : 5}
+                              className="text-center text-muted-foreground py-8"
+                            >
                               Aucun classement disponible pour cet événement
                             </TableCell>
                           </TableRow>
@@ -818,16 +1055,21 @@ export default function ClubRankingsPage() {
                                   {ranking.total_points.toFixed(1)}
                                 </span>
                               </TableCell>
-                              <TableCell className="text-center">
-                                <span className="text-muted-foreground">
-                                  {ranking.points_count} point{ranking.points_count > 1 ? "s" : ""}
-                                </span>
-                              </TableCell>
-                              <TableCell className="text-center">
-                                <span className="text-muted-foreground">
-                                  {ranking.results_count || 0} résultat{(ranking.results_count || 0) > 1 ? "s" : ""}
-                                </span>
-                              </TableCell>
+                              {eventType !== "mer" ? (
+                                <>
+                                  <TableCell className="text-center">
+                                    <span className="text-muted-foreground">
+                                      {ranking.points_count} point{ranking.points_count > 1 ? "s" : ""}
+                                    </span>
+                                  </TableCell>
+                                  <TableCell className="text-center">
+                                    <span className="text-muted-foreground">
+                                      {ranking.results_count || 0} résultat
+                                      {(ranking.results_count || 0) > 1 ? "s" : ""}
+                                    </span>
+                                  </TableCell>
+                                </>
+                              ) : null}
                             </TableRow>
                           ))
                         )}
@@ -836,7 +1078,8 @@ export default function ClubRankingsPage() {
                   </div>
                 </CardContent>
               </Card>
-            ))}
+              );
+            })}
           </div>
         ))}
     </div>

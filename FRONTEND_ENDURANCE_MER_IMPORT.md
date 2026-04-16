@@ -1,353 +1,161 @@
-# Guide Frontend : Import résultats Endurance Mer (ENDURO / BRS)
+# Frontend Endurance Mer - Guide complet
 
-Documentation pour intégrer dans le frontend l’**import des résultats** par fichier Excel (un fichier par événement) et l’**affichage du classement par club** pour les régates d’aviron de mer (ENDURO, Beach Rowing Sprint), selon la réglementation FFAviron 2026.
+Ce guide couvre l'integration frontend complete du module Endurance Mer 2026:
 
----
+- import Excel (ENDURO/BRS)
+- consultation des resultats importes
+- classement evenement
+- classement global saison (reglement 2026)
+- gestion du bonus territorial (backoffice)
 
-## 1. Vue d’ensemble
+## 1) Endpoints
 
-### 1.1 Objectif
+### Import evenement
 
-- Permettre à l’utilisateur de **déposer un fichier Excel** de remontée des résultats (modèle FFAviron « Remontée résultats régates ») pour un **événement** déjà créé.
-- Afficher les **résultats importés** (liste par épreuve / par club) et le **classement des clubs** (calculé à la volée avec les règles 2026 : barème, pondération, plafond 2 équipages par épreuve par club).
+- POST `/events/:eventId/endurance-mer/import` (auth)
+- multipart/form-data:
+  - `file` (xlsx) obligatoire
+  - `event_format`: `enduro` | `brs`
+  - `event_level`: `territorial` | `championnat_france`
+  - `replace_previous`: `true` | `false`
 
-### 1.2 Parcours utilisateur type
+### Important : pretraitement (`sanitizeWorkbookBeforeImport`)
 
-1. L’utilisateur choisit un **événement** (liste ou détail d’événement).
-2. Depuis la fiche ou la liste d’événements, il accède à la section **« Résultats Endurance Mer »** ou **« Import résultats ENDURO/BRS »**.
-3. Il **sélectionne un fichier Excel** (.xlsx), optionnellement choisit le **format** (enduro / brs), le **niveau** (territorial / championnat de France) et coche **« Remplacer les résultats précédents »** si besoin.
-4. Il lance l’**import**. L’API retourne le nombre de lignes importées et la liste des épreuves traitées.
-5. Il peut consulter la **liste des résultats** (avec filtres épreuve / club) et le **classement par club** (tableau rang, club, points).
+Si le front lit le classeur dans le navigateur puis **re-ecrit** un fichier (sanitization, `.xls` → `.xlsx`, etc.), **l’API ne voit jamais le fichier d’origine**. Toute ligne dont la cellule « code club » est **videe** par le front **ne peut pas** etre importee.
 
-### 1.3 Points importants
+Les **equipages multi-clubs sur une seule cellule** (ex. `C029009(2)/C029028(3)` ou `C035039(1)/C029042(2)/C050005(1)/C029020(2)`) **ne matchent pas** un motif du type **un seul** code `C` + 6 chiffres. Si la sanitization considere ces lignes comme invalides et **efface** la colonne code club (ou toute la ligne), l’API ne recevra pas les mixtes : ce n’est pas un bug d’import cote API.
 
-- **Authentification** : l’**import** (POST) nécessite un **token JWT** ; la **lecture** des résultats et du classement (GET) peut rester publique.
-- **Fichier** : un **seul fichier par événement**, au format **Excel (.xlsx)** fourni par la FFAviron (une feuille par épreuve : SF1X, SH1X, U19M2X, etc.).
-- **Classement** : calculé **à la volée** par l’API (pas de stockage dans une table de classement) ; un simple appel GET suffit pour afficher le classement à jour.
+**Regles recommandees pour le front :**
 
----
+1. **Ne pas** supprimer une ligne de donnees si la cellule code club est un **mixte inline** valide : au moins deux segments separes par `/`, chaque segment au format `CodeFF(n)` avec `n` entier (ex. regex par segment : `^C\d{6}\(\d+\)$` en assouplissant si besoin les lettres du prefixe club).
+2. **Ou** envoyer le **fichier brut** sans reecriture des lignes de resultats (seulement conversion de format si indispensable, sans vider les cellules « non standard »).
+3. Pour l’affichage des resultats : les mixtes inline sont en base avec `club_code = "0"`, `club_name = "0"`, `is_mixed_clubs = true`, `club_codes_mixed` = texte complet ; le libelle Excel peut etre dans `crew_name` (tronque a 255 cote API).
 
-## 2. Routes API à utiliser
+### Resultats importes
 
-Base URL des événements : **`/events/:eventId`** (remplacer `:eventId` par l’UUID de l’événement).
+- GET `/events/:eventId/endurance-mer/import-results`
+- query optionnelles: `epreuve_code`, `club_code`
 
-| Action | Méthode | URL | Auth |
-|--------|--------|-----|------|
-| Importer le fichier Excel | `POST` | `/events/:eventId/endurance-mer/import` | Oui |
-| Récupérer les résultats importés | `GET` | `/events/:eventId/endurance-mer/import-results` | Non |
-| Récupérer le classement par club | `GET` | `/events/:eventId/endurance-mer/ranking` | Non |
+### Classement evenement
 
----
+- GET `/events/:eventId/endurance-mer/ranking`
 
-## 3. Détail des endpoints
+### Classement global saison (reglement)
 
-### 3.1 Import du fichier Excel
+- GET `/events/endurance-mer/global-ranking?season=2026&include_territorial_bonus=true`
 
-**`POST /events/:eventId/endurance-mer/import`**
+### Bonus territorial (backoffice)
 
-- **Authentification** : requise. Envoyer le token dans le header :  
-  `Authorization: Bearer <token>`
-- **Content-Type** : `multipart/form-data` (formulaire avec fichier).
+- GET `/events/endurance-mer/territorial-bonus?season=2026`
+- POST `/events/endurance-mer/territorial-bonus` (auth)
+  - body JSON: `{ season, club_code?, club_name, points=67.5, is_active=true, notes? }`
 
-**Paramètres du formulaire (form-data)** :
+## 2) Regles appliquees par l'API
 
-| Champ | Type | Obligatoire | Description |
-|-------|------|-------------|-------------|
-| `file` | Fichier | Oui | Fichier Excel `.xlsx` (remontée résultats FFAviron). |
-| `event_format` | string | Non | `enduro` (défaut) ou `brs`. |
-| `event_level` | string | Non | `territorial` (défaut) ou `championnat_france`. |
-| `replace_previous` | string / boolean | Non | `true` pour supprimer les résultats déjà importés pour cet événement avant d’insérer les nouveaux. Sinon les nouvelles lignes s’ajoutent aux existantes. |
+### ENDURO (territorial)
 
-**Exemple de requête (JavaScript avec `FormData`)** :
+- Bareme ENDURO officiel
+- Ponderation partants (<7 => 75%, >=7 => 100%)
+- Plafond evenement: max 2 equipages par club et par epreuve
+- Mixtes U17: seuls les mixtes U17 a 2 clubs max marquent; points repartis au prorata (Club1/Club2), sinon 0
 
-```javascript
-const eventId = "uuid-de-l-evenement";
-const fileInput = document.querySelector('input[type="file"]');
-const formData = new FormData();
-formData.append("file", fileInput.files[0]);
-formData.append("event_format", "enduro");
-formData.append("event_level", "territorial");
-formData.append("replace_previous", "true");
+### BRS (territorial)
 
-const response = await fetch(`/api/events/${eventId}/endurance-mer/import`, {
-  method: "POST",
-  headers: {
-    Authorization: `Bearer ${token}`,
-    // Ne pas mettre Content-Type : le navigateur fixe multipart/form-data + boundary
-  },
-  body: formData,
+- Bareme BRS officiel
+- Ponderation partants
+- Plafond evenement: max 2 juniors + 2 seniors par club et par epreuve
+
+### Championnat de France
+
+- Bareme Championnats officiel (1x U19, 1x Senior, 2x U19, 2x Senior, 4x U17/U19, 4x Senior)
+
+### Classement global saison (club)
+
+Total =
+
+- Top 4 events ENDURO territoriaux
+
+* Top 1 event BRS territorial
+* Tous les points Championnats de France
+* Bonus territorial (67.5) si actif
+
+## 3) Ecrans frontend recommandes
+
+### Ecran "Import Endurance Mer" (event)
+
+- file input `.xlsx`
+- select format: Enduro/BRS
+- select niveau: Territorial/Championnat de France
+- checkbox "Remplacer les imports precedents"
+- bouton Import
+- retour: inserted, epreuves, erreurs
+
+### Ecran "Resultats importes" (event)
+
+- tableau: epreuve_code, place, club_code, club_name, points_attributed, partants_count
+- filtres: epreuve, club
+
+### Ecran "Classement evenement"
+
+- tableau: rank, club_name, club_code, total_points
+
+### Ecran "Classement global mer" (saison)
+
+- filtres: saison, inclure bonus territorial
+- tableau: rank, club, total_points
+- detail breakdown:
+  - enduro_top4
+  - brs_top1
+  - championnat_france
+  - territorial_bonus
+
+### Ecran backoffice "Bonus territorial"
+
+- liste par saison
+- ajout/modification activation
+
+## 4) Exemples frontend (fetch)
+
+### Import
+
+```js
+const fd = new FormData();
+fd.append('file', file);
+fd.append('event_format', 'enduro');
+fd.append('event_level', 'territorial');
+fd.append('replace_previous', 'true');
+
+const res = await fetch(`/events/${eventId}/endurance-mer/import`, {
+  method: 'POST',
+  headers: { Authorization: `Bearer ${token}` },
+  body: fd,
 });
 ```
 
-**Réponse succès (201)** :
+### Classement global
 
-```json
-{
-  "status": "success",
-  "message": "123 résultat(s) importé(s)",
-  "data": {
-    "event_id": "uuid-de-l-evenement",
-    "inserted": 123,
-    "epreuves": ["SF1X", "SH1X", "M40F1X", "SH2X", "U19M2X", "..."],
-    "errors": []
-  }
-}
+```js
+const res = await fetch(
+  '/events/endurance-mer/global-ranking?season=2026&include_territorial_bonus=true',
+);
+const json = await res.json();
 ```
 
-- `data.inserted` : nombre de lignes insérées en base.
-- `data.epreuves` : liste des codes d’épreuves (feuilles) traitées.
-- `data.errors` : tableau de messages d’erreur pour les lignes échouées (si vide, aucune erreur).
+## 5) Gestion d'erreurs a prevoir
 
-**Réponse erreur (400)** :
+- 400: file manquant / payload invalide
+- 401: token absent ou invalide
+- 404: event introuvable
+- 500: erreur parsing Excel / erreur calcul
 
-```json
-{
-  "status": "error",
-  "message": "Fichier Excel requis (champ 'file')"
-}
-```
+## 6) Source de verite et templates
 
-**Réponse erreur (404)** : événement introuvable (si `eventId` invalide).
+- Les points importes sont traces dans `endurance_mer_import_results`.
+- Le bareme editable est dans `scoring_templates` (`type = endurance_mer`, `config` JSON).
+- Le front backoffice peut modifier ce template via endpoints ranking templates existants.
 
-**Réponse erreur (500)** : fichier Excel invalide ou erreur serveur (ex. `"Fichier Excel invalide : ..."`).
+## 7) Migrations a executer
 
----
-
-### 3.2 Liste des résultats importés
-
-**`GET /events/:eventId/endurance-mer/import-results`**
-
-- **Authentification** : non requise.
-- **Query params (optionnels)** :
-  - `epreuve_code` : filtrer par code d’épreuve (ex. `SF1X`, `U19M2X`).
-  - `club_code` : filtrer par code club (ex. `C064027`).
-
-**Exemples d’URL** :
-
-- Tous les résultats :  
-  `GET /events/uuid-evenement/endurance-mer/import-results`
-- Filtrer par épreuve :  
-  `GET /events/uuid-evenement/endurance-mer/import-results?epreuve_code=SF1X`
-- Filtrer par club :  
-  `GET /events/uuid-evenement/endurance-mer/import-results?club_code=C064027`
-
-**Réponse succès (200)** :
-
-```json
-{
-  "status": "success",
-  "data": [
-    {
-      "id": "uuid",
-      "event_id": "uuid-evenement",
-      "epreuve_code": "SF1X",
-      "epreuve_libelle": null,
-      "place": 1,
-      "club_code": "C064027",
-      "club_name": "HENDAYE EAE",
-      "crew_name": null,
-      "time_raw": null,
-      "time_seconds": null,
-      "is_mixed_clubs": false,
-      "club_codes_mixed": null,
-      "points_attributed": "30.00",
-      "event_format": "enduro",
-      "event_level": "territorial",
-      "partants_count": 10,
-      "import_batch_id": "uuid",
-      "created_at": "2026-03-19T12:00:00.000Z"
-    }
-  ]
-}
-```
-
-Chaque élément du tableau contient au minimum : `epreuve_code`, `place`, `club_code`, `club_name`, `points_attributed`, `partants_count`. Utiliser ces champs pour afficher un tableau (avec filtres côté UI si besoin).
-
-**Réponse erreur (404)** : événement introuvable.
-
----
-
-### 3.3 Classement par club
-
-**`GET /events/:eventId/endurance-mer/ranking`**
-
-- **Authentification** : non requise.
-- **Comportement** : l’API agrège les points par club, applique le plafond ENDURO (au plus 2 équipages par club et par épreuve), puis retourne les clubs triés par total de points décroissant avec un rang (1, 2, 3, …).
-
-**Réponse succès (200)** :
-
-```json
-{
-  "status": "success",
-  "data": [
-    { "club_code": "C064027", "club_name": "HENDAYE EAE", "total_points": 125.5, "rank": 1 },
-    { "club_code": "C064021", "club_name": "ST-JEAN-DE-LUZ UR YOKO", "total_points": 98.25, "rank": 2 },
-    { "club_code": "C035045", "club_name": "ST-MALO SNBSM", "total_points": 67.5, "rank": 3 }
-  ]
-}
-```
-
-Champs de chaque entrée : `club_code`, `club_name`, `total_points`, `rank`. Idéal pour un tableau « Classement » (Rang, Club, Points).
-
-**Réponse erreur (404)** : événement introuvable.
-
----
-
-## 4. Écrans et composants à prévoir
-
-### 4.1 Où placer la fonctionnalité
-
-- Dans la **fiche d’un événement** : onglet ou section **« Résultats Endurance Mer »** / **« Import ENDURO/BRS »**.
-- Ou dans un **menu dédié** (ex. « Import résultats ») avec choix de l’événement en premier.
-
-### 4.2 Bloc « Import »
-
-- **Sélection de fichier** : input `type="file"` acceptant `.xlsx` (et éventuellement `.xls`).
-- **Options** :
-  - **Format** : liste ou boutons `Enduro` / `BRS` (valeur envoyée : `event_format`).
-  - **Niveau** : liste ou boutons `Territorial` / `Championnat de France` (valeur : `event_level`).
-  - **Case à cocher** : « Remplacer les résultats déjà importés » → `replace_previous=true` si cochée.
-- **Bouton** : « Importer » (désactivé tant qu’aucun fichier n’est choisi). Au clic : envoi du `FormData` vers `POST .../endurance-mer/import`.
-- **États** :
-  - **Chargement** : pendant l’appel API (spinner ou désactivation du bouton).
-  - **Succès** : message du type « X résultat(s) importé(s) » + éventuellement liste des épreuves traitées ; afficher `data.errors` s’il y a des erreurs partielles.
-  - **Erreur** : afficher `message` retourné par l’API (400, 404, 500).
-
-### 4.3 Bloc « Résultats importés »
-
-- **Bouton ou lien** : « Voir les résultats » ou chargement automatique après import réussi.
-- **Appel** : `GET .../endurance-mer/import-results` (avec ou sans `epreuve_code` / `club_code`).
-- **Affichage** : tableau avec colonnes par exemple : **Épreuve**, **Place**, **Code club**, **Nom club**, **Points**. Filtres optionnels (liste déroulante épreuve, champ recherche club) en refaisant l’appel avec les query params.
-
-### 4.4 Bloc « Classement par club »
-
-- **Appel** : `GET .../endurance-mer/ranking`.
-- **Affichage** : tableau avec colonnes **Rang**, **Club** (nom et/ou code), **Points**. Pas de pagination nécessaire si le nombre de clubs reste raisonnable ; sinon paginer ou limiter côté front.
-
----
-
-## 5. Exemples de code (fetch / axios)
-
-### 5.1 Import (POST avec FormData)
-
-```javascript
-async function importEnduranceMerFile(eventId, file, options = {}) {
-  const { event_format = "enduro", event_level = "territorial", replace_previous = false } = options;
-  const formData = new FormData();
-  formData.append("file", file);
-  formData.append("event_format", event_format);
-  formData.append("event_level", event_level);
-  formData.append("replace_previous", replace_previous);
-
-  const res = await fetch(`${API_BASE}/events/${eventId}/endurance-mer/import`, {
-    method: "POST",
-    headers: { Authorization: `Bearer ${getToken()}` },
-    body: formData,
-  });
-
-  const json = await res.json();
-  if (!res.ok) throw new Error(json.message || "Erreur import");
-  return json.data;
-}
-```
-
-### 5.2 Récupérer les résultats (GET avec filtres optionnels)
-
-```javascript
-async function getEnduranceMerResults(eventId, filters = {}) {
-  const params = new URLSearchParams(filters).toString();
-  const url = `${API_BASE}/events/${eventId}/endurance-mer/import-results${params ? `?${params}` : ""}`;
-  const res = await fetch(url);
-  const json = await res.json();
-  if (!res.ok) throw new Error(json.message || "Erreur chargement résultats");
-  return json.data;
-}
-
-// Exemples d’appel :
-// getEnduranceMerResults(eventId)
-// getEnduranceMerResults(eventId, { epreuve_code: "SF1X" })
-// getEnduranceMerResults(eventId, { club_code: "C064027" })
-```
-
-### 5.3 Récupérer le classement (GET)
-
-```javascript
-async function getEnduranceMerRanking(eventId) {
-  const res = await fetch(`${API_BASE}/events/${eventId}/endurance-mer/ranking`);
-  const json = await res.json();
-  if (!res.ok) throw new Error(json.message || "Erreur chargement classement");
-  return json.data;
-}
-```
-
----
-
-## 6. Validation et gestion d’erreurs côté frontend
-
-### 6.1 Avant l’import
-
-- Vérifier qu’un **fichier** est bien sélectionné.
-- Vérifier l’**extension** (`.xlsx` ou `.xls`) si vous restreignez les types.
-- Vérifier que l’**événement** est bien sélectionné (eventId non vide).
-
-### 6.2 Messages d’erreur API à gérer
-
-| Code HTTP | Message type | Action côté front |
-|-----------|--------------|-------------------|
-| 400 | `Fichier Excel requis (champ 'file')` | Afficher « Veuillez sélectionner un fichier Excel ». |
-| 401 | Non authentifié | Rediriger vers la connexion ou afficher « Session expirée ». |
-| 404 | Événement introuvable | Afficher « Événement introuvable » / retour à la liste. |
-| 500 | `Fichier Excel invalide : ...` | Afficher le message et indiquer d’utiliser le modèle FFAviron. |
-| 500 | Autre | Afficher un message générique et éventuellement les détails en mode debug. |
-
-### 6.3 Après import réussi
-
-- Si `data.errors.length > 0` : afficher un encart « Import terminé avec X erreur(s) » et lister les messages (ou un résumé).
-- Rafraîchir (ou charger) la **liste des résultats** et le **classement** pour que l’utilisateur voie immédiatement le résultat.
-
----
-
-## 7. Structure du fichier Excel attendu (rappel)
-
-Pour informer l’utilisateur ou afficher une aide :
-
-- **Un fichier par événement**, au format **Excel (.xlsx)** du type « Remontée résultats régates » FFAviron.
-- **Une feuille par épreuve** : le **nom de la feuille** = code épreuve (ex. `SF1X`, `SH1X`, `U19M2X`, `U17F4X+`). La feuille « Organisateur » est ignorée.
-- **Colonnes** (feuilles standard) : **Classement** (place), **Code Club**, **NOM CLUB**. À partir de la 6ᵉ ligne : les données.
-- Pour les **feuilles U17** (équipages mixtes) : colonnes supplémentaires (Code Club 2, nombre d’équipiers par club). Les points sont gérés côté API.
-
-Vous pouvez proposer un **lien de téléchargement** vers le modèle officiel FFAviron s’il est disponible.
-
----
-
-## 8. Récapitulatif des données à afficher
-
-### 8.1 Tableau « Résultats importés »
-
-| Colonne | Source API |
-|---------|------------|
-| Épreuve | `epreuve_code` |
-| Place | `place` |
-| Code club | `club_code` |
-| Nom club | `club_name` |
-| Points | `points_attributed` |
-| Partants | `partants_count` (optionnel) |
-
-Filtres utiles : **Épreuve** (liste dérivée de `epreuve_code` distincts), **Club** (recherche sur `club_code` ou `club_name`).
-
-### 8.2 Tableau « Classement par club »
-
-| Colonne | Source API |
-|---------|------------|
-| Rang | `rank` |
-| Club | `club_name` (et/ou `club_code`) |
-| Points | `total_points` |
-
-Tri : déjà fait par l’API (ordre décroissant des points, rang 1, 2, 3…).
-
----
-
-## 9. Voir aussi
-
-- **API (backend)** : `docs/API_ENDURANCE_MER_IMPORT.md`
-- **Règles et barèmes complets** : `docs/IMPORT_RESULTATS_EXCEL_ENDURANCE_MER_2026.md`
+- `009_create_endurance_mer_import_results.sql`
+- `010_add_endurance_mer_scoring_template.sql`
+- `011_create_endurance_mer_territorial_bonus.sql`
