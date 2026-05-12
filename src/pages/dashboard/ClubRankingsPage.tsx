@@ -93,6 +93,30 @@ function isMaifNationalIndoorEventName(eventName: string | undefined | null): bo
   return n.includes("MAIF") && n.includes("AVIRON INDOOR");
 }
 
+/** Points club sur le(s) événement(s) MAIF : même agrégat que l’onglet « par événement » (réponse brute `byEvent`). */
+type IndoorMaifByEventEntry = { points: number; eventName: string };
+
+function buildIndoorMaifByClubFromByEventPayload(byEventItems: any[] | undefined): Map<string, IndoorMaifByEventEntry> {
+  const map = new Map<string, IndoorMaifByEventEntry>();
+  if (!Array.isArray(byEventItems)) return map;
+  for (const item of byEventItems) {
+    const ev = item?.event ?? {};
+    const eventName = String(ev.name ?? "");
+    if (!isMaifNationalIndoorEventName(eventName)) continue;
+    const rankings = Array.isArray(item?.rankings) ? item.rankings : [];
+    for (const row of rankings) {
+      const code = String(row.club_code ?? "").trim();
+      if (!hasClubCode(code)) continue;
+      const pts = Number(row.total_points ?? 0);
+      const prev = map.get(code);
+      if (!prev || pts > prev.points) {
+        map.set(code, { points: pts, eventName: eventName.trim() || "MAIF AVIRON INDOOR" });
+      }
+    }
+  }
+  return map;
+}
+
 function currentCalendarYearString(): string {
   return String(new Date().getFullYear());
 }
@@ -313,7 +337,13 @@ type GlobalRankingRow = {
   competitionLines: ClubCompetitionLine[];
 };
 
-function mapDashboardGlobal(globalPayload: any, eventType: EventTypeFilter): GlobalRankingRow[] {
+function mapDashboardGlobal(
+  globalPayload: any,
+  eventType: EventTypeFilter,
+  byEventItems?: any[]
+): GlobalRankingRow[] {
+  const maifByClubFromByEvent =
+    eventType === "indoor" ? buildIndoorMaifByClubFromByEventPayload(byEventItems) : new Map<string, IndoorMaifByEventEntry>();
   const rankings = Array.isArray(globalPayload?.rankings) ? globalPayload.rankings : [];
   return rankings.map((row: any, index: number) => {
     const clubCode = String(row.club_code ?? "").trim();
@@ -339,9 +369,6 @@ function mapDashboardGlobal(globalPayload: any, eventType: EventTypeFilter): Glo
       const cf = contributions.filter((c: any) => c.kind === "championnat_france_indoor");
       const defis = contributions.filter((c: any) => c.kind === "defis_capitaux");
       const regionalPoints = Number(meeting?.points ?? 0);
-      const maifFromKinds =
-        cf.reduce((s, c) => s + Number(c.points ?? 0), 0) +
-        defis.reduce((s, c) => s + Number(c.points ?? 0), 0);
       const maifKinds = new Set(["championnat_france_indoor", "defis_capitaux"]);
       const maifNameContributions = contributions.filter(
         (c: any) =>
@@ -350,7 +377,14 @@ function mapDashboardGlobal(globalPayload: any, eventType: EventTypeFilter): Glo
           isMaifNationalIndoorEventName(c.event_name)
       );
       const maifFromEventName = maifNameContributions.reduce((s, c) => s + Number(c.points ?? 0), 0);
-      const maifPoints = maifFromKinds + maifFromEventName;
+      const defisPts = defis.reduce((s, c) => s + Number(c.points ?? 0), 0);
+      const cfPts = cf.reduce((s, c) => s + Number(c.points ?? 0), 0);
+      const maifByEventInfo = clubCode ? maifByClubFromByEvent.get(clubCode) : undefined;
+      const maifFromByEventRow = maifByEventInfo?.points ?? 0;
+      const maifByEventTitle = maifByEventInfo?.eventName ?? "";
+      const coreFromContributions = cfPts + maifFromEventName;
+      const coreMaif = Math.max(coreFromContributions, maifFromByEventRow);
+      const maifPoints = defisPts + coreMaif;
       const nameLabels = [
         ...new Set(
           maifNameContributions
@@ -362,8 +396,15 @@ function mapDashboardGlobal(globalPayload: any, eventType: EventTypeFilter): Glo
         cf.length ? "Championnat France indoor" : "",
         defis.length ? "Défis capitaux" : "",
       ].filter(Boolean);
+      const byEventLabel =
+        maifFromByEventRow > 0 &&
+        maifByEventTitle &&
+        !nameLabels.some((n) => n === maifByEventTitle || maifByEventTitle.includes(n) || n.includes(maifByEventTitle))
+          ? [maifByEventTitle]
+          : [];
       const maifEventName =
-        [...kindLabels, ...nameLabels].join(" · ") || (maifPoints > 0 ? "CF / défis / MAIF" : "");
+        [...kindLabels, ...nameLabels, ...byEventLabel].join(" · ") ||
+        (maifPoints > 0 ? maifByEventTitle || "CF / défis / MAIF" : "");
       indoorDetail = {
         regionalPoints,
         regionalEventName: meeting?.event_name ?? "—",
@@ -505,8 +546,9 @@ export default function ClubRankingsPage() {
           ? payload.rules_summary
           : null
       );
-      setData(mapDashboardByEvent(payload?.byEvent, eventType));
-      setGlobalRanking(mapDashboardGlobal(payload?.global ?? {}, eventType));
+      const byEventRaw = payload?.byEvent;
+      setData(mapDashboardByEvent(byEventRaw, eventType));
+      setGlobalRanking(mapDashboardGlobal(payload?.global ?? {}, eventType, byEventRaw));
     } catch (err: any) {
       console.error("Erreur récupération classements:", err);
       setError(err?.response?.data?.message || "Impossible de charger les classements");
