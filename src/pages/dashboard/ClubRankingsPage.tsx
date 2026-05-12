@@ -345,7 +345,7 @@ function mapDashboardGlobal(
   const maifByClubFromByEvent =
     eventType === "indoor" ? buildIndoorMaifByClubFromByEventPayload(byEventItems) : new Map<string, IndoorMaifByEventEntry>();
   const rankings = Array.isArray(globalPayload?.rankings) ? globalPayload.rankings : [];
-  return rankings.map((row: any, index: number) => {
+  const rows: GlobalRankingRow[] = rankings.map((row: any, index: number) => {
     const clubCode = String(row.club_code ?? "").trim();
     const contributions = row.contributions;
 
@@ -422,12 +422,17 @@ function mapDashboardGlobal(
           ? buildIndoorClubCompetitionLines(contributions)
           : [];
 
+    let best_points = Number(row.total_points ?? 0);
+    if (eventType === "indoor" && indoorDetail) {
+      best_points = indoorDetail.regionalPoints + indoorDetail.maifPoints;
+    }
+
     return {
       key: clubCode || `row-${index}`,
       club_name: row.club_name ?? "",
       club_code: clubCode,
       global_rank: typeof row.rank === "number" ? row.rank : index + 1,
-      best_points: Number(row.total_points ?? 0),
+      best_points,
       best_results_count: results_count,
       best_event_name,
       best_event_date,
@@ -439,6 +444,14 @@ function mapDashboardGlobal(
       competitionLines,
     };
   });
+
+  if (eventType !== "indoor") return rows;
+
+  const sorted = [...rows].sort((a, b) => {
+    if (b.best_points !== a.best_points) return b.best_points - a.best_points;
+    return a.club_name.localeCompare(b.club_name, "fr");
+  });
+  return sorted.map((r, i) => ({ ...r, global_rank: i + 1 }));
 }
 
 function formatMerBreakdownLine(b: MerBreakdown | undefined): string | null {
@@ -766,9 +779,11 @@ export default function ClubRankingsPage() {
                 </ul>
               ) : eventType === "indoor" ? (
                 <p className="text-sm">
-                  Total = meilleur meeting standard (barème Points Indoor) + somme des points championnat de France indoor +
-                  somme des <em>N</em> meilleurs défis capitaux sur la saison (
-                  <code className="text-xs">GET /rankings/clubs/dashboard?type=indoor</code>).
+                  La colonne <strong>Total points</strong> est la somme <strong>Meilleur régional</strong> +{" "}
+                  <strong>France MAIF</strong> (même logique que le barème indoor : meeting standard max, CF indoor,
+                  défis capitaux ; points MAIF complétés depuis le classement par événement si besoin). Les rangs sont
+                  recalculés sur ce total. Source API :{" "}
+                  <code className="text-xs">GET /rankings/clubs/dashboard?type=indoor</code>.
                 </p>
               ) : eventType === "mer" ? (
                 <p className="text-sm">
