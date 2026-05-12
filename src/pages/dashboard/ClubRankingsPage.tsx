@@ -608,7 +608,7 @@ export default function ClubRankingsPage() {
             }}
           >
             <SelectTrigger className="w-full md:w-[300px]">
-              <SelectValue placeholder="Sélectionner un type d'événement" />
+              <SelectValue placeholder="Sélectionner un type d'événement luka" />
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="indoor">Indoor</SelectItem>
