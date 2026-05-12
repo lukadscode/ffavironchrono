@@ -72,6 +72,27 @@ type EventTypeFilter = "indoor" | "mer" | "riviere";
 const hasClubCode = (clubCode: string | null | undefined): boolean =>
   Boolean((clubCode || "").trim());
 
+/** Normalisation pour reconnaissance du libellé « France MAIF » sur le nom d’événement. */
+function normalizeForMaifEventMatch(raw: string | undefined | null): string {
+  return String(raw ?? "")
+    .normalize("NFD")
+    .replace(/\p{M}/gu, "")
+    .toUpperCase()
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+/**
+ * Championnat France MAIF indoor d’après le nom d’événement (ex. « MAIF AVIRON INDOOR – … »).
+ * Tolérant : MAIF + AVIRON INDOOR, pour couvrir les cas où l’API n’étiquette pas encore la ligne en
+ * `championnat_france_indoor` (scope BDD / indoor_ranking_scope).
+ */
+function isMaifNationalIndoorEventName(eventName: string | undefined | null): boolean {
+  const n = normalizeForMaifEventMatch(eventName);
+  if (!n) return false;
+  return n.includes("MAIF") && n.includes("AVIRON INDOOR");
+}
+
 function currentCalendarYearString(): string {
   return String(new Date().getFullYear());
 }
@@ -318,19 +339,38 @@ function mapDashboardGlobal(globalPayload: any, eventType: EventTypeFilter): Glo
       const cf = contributions.filter((c: any) => c.kind === "championnat_france_indoor");
       const defis = contributions.filter((c: any) => c.kind === "defis_capitaux");
       const regionalPoints = Number(meeting?.points ?? 0);
-      const maifPoints =
+      const maifFromKinds =
         cf.reduce((s, c) => s + Number(c.points ?? 0), 0) +
         defis.reduce((s, c) => s + Number(c.points ?? 0), 0);
-      const labels = [cf.length ? "Championnat France indoor" : "", defis.length ? "Défis capitaux" : ""].filter(
-        Boolean
+      const maifKinds = new Set(["championnat_france_indoor", "defis_capitaux"]);
+      const maifNameContributions = contributions.filter(
+        (c: any) =>
+          c.kind !== "meeting_standard_max" &&
+          !maifKinds.has(String(c.kind ?? "")) &&
+          isMaifNationalIndoorEventName(c.event_name)
       );
+      const maifFromEventName = maifNameContributions.reduce((s, c) => s + Number(c.points ?? 0), 0);
+      const maifPoints = maifFromKinds + maifFromEventName;
+      const nameLabels = [
+        ...new Set(
+          maifNameContributions
+            .map((c: any) => String(c.event_name ?? "").trim())
+            .filter(Boolean)
+        ),
+      ];
+      const kindLabels = [
+        cf.length ? "Championnat France indoor" : "",
+        defis.length ? "Défis capitaux" : "",
+      ].filter(Boolean);
+      const maifEventName =
+        [...kindLabels, ...nameLabels].join(" · ") || (maifPoints > 0 ? "CF / défis / MAIF" : "");
       indoorDetail = {
         regionalPoints,
         regionalEventName: meeting?.event_name ?? "—",
         regionalEventDate: meeting?.start_date ?? "",
         regionalResultsCount: 0,
         maifPoints,
-        maifEventName: labels.join(" · ") || (maifPoints > 0 ? "CF / défis" : ""),
+        maifEventName,
       };
     }
 
