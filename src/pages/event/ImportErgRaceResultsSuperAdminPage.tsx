@@ -18,6 +18,7 @@ import {
 } from "@/components/ui/select";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { AlertTriangle, ArrowLeft, Loader2, Upload } from "lucide-react";
+import { AdminPage } from "@/components/layout/AdminPage";
 
 type Distance = {
   id: string;
@@ -868,29 +869,22 @@ export default function ImportErgRaceResultsSuperAdminPage() {
   }
 
   return (
-    <div className="container mx-auto py-6 px-4 max-w-3xl space-y-6">
-      <div className="flex items-center gap-4">
+    <AdminPage
+      title="Import résultats ErgRace (super admin)"
+      description="Création d'une nouvelle course, puis des équipages (catégorie classe1I_distance, club = code court FFA) et import des résultats. Réservé aux super administrateurs."
+      icon={Upload}
+      className="max-w-3xl"
+      actions={
         <Button
-          variant="ghost"
+          variant="outline"
           size="sm"
           onClick={() => navigate(`/event/${eventId}/indoor`)}
         >
           <ArrowLeft className="w-4 h-4 mr-2" />
           Retour
         </Button>
-      </div>
-
-      <div>
-        <h1 className="text-2xl font-bold text-slate-900">
-          Import résultats ErgRace (super admin)
-        </h1>
-        <p className="text-sm text-muted-foreground mt-1">
-          Création d&apos;une <strong>nouvelle course</strong>, puis des
-          équipages (catégorie{" "}
-          <code className="text-xs">classe1I_distance</code>, club = code court
-          FFA) et import des résultats. Réservé aux super administrateurs.
-        </p>
-      </div>
+      }
+    >
 
       <Alert className="border-amber-600 bg-amber-50">
         <AlertTriangle className="h-4 w-4 text-amber-700" />
@@ -1039,7 +1033,7 @@ export default function ImportErgRaceResultsSuperAdminPage() {
           </Button>
         </CardContent>
       </Card>
-    </div>
+    </AdminPage>
   );
 }
 

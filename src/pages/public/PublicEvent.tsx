@@ -88,11 +88,11 @@ export default function PublicEvent() {
 
   if (loading) {
     return (
-      <div className="flex flex-col min-h-screen bg-slate-950">
+      <div className="flex flex-col min-h-screen bg-primary">
         <div className="flex-1 flex items-center justify-center">
           <div className="text-center">
-            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-emerald-400 mx-auto mb-4"></div>
-            <p className="text-lg text-slate-100">Chargement de l'événement...</p>
+            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-accent mx-auto mb-4"></div>
+            <p className="text-lg text-primary-foreground">Chargement de l'événement...</p>
           </div>
         </div>
         <PublicFooter />
@@ -114,7 +114,7 @@ export default function PublicEvent() {
   const hasRaces = races.length > 0;
 
   return (
-    <div className="flex flex-col min-h-screen bg-slate-50">
+    <div className="flex flex-col min-h-screen bg-background">
       {/* Hero Section de l'événement (aligné sur la charte de la home) */}
       <section className="relative overflow-hidden min-h-[340px] sm:min-h-[420px] md:min-h-[460px] lg:min-h-[500px] flex items-center text-white">
         {/* Image de fond */}
@@ -125,7 +125,7 @@ export default function PublicEvent() {
             className="w-full h-full object-cover"
           />
           {/* Overlay avec dégradé sombre à gauche */}
-          <div className="absolute inset-0 bg-gradient-to-r from-slate-950/90 via-slate-900/70 to-transparent" />
+          <div className="absolute inset-0 bg-gradient-to-r from-primary/90 via-primary/70 to-transparent" />
         </div>
 
         {/* Contenu du Hero */}
@@ -135,7 +135,7 @@ export default function PublicEvent() {
             {/* Badge retour */}
             <Link
               to="/"
-                className="inline-flex items-center gap-2 px-3 sm:px-4 py-1.5 rounded-full bg-slate-950/70 backdrop-blur-md border border-emerald-400/70 text-xs sm:text-sm font-medium text-emerald-200 hover:bg-slate-950/80 transition"
+                className="inline-flex items-center gap-2 px-3 sm:px-4 py-1.5 rounded-full bg-primary/70 backdrop-blur-md border border-primary-foreground/30 text-xs sm:text-sm font-medium text-primary-foreground hover:bg-primary/80 transition"
             >
               <ArrowLeft className="w-4 h-4" />
               <span className="hidden sm:inline">Retour à l'accueil</span>
@@ -147,7 +147,7 @@ export default function PublicEvent() {
               <div>
                 {event?.race_type && (
                   <span
-                      className="inline-block px-3 sm:px-4 py-1.5 rounded-full text-[11px] font-semibold tracking-[0.18em] uppercase text-emerald-200 border border-emerald-400/70 bg-emerald-500/10 mb-3 sm:mb-4"
+                      className="inline-block px-3 sm:px-4 py-1.5 rounded-full text-[11px] font-semibold tracking-[0.18em] uppercase text-primary-foreground border border-accent/70 bg-accent/10 mb-3 sm:mb-4"
                     >
                       {event.race_type}
                     </span>
@@ -159,9 +159,9 @@ export default function PublicEvent() {
 
                 {/* Informations de l'événement */}
                 <div className="flex flex-col sm:flex-row flex-wrap items-start sm:items-center gap-3 sm:gap-4 md:gap-6 text-xs sm:text-sm">
-                  <div className="flex items-center gap-2 sm:gap-3 px-3 sm:px-4 py-2 bg-slate-950/70 backdrop-blur-md rounded-lg border border-slate-700/80">
-                    <Calendar className="w-4 h-4 sm:w-5 sm:h-5 flex-shrink-0 text-emerald-300" />
-                    <span className="font-medium text-slate-50 break-words">
+                  <div className="flex items-center gap-2 sm:gap-3 px-3 sm:px-4 py-2 bg-primary/70 backdrop-blur-md rounded-lg border border-primary-foreground/20">
+                    <Calendar className="w-4 h-4 sm:w-5 sm:h-5 flex-shrink-0 text-accent" />
+                    <span className="font-medium text-primary-foreground break-words">
                       {startDate && endDate
                         ? isSameDay
                           ? startDate.format("DD MMMM YYYY")
@@ -169,9 +169,9 @@ export default function PublicEvent() {
                         : ""}
                     </span>
                   </div>
-                  <div className="flex items-center gap-2 sm:gap-3 px-3 sm:px-4 py-2 bg-slate-950/70 backdrop-blur-md rounded-lg border border-slate-700/80">
-                    <MapPin className="w-4 h-4 sm:w-5 sm:h-5 flex-shrink-0 text-emerald-300" />
-                    <span className="font-medium text-slate-50 break-words">
+                  <div className="flex items-center gap-2 sm:gap-3 px-3 sm:px-4 py-2 bg-primary/70 backdrop-blur-md rounded-lg border border-primary-foreground/20">
+                    <MapPin className="w-4 h-4 sm:w-5 sm:h-5 flex-shrink-0 text-accent" />
+                    <span className="font-medium text-primary-foreground break-words">
                       {event?.location}
                     </span>
                   </div>
@@ -179,12 +179,12 @@ export default function PublicEvent() {
                     <div
                       className={`flex items-center gap-2 sm:gap-3 px-3 sm:px-4 py-2 rounded-lg border backdrop-blur-md text-xs sm:text-sm ${
                         isOngoing
-                          ? "bg-emerald-500/90 border-emerald-400/60 animate-pulse"
-                          : "bg-teal-500/90 border-teal-400/60"
+                          ? "bg-accent border-accent/60 animate-pulse"
+                          : "bg-primary border-primary-foreground/30"
                       }`}
                     >
-                      <Trophy className="w-4 h-4 sm:w-5 sm:h-5 flex-shrink-0 text-slate-950" />
-                      <span className="font-semibold text-slate-950">
+                      <Trophy className="w-4 h-4 sm:w-5 sm:h-5 flex-shrink-0 text-accent-foreground" />
+                      <span className="font-semibold text-accent-foreground">
                         {isOngoing ? "En cours" : "À venir"}
                       </span>
                     </div>
@@ -197,62 +197,62 @@ export default function PublicEvent() {
       </section>
 
       {/* Navigation des onglets - alignée sur la charte (barre sombre + souligné vert) */}
-      <div className="bg-slate-950 border-b border-slate-800 sticky top-0 z-40">
+      <div className="bg-primary border-b border-primary-foreground/10 sticky top-0 z-40">
         <div className="max-w-6xl mx-auto px-4 lg:px-6">
-          <nav className="flex justify-center gap-6 sm:gap-8 text-[11px] sm:text-xs font-medium tracking-[0.18em] uppercase text-slate-300 overflow-x-auto py-2.5">
+          <nav className="flex justify-center gap-6 sm:gap-8 text-[11px] sm:text-xs font-medium tracking-[0.18em] uppercase text-primary-foreground/70 overflow-x-auto py-2.5">
             <Link
               to={`/public/event/${eventId}/live`}
               onClick={() => setActiveTab("live")}
               className={`relative pb-1 flex items-center gap-2 whitespace-nowrap ${
-                activeTab === "live" ? "text-emerald-300" : "hover:text-slate-100"
+                activeTab === "live" ? "text-accent" : "hover:text-primary-foreground"
               }`}
             >
               <Clock className="w-3 h-3" />
               <span>Live</span>
               {hasOngoingRaces && (
-                <span className="w-1.5 h-1.5 bg-emerald-400 rounded-full animate-pulse" />
+                <span className="w-1.5 h-1.5 bg-accent rounded-full animate-pulse" />
               )}
               {activeTab === "live" && (
-                <span className="absolute left-0 -bottom-0.5 h-[2px] w-full rounded-full bg-emerald-400" />
+                <span className="absolute left-0 -bottom-0.5 h-[2px] w-full rounded-full bg-accent" />
               )}
             </Link>
             <Link
               to={`/public/event/${eventId}/startlist`}
               onClick={() => setActiveTab("startlist")}
               className={`relative pb-1 flex items-center gap-2 whitespace-nowrap ${
-                activeTab === "startlist" ? "text-emerald-300" : "hover:text-slate-100"
+                activeTab === "startlist" ? "text-accent" : "hover:text-primary-foreground"
               }`}
             >
               <Users className="w-3 h-3" />
               <span>Startlist</span>
               {activeTab === "startlist" && (
-                <span className="absolute left-0 -bottom-0.5 h-[2px] w-full rounded-full bg-emerald-400" />
+                <span className="absolute left-0 -bottom-0.5 h-[2px] w-full rounded-full bg-accent" />
               )}
             </Link>
             <Link
               to={`/public/event/${eventId}/results`}
               onClick={() => setActiveTab("results")}
               className={`relative pb-1 flex items-center gap-2 whitespace-nowrap ${
-                activeTab === "results" ? "text-emerald-300" : "hover:text-slate-100"
+                activeTab === "results" ? "text-accent" : "hover:text-primary-foreground"
               }`}
             >
               <Trophy className="w-3 h-3" />
               <span>Résultats</span>
               {activeTab === "results" && (
-                <span className="absolute left-0 -bottom-0.5 h-[2px] w-full rounded-full bg-emerald-400" />
+                <span className="absolute left-0 -bottom-0.5 h-[2px] w-full rounded-full bg-accent" />
               )}
             </Link>
             <Link
               to={`/public/event/${eventId}/informations`}
               onClick={() => setActiveTab("informations")}
               className={`relative pb-1 flex items-center gap-2 whitespace-nowrap ${
-                activeTab === "informations" ? "text-emerald-300" : "hover:text-slate-100"
+                activeTab === "informations" ? "text-accent" : "hover:text-primary-foreground"
               }`}
             >
               <Info className="w-3 h-3" />
               <span>Infos</span>
               {activeTab === "informations" && (
-                <span className="absolute left-0 -bottom-0.5 h-[2px] w-full rounded-full bg-emerald-400" />
+                <span className="absolute left-0 -bottom-0.5 h-[2px] w-full rounded-full bg-accent" />
               )}
             </Link>
           </nav>

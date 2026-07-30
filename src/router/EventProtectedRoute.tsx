@@ -28,7 +28,9 @@ const ROLE_PERMISSIONS: Record<EventRole, string[]> = {
     "racePhases",
     "generate-races",
     "timingPoint",
+    "timing-profiles",
     "arbitres",
+    "finishlynx",
     "indoor",
     "export",
   ],
@@ -47,13 +49,16 @@ const ROLE_PERMISSIONS: Record<EventRole, string[]> = {
     // Accès à la page arbitre
     "overview",
     "arbitres",
+    "finishlynx",
   ],
   timing: [
     // Accès aux pages indoor, Points et chrono
     "overview",
     "indoor",
     "timingPoint",
+    "timing-profiles",
     "timing",
+    "finishlynx",
   ],
   viewer: [
     // Aucun accès pour l'instant (seulement overview)

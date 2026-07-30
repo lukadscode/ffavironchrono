@@ -32,6 +32,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
 import { Loader2, Search, Users, Plus, Trash2, AlertTriangle } from "lucide-react";
+import { AdminPage } from "@/components/layout/AdminPage";
 
 type User = {
   id: string;
@@ -335,18 +336,11 @@ export default function UsersManagementPage() {
   }
 
   return (
-    <div className="space-y-4 sm:space-y-6">
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-        <div>
-          <h2 className="text-xl sm:text-2xl font-semibold mb-2 flex items-center gap-2">
-            <Users className="w-5 h-5 sm:w-6 sm:h-6" />
-            Gestion des utilisateurs
-          </h2>
-          <p className="text-sm sm:text-base text-muted-foreground">
-            Gérez les utilisateurs et leurs droits d'accès
-          </p>
-        </div>
-
+    <AdminPage
+      title="Gestion des utilisateurs"
+      description="Gérez les utilisateurs et leurs droits d'accès."
+      icon={Users}
+      actions={
         <Dialog open={createDialogOpen} onOpenChange={setCreateDialogOpen}>
           <DialogTrigger asChild>
             <Button>
@@ -417,9 +411,11 @@ export default function UsersManagementPage() {
                   <SelectContent>
                     <SelectItem value="user">Utilisateur</SelectItem>
                     <SelectItem value="commission">Commission</SelectItem>
-                    <SelectItem value="admin">Admin</SelectItem>
                     {isSuperAdmin && (
-                      <SelectItem value="superadmin">Super Admin</SelectItem>
+                      <>
+                        <SelectItem value="admin">Admin</SelectItem>
+                        <SelectItem value="superadmin">Super Admin</SelectItem>
+                      </>
                     )}
                   </SelectContent>
                 </Select>
@@ -428,15 +424,7 @@ export default function UsersManagementPage() {
             <DialogFooter>
               <Button
                 variant="outline"
-                onClick={() => {
-                  setCreateDialogOpen(false);
-                  setNewUser({
-                    name: "",
-                    email: "",
-                    num_license: "",
-                    role: "user",
-                  });
-                }}
+                onClick={() => setCreateDialogOpen(false)}
                 disabled={isCreating}
               >
                 Annuler
@@ -454,8 +442,8 @@ export default function UsersManagementPage() {
             </DialogFooter>
           </DialogContent>
         </Dialog>
-      </div>
-
+      }
+    >
       {/* Barres de recherche et filtre */}
       <Card>
         <CardContent className="pt-6">
@@ -711,7 +699,7 @@ export default function UsersManagementPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
-    </div>
+    </AdminPage>
   );
 }
 

@@ -42,6 +42,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { AdminPage } from "@/components/layout/AdminPage";
+import { StatCard } from "@/components/layout/StatCard";
 
 type Category = {
   id: string;
@@ -269,58 +271,25 @@ export default function CategoriesManagementPage() {
   }
 
   return (
-    <div className="space-y-6">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-bold flex items-center gap-2">
-            <Tag className="w-8 h-8" />
-            Gestion des catégories
-          </h1>
-          <p className="text-muted-foreground mt-1">
-            Gérez les catégories disponibles dans le système
-          </p>
-        </div>
+    <AdminPage
+      title="Gestion des catégories"
+      description="Gérez les catégories disponibles dans le système."
+      icon={Tag}
+      actions={
         <Button onClick={handleCreate}>
           <Plus className="w-4 h-4 mr-2" />
           Nouvelle catégorie
         </Button>
-      </div>
-
-      {/* Statistiques */}
+      }
+    >
       <div className="grid gap-4 md:grid-cols-3">
-        <Card>
-          <CardHeader className="pb-3">
-            <CardTitle className="text-sm font-medium text-muted-foreground">
-              Total catégories
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{categories.length}</div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="pb-3">
-            <CardTitle className="text-sm font-medium text-muted-foreground">
-              Avec barreur
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">
-              {categories.filter((c) => c.has_coxswain).length}
-            </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="pb-3">
-            <CardTitle className="text-sm font-medium text-muted-foreground">
-              Résultats filtrés
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{filteredCategories.length}</div>
-          </CardContent>
-        </Card>
+        <StatCard label="Total catégories" value={categories.length} icon={Tag} />
+        <StatCard
+          label="Avec barreur"
+          value={categories.filter((c) => c.has_coxswain).length}
+          icon={User}
+        />
+        <StatCard label="Résultats filtrés" value={filteredCategories.length} icon={Search} />
       </div>
 
       {/* Recherche */}
@@ -690,7 +659,7 @@ export default function CategoriesManagementPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
-    </div>
+    </AdminPage>
   );
 }
 

@@ -16,6 +16,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
 import { Trophy, Edit, Loader2, Star } from "lucide-react";
+import { AdminPage } from "@/components/layout/AdminPage";
 import {
   Table,
   TableBody,
@@ -204,20 +205,11 @@ export default function ScoringTemplatesPage() {
   }
 
   return (
-    <div className="space-y-6">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-bold text-slate-900 flex items-center gap-3">
-            <Trophy className="w-8 h-8 text-amber-500" />
-            Gestion des templates de scoring
-          </h1>
-          <p className="text-muted-foreground mt-2">
-            Configurez les points attribués aux différents classements
-          </p>
-        </div>
-      </div>
-
+    <AdminPage
+      title="Gestion des templates de scoring"
+      description="Configurez les points attribués aux différents classements."
+      icon={Trophy}
+    >
       {/* Liste des templates */}
       <Card>
         <CardHeader>
@@ -298,7 +290,7 @@ export default function ScoringTemplatesPage() {
           isSaving={isSaving}
         />
       )}
-    </div>
+    </AdminPage>
   );
 }
 

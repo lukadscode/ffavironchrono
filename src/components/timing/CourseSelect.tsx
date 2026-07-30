@@ -4,10 +4,10 @@ import axios from "@/lib/axios";
 
 const getStatusBadge = (status: string) => {
   const statusConfig: Record<string, { label: string; color: string }> = {
-    not_started: { label: "Non démarrée", color: "bg-gray-100 text-gray-700" },
-    in_progress: { label: "En cours", color: "bg-blue-100 text-blue-700" },
-    unofficial: { label: "Non officiel", color: "bg-yellow-100 text-yellow-700" },
-    official: { label: "Officiel", color: "bg-green-100 text-green-700" },
+    not_started: { label: "Non démarrée", color: "bg-muted text-muted-foreground" },
+    in_progress: { label: "En cours", color: "bg-primary/10 text-primary" },
+    non_official: { label: "Non officiel", color: "bg-yellow-100 text-yellow-800" },
+    official: { label: "Officiel", color: "bg-green-100 text-green-800" },
   };
 
   const config = statusConfig[status] || statusConfig.not_started;
@@ -23,7 +23,7 @@ export function CourseSelect({ eventId, onChange, selectedRaceId }: { eventId: s
 
   useEffect(() => {
     axios.get(`/races/event/${eventId}`).then(res => {
-      const sorted = res.data.sort((a: any, b: any) => a.race_number - b.race_number);
+      const sorted = (res.data.data || res.data).sort((a: any, b: any) => a.race_number - b.race_number);
       setRaces(sorted);
     });
   }, [eventId]);

@@ -28,6 +28,7 @@ import {
   Search,
   CheckCircle2,
 } from "lucide-react";
+import { AdminPage } from "@/components/layout/AdminPage";
 import { DndContext, closestCenter } from "@dnd-kit/core";
 import {
   arrayMove,
@@ -679,18 +680,12 @@ export default function CrewWizardPage() {
   }
 
   return (
-    <div className="space-y-6 max-w-4xl mx-auto p-4">
-      {/* Header */}
-      <div className="relative overflow-hidden rounded-xl bg-gradient-to-br from-blue-600 via-blue-700 to-blue-800 text-white p-6 shadow-lg">
-        <div className="absolute inset-0 bg-[url('data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNjAiIGhlaWdodD0iNjAiIHZpZXdCb3g9IjAgMCA2MCA2MCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48ZyBmaWxsPSJub25lIiBmaWxsLXJ1bGU9ImV2ZW5vZGQiPjxnIGZpbGw9IiNmZmYiIGZpbGwtb3BhY2l0eT0iMC4xIj48cGF0aCBkPSJNMzYgMzRWMjJIMjR2MTJIMTJ2MTJIMjR2MTJIMzZWMzR6Ii8+PC9nPjwvZz48L3N2Zz4=')] opacity-20"></div>
-        <div className="relative z-10">
-          <h1 className="text-3xl font-bold mb-2 flex items-center gap-3">
-            <Ship className="w-8 h-8" />
-            Créer un équipage
-          </h1>
-          <p className="text-blue-100">Assistant de création en {STEPS.length} étapes</p>
-        </div>
-      </div>
+    <AdminPage
+      title="Créer un équipage"
+      description={`Assistant de création en ${STEPS.length} étapes`}
+      icon={Ship}
+      className="max-w-4xl"
+    >
 
       {/* Indicateur d'étapes */}
       <div className="flex items-center justify-between">
@@ -1316,7 +1311,7 @@ export default function CrewWizardPage() {
           </Button>
         </div>
       </div>
-    </div>
+    </AdminPage>
   );
 }
 

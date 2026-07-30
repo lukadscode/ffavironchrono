@@ -18,6 +18,8 @@ import * as XLSX from "xlsx";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 import dayjs from "dayjs";
+import { AdminPage } from "@/components/layout/AdminPage";
+import { StatCard } from "@/components/layout/StatCard";
 
 interface EventStatistics {
   event_id: string;
@@ -599,28 +601,26 @@ export default function EventStatisticsPage() {
 
   if (events.length === 0) {
     return (
-      <div className="space-y-6">
-        <div>
-          <h1 className="text-3xl font-bold mb-2">Statistiques des événements</h1>
-        </div>
+      <AdminPage
+        title="Statistiques des événements"
+        description="Consultez les statistiques détaillées de vos événements."
+        icon={BarChart3}
+      >
         <Card>
           <CardContent className="py-12 text-center">
             <p className="text-muted-foreground">Aucun événement disponible.</p>
           </CardContent>
         </Card>
-      </div>
+      </AdminPage>
     );
   }
 
   return (
-    <div className="space-y-6">
-      <div>
-        <h1 className="text-3xl font-bold mb-2">Statistiques des événements</h1>
-        <p className="text-muted-foreground">
-          Consultez les statistiques détaillées de vos événements
-        </p>
-      </div>
-
+    <AdminPage
+      title="Statistiques des événements"
+      description="Consultez les statistiques détaillées de vos événements."
+      icon={BarChart3}
+    >
       {/* Onglets */}
       <div className="mb-6">
         <div className="flex gap-2 border-b bg-muted/30">
@@ -760,96 +760,37 @@ export default function EventStatisticsPage() {
               </div>
             </div>
 
-            <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-        {/* Participants totaux */}
-        <Card className="bg-gradient-to-br from-primary/10 to-primary/5 border-primary/20">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Users className="w-5 h-5 text-primary" />
-              Participants totaux
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-4xl font-bold text-primary mb-2">
-              {statistics.total_participants}
-            </div>
-            <p className="text-sm text-muted-foreground">
-              Participants uniques dans l'événement
-            </p>
-          </CardContent>
-        </Card>
-
-        {/* Participants hommes */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <User className="w-5 h-5 text-blue-600" />
-              Participants hommes
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-4xl font-bold text-blue-600 mb-2">
-              {statistics.participants_homme}
-            </div>
-            <p className="text-sm text-muted-foreground">
-              {statsCalculations.hommesPercentage}% du total
-            </p>
-          </CardContent>
-        </Card>
-
-        {/* Participants femmes */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <UserCheck className="w-5 h-5 text-pink-600" />
-              Participants femmes
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-4xl font-bold text-pink-600 mb-2">
-              {statistics.participants_femme}
-            </div>
-            <p className="text-sm text-muted-foreground">
-              {statsCalculations.femmesPercentage}% du total
-            </p>
-          </CardContent>
-        </Card>
-
-        {/* Équipages */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <UsersRound className="w-5 h-5 text-green-600" />
-              Équipages
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-4xl font-bold text-green-600 mb-2">
-              {statistics.total_crews}
-            </div>
-            <p className="text-sm text-muted-foreground">
-              {statsCalculations.participantsPerCrew} participants/équipage
-            </p>
-          </CardContent>
-        </Card>
-
-        {/* Clubs */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Building2 className="w-5 h-5 text-orange-600" />
-              Clubs
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-4xl font-bold text-orange-600 mb-2">
-              {statistics.total_clubs}
-            </div>
-            <p className="text-sm text-muted-foreground">
-              {statsCalculations.crewsPerClub} équipages/club
-            </p>
-          </CardContent>
-        </Card>
+            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+        <StatCard
+          label="Participants totaux"
+          value={statistics.total_participants}
+          icon={Users}
+          hint="Participants uniques dans l'événement"
+        />
+        <StatCard
+          label="Participants hommes"
+          value={statistics.participants_homme}
+          icon={User}
+          hint={`${statsCalculations.hommesPercentage}% du total`}
+        />
+        <StatCard
+          label="Participants femmes"
+          value={statistics.participants_femme}
+          icon={UserCheck}
+          hint={`${statsCalculations.femmesPercentage}% du total`}
+        />
+        <StatCard
+          label="Équipages"
+          value={statistics.total_crews}
+          icon={UsersRound}
+          hint={`${statsCalculations.participantsPerCrew} participants/équipage`}
+        />
+        <StatCard
+          label="Clubs"
+          value={statistics.total_clubs}
+          icon={Building2}
+          hint={`${statsCalculations.crewsPerClub} équipages/club`}
+        />
       </div>
 
       {/* Graphique de répartition par genre */}
@@ -868,7 +809,7 @@ export default function EventStatisticsPage() {
             </div>
             <div className="w-full bg-muted rounded-full h-8 overflow-hidden">
               <div
-                className="h-full bg-gradient-to-r from-blue-500 to-blue-600 flex items-center justify-end pr-2 text-white text-sm font-medium transition-all duration-500"
+                className="h-full bg-primary text-primary-foreground flex items-center justify-end pr-2 text-sm font-medium transition-all duration-500"
                 style={{ width: `${statsCalculations.hommesPercentage}%` }}
               >
                 {parseFloat(statsCalculations.hommesPercentage) > 10 && `${statsCalculations.hommesPercentage}%`}
@@ -882,7 +823,7 @@ export default function EventStatisticsPage() {
             </div>
             <div className="w-full bg-muted rounded-full h-8 overflow-hidden">
               <div
-                className="h-full bg-gradient-to-r from-pink-500 to-pink-600 flex items-center justify-end pr-2 text-white text-sm font-medium transition-all duration-500"
+                className="h-full bg-chart-2 text-primary-foreground flex items-center justify-end pr-2 text-sm font-medium transition-all duration-500"
                 style={{ width: `${statsCalculations.femmesPercentage}%` }}
               >
                 {parseFloat(statsCalculations.femmesPercentage) > 10 && `${statsCalculations.femmesPercentage}%`}
@@ -991,114 +932,43 @@ export default function EventStatisticsPage() {
 
             return (
               <>
-                <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-                  {/* Nombre d'événements */}
-                  <Card className="bg-gradient-to-br from-purple-500/10 to-purple-600/5 border-purple-500/20">
-                    <CardHeader>
-                      <CardTitle className="flex items-center gap-2">
-                        <BarChart3 className="w-5 h-5 text-purple-600" />
-                        Nombre d'événements
-                      </CardTitle>
-                    </CardHeader>
-                    <CardContent>
-                      <div className="text-4xl font-bold text-purple-600 mb-2">
-                        {globalStatistics.total_events}
-                      </div>
-                      <p className="text-sm text-muted-foreground">
-                        Événements analysés
-                      </p>
-                    </CardContent>
-                  </Card>
-
-                  {/* Participants totaux */}
-                  <Card className="bg-gradient-to-br from-primary/10 to-primary/5 border-primary/20">
-                    <CardHeader>
-                      <CardTitle className="flex items-center gap-2">
-                        <Users className="w-5 h-5 text-primary" />
-                        Participants totaux
-                      </CardTitle>
-                    </CardHeader>
-                    <CardContent>
-                      <div className="text-4xl font-bold text-primary mb-2">
-                        {globalStatistics.total_participants}
-                      </div>
-                      <p className="text-sm text-muted-foreground">
-                        Participants uniques sur tous les événements
-                      </p>
-                    </CardContent>
-                  </Card>
-
-                  {/* Participants hommes */}
-                  <Card>
-                    <CardHeader>
-                      <CardTitle className="flex items-center gap-2">
-                        <User className="w-5 h-5 text-blue-600" />
-                        Participants hommes
-                      </CardTitle>
-                    </CardHeader>
-                    <CardContent>
-                      <div className="text-4xl font-bold text-blue-600 mb-2">
-                        {globalStatistics.participants_homme}
-                      </div>
-                      <p className="text-sm text-muted-foreground">
-                        {hommesPercentage}% du total
-                      </p>
-                    </CardContent>
-                  </Card>
-
-                  {/* Participants femmes */}
-                  <Card>
-                    <CardHeader>
-                      <CardTitle className="flex items-center gap-2">
-                        <UserCheck className="w-5 h-5 text-pink-600" />
-                        Participants femmes
-                      </CardTitle>
-                    </CardHeader>
-                    <CardContent>
-                      <div className="text-4xl font-bold text-pink-600 mb-2">
-                        {globalStatistics.participants_femme}
-                      </div>
-                      <p className="text-sm text-muted-foreground">
-                        {femmesPercentage}% du total
-                      </p>
-                    </CardContent>
-                  </Card>
-
-                  {/* Équipages */}
-                  <Card>
-                    <CardHeader>
-                      <CardTitle className="flex items-center gap-2">
-                        <UsersRound className="w-5 h-5 text-green-600" />
-                        Équipages
-                      </CardTitle>
-                    </CardHeader>
-                    <CardContent>
-                      <div className="text-4xl font-bold text-green-600 mb-2">
-                        {globalStatistics.total_crews}
-                      </div>
-                      <p className="text-sm text-muted-foreground">
-                        {participantsPerCrew} participants/équipage
-                      </p>
-                    </CardContent>
-                  </Card>
-
-                  {/* Clubs */}
-                  <Card>
-                    <CardHeader>
-                      <CardTitle className="flex items-center gap-2">
-                        <Building2 className="w-5 h-5 text-orange-600" />
-                        Clubs
-                      </CardTitle>
-                    </CardHeader>
-                    <CardContent>
-                      <div className="text-4xl font-bold text-orange-600 mb-2">
-                        {globalStatistics.total_clubs}
-                      </div>
-                      <p className="text-sm text-muted-foreground">
-                        {crewsPerClub} équipages/club
-                      </p>
-                    </CardContent>
-                  </Card>
+                <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+                  <StatCard
+                    label="Nombre d'événements"
+                    value={globalStatistics.total_events}
+                    icon={BarChart3}
+                    hint="Événements analysés"
+                  />
+                  <StatCard
+                    label="Participants totaux"
+                    value={globalStatistics.total_participants}
+                    icon={Users}
+                    hint="Participants uniques sur tous les événements"
+                  />
+                  <StatCard
+                    label="Participants hommes"
+                    value={globalStatistics.participants_homme}
+                    icon={User}
+                    hint={`${hommesPercentage}% du total`}
+                  />
+                  <StatCard
+                    label="Participants femmes"
+                    value={globalStatistics.participants_femme}
+                    icon={UserCheck}
+                    hint={`${femmesPercentage}% du total`}
+                  />
+                  <StatCard
+                    label="Équipages"
+                    value={globalStatistics.total_crews}
+                    icon={UsersRound}
+                    hint={`${participantsPerCrew} participants/équipage`}
+                  />
+                  <StatCard
+                    label="Clubs"
+                    value={globalStatistics.total_clubs}
+                    icon={Building2}
+                    hint={`${crewsPerClub} équipages/club`}
+                  />
                 </div>
 
                 {/* Graphique de répartition par genre */}
@@ -1117,7 +987,7 @@ export default function EventStatisticsPage() {
                       </div>
                       <div className="w-full bg-muted rounded-full h-8 overflow-hidden">
                         <div
-                          className="h-full bg-gradient-to-r from-blue-500 to-blue-600 flex items-center justify-end pr-2 text-white text-sm font-medium transition-all duration-500"
+                          className="h-full bg-primary text-primary-foreground flex items-center justify-end pr-2 text-sm font-medium transition-all duration-500"
                           style={{ width: `${hommesPercentage}%` }}
                         >
                           {parseFloat(hommesPercentage) > 10 && `${hommesPercentage}%`}
@@ -1131,7 +1001,7 @@ export default function EventStatisticsPage() {
                       </div>
                       <div className="w-full bg-muted rounded-full h-8 overflow-hidden">
                         <div
-                          className="h-full bg-gradient-to-r from-pink-500 to-pink-600 flex items-center justify-end pr-2 text-white text-sm font-medium transition-all duration-500"
+                          className="h-full bg-chart-2 text-primary-foreground flex items-center justify-end pr-2 text-sm font-medium transition-all duration-500"
                           style={{ width: `${femmesPercentage}%` }}
                         >
                           {parseFloat(femmesPercentage) > 10 && `${femmesPercentage}%`}
@@ -1208,7 +1078,7 @@ export default function EventStatisticsPage() {
           })()}
         </>
       )}
-    </div>
+    </AdminPage>
   );
 }
 

@@ -16,6 +16,7 @@ import {
 } from "@/components/ui/select";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { useToast } from "@/hooks/use-toast";
+import { AdminPage } from "@/components/layout/AdminPage";
 import {
   Upload,
   Loader2,
@@ -53,6 +54,8 @@ interface RankingRow {
 
 /** Un seul code FFAviron : C + 6 chiffres */
 const SINGLE_CLUB_CODE_REGEX = /^C\d{6}$/i;
+/** Code numérique court (ex. 77002, 077002) ou C + chiffres (ex. C77002) → à normaliser en C###### */
+const SHORT_CLUB_CODE_REGEX = /^(?:C)?\d{1,6}$/i;
 /**
  * Segment d’un code mixte inline dans une cellule (ex. C029009(2)/C029028(3)).
  * Voir FRONTEND_ENDURANCE_MER_IMPORT.md — ne pas vider ces lignes avant le POST.
@@ -65,13 +68,29 @@ function normalizeCellValue(value: unknown): string {
 }
 
 /**
- * Code club « valide » pour la sanitization : soit un code seul, soit mixte inline
- * (au moins 2 segments séparés par /, chaque segment C######(n)).
+ * Canonicalise un code club vers C + 6 chiffres.
+ * Ex. 77002 → C077002, 077002 → C077002, C77002 → C077002, C077002 → C077002
+ */
+function canonicalizeClubCode(raw: string): string | null {
+  const code = normalizeCellValue(raw).toUpperCase();
+  if (!code || code === "MIXTE") return code || null;
+  if (code.includes("/")) return code;
+  if (SINGLE_CLUB_CODE_REGEX.test(code)) return code;
+
+  const digits = code.replace(/\D/g, "");
+  if (!digits || digits.length > 6) return null;
+  return `C${digits.padStart(6, "0")}`;
+}
+
+/**
+ * Code club « valide » pour la sanitization : soit un code seul (C###### ou numérique court),
+ * soit mixte inline (au moins 2 segments séparés par /, chaque segment C######(n)).
  */
 function isValidCodeClubCell(codeClub: string): boolean {
   const code = normalizeCellValue(codeClub);
   if (!code) return false;
   if (SINGLE_CLUB_CODE_REGEX.test(code)) return true;
+  if (SHORT_CLUB_CODE_REGEX.test(code)) return true;
   if (!code.includes("/")) return false;
   const segments = code
     .split("/")
@@ -85,6 +104,7 @@ function sanitizeWorkbookBeforeImport(file: File): Promise<{
   sanitizedFile: File;
   removedRows: number;
   mixedRowsDetected: number;
+  normalizedCodes: number;
 }> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
@@ -99,6 +119,7 @@ function sanitizeWorkbookBeforeImport(file: File): Promise<{
         const workbook = XLSX.read(data, { type: "array" });
         let removedRows = 0;
         let mixedRowsDetected = 0;
+        let normalizedCodes = 0;
 
         workbook.SheetNames.forEach((sheetName) => {
           if (sheetName.toLowerCase() === "organisateur") return;
@@ -151,6 +172,15 @@ function sanitizeWorkbookBeforeImport(file: File): Promise<{
               row[placeIdx] = "";
               row[codeClubIdx] = "";
               row[nomClubIdx] = "";
+            } else if (!codeClub.includes("/")) {
+              // Normaliser 77002 / C77002 → C077002 avant envoi API
+              const canonical = canonicalizeClubCode(codeClub);
+              if (canonical && canonical !== codeClub.toUpperCase()) {
+                row[codeClubIdx] = canonical;
+                normalizedCodes += 1;
+              } else if (canonical) {
+                row[codeClubIdx] = canonical;
+              }
             }
           }
 
@@ -162,7 +192,7 @@ function sanitizeWorkbookBeforeImport(file: File): Promise<{
           type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         });
 
-        resolve({ sanitizedFile, removedRows, mixedRowsDetected });
+        resolve({ sanitizedFile, removedRows, mixedRowsDetected, normalizedCodes });
       } catch (error) {
         reject(error);
       }
@@ -312,7 +342,8 @@ export default function EnduranceMerPage() {
     setImporting(true);
     setImportSuccess(null);
     try {
-      const { sanitizedFile, removedRows, mixedRowsDetected } = await sanitizeWorkbookBeforeImport(file);
+      const { sanitizedFile, removedRows, mixedRowsDetected, normalizedCodes } =
+        await sanitizeWorkbookBeforeImport(file);
       const formData = new FormData();
       formData.append("file", sanitizedFile);
       formData.append("event_format", eventFormat);
@@ -336,10 +367,17 @@ export default function EnduranceMerPage() {
         description: res.data?.message ?? `${data.inserted ?? 0} résultat(s) importé(s)`,
       });
 
+      if (normalizedCodes > 0) {
+        toast({
+          title: "Codes clubs normalisés",
+          description: `${normalizedCodes} code(s) convertis au format FFAviron (ex. 77002 → C077002).`,
+        });
+      }
+
       if (removedRows > 0) {
         toast({
           title: "Lignes ignorées avant import",
-          description: `${removedRows} ligne(s) sans code club valide (C + 6 chiffres ou mixte C######(n)/…) ou sans nom club ont été neutralisées.`,
+          description: `${removedRows} ligne(s) sans code club valide (C######, numérique court type 77002, ou mixte C######(n)/…) ou sans nom club ont été neutralisées.`,
         });
       }
 
@@ -388,17 +426,11 @@ export default function EnduranceMerPage() {
   }
 
   return (
-    <div className="container mx-auto px-4 py-6 space-y-8">
-      <div className="flex flex-col gap-2">
-        <h1 className="text-2xl md:text-3xl font-bold flex items-center gap-2">
-          <Waves className="w-8 h-8 text-emerald-600" />
-          Résultats Endurance Mer
-        </h1>
-        <p className="text-muted-foreground">
-          Import des résultats Excel (ENDURO / BRS) et classement des clubs pour l'événement{" "}
-          {eventName || "cet événement"}.
-        </p>
-      </div>
+    <AdminPage
+      title="Résultats Endurance Mer"
+      description={`Import des résultats Excel (ENDURO / BRS) et classement des clubs pour l'événement ${eventName || "cet événement"}.`}
+      icon={Waves}
+    >
 
       {/* Bloc Import */}
       <Card>
@@ -611,7 +643,7 @@ export default function EnduranceMerPage() {
             <div className="space-y-2 min-w-[180px]">
               <Label>Code club</Label>
               <Input
-                placeholder="Ex. C064027"
+                placeholder="Ex. C077002 ou 77002"
                 value={filterClub}
                 onChange={(e) => setFilterClub(e.target.value)}
               />
@@ -695,6 +727,6 @@ export default function EnduranceMerPage() {
           )}
         </CardContent>
       </Card>
-    </div>
+    </AdminPage>
   );
 }

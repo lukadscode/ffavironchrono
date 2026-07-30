@@ -9,6 +9,8 @@ import clsx from "clsx";
 
 import PhaseFormDialog from "@/components/races/PhaseFormDialog";
 import PhaseListDnd from "@/components/races/PhaseListDnd";
+import { AdminPage } from "@/components/layout/AdminPage";
+import { StatCard } from "@/components/layout/StatCard";
 
 interface RacePhase {
   id: string;
@@ -108,119 +110,70 @@ export default function RacesPage() {
   const totalCrews = categories.reduce((sum, cat) => sum + cat.crew_count, 0);
 
   return (
-    <div className="space-y-4 sm:space-y-6">
-      {/* Header amélioré */}
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <h1 className="text-3xl font-bold text-slate-900 flex items-center gap-3">
-            <Trophy className="w-8 h-8 text-amber-500" />
-            Phases de courses
-          </h1>
-          <p className="text-muted-foreground mt-2">
-            Gérez les phases et organisez vos courses par catégories
-          </p>
-        </div>
-        <div className="flex gap-3 flex-wrap">
-          <PhaseFormDialog onSubmit={handleCreatePhase} />
-        </div>
-      </div>
-
-      {/* Statistiques rapides */}
+    <AdminPage
+      title="Phases de courses"
+      description="Gérez les phases et organisez vos courses par catégories."
+      icon={Trophy}
+      actions={<PhaseFormDialog onSubmit={handleCreatePhase} />}
+    >
       <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-        <Card 
+        <div
           className={clsx(
-            "border-amber-200 bg-gradient-to-br from-amber-50 to-white transition-all",
-            phases.length > 0 
-              ? "cursor-pointer hover:shadow-lg hover:border-amber-300" 
-              : "opacity-60 cursor-not-allowed"
+            phases.length > 0 ? "cursor-pointer" : "opacity-60 cursor-not-allowed"
           )}
           onClick={() => {
             if (phases.length > 0) {
               navigate(`/event/${eventId}/generate-races`);
             }
           }}
+          onKeyDown={(e) => {
+            if (phases.length > 0 && (e.key === "Enter" || e.key === " ")) {
+              navigate(`/event/${eventId}/generate-races`);
+            }
+          }}
+          role={phases.length > 0 ? "button" : undefined}
+          tabIndex={phases.length > 0 ? 0 : undefined}
         >
-          <CardHeader className="pb-3">
-            <div className="flex items-center justify-between">
-              <CardTitle className="text-sm font-medium text-amber-900">
-                Générer
-              </CardTitle>
-              <Sparkles className="w-5 h-5 text-amber-600" />
-            </div>
-          </CardHeader>
-          <CardContent>
-            <div className="text-3xl font-bold text-amber-900 flex items-center gap-2">
-              <Sparkles className="w-6 h-6" />
-              Courses
-            </div>
-            <p className="text-xs text-amber-700 mt-1">
-              {phases.length === 0 
-                ? "Créez d'abord une phase" 
-                : "Créer les courses automatiquement"}
-            </p>
-          </CardContent>
-        </Card>
-
-        <Card className="border-blue-200 bg-gradient-to-br from-blue-50 to-white">
-          <CardHeader className="pb-3">
-            <div className="flex items-center justify-between">
-              <CardTitle className="text-sm font-medium text-blue-900">
-                Phases
-              </CardTitle>
-              <Trophy className="w-5 h-5 text-blue-600" />
-            </div>
-          </CardHeader>
-          <CardContent>
-            <div className="text-3xl font-bold text-blue-900">{phases.length}</div>
-            <p className="text-xs text-blue-700 mt-1">
-              {phases.length === 1 ? "phase créée" : "phases créées"}
-            </p>
-          </CardContent>
-        </Card>
-
-        <Card className="border-green-200 bg-gradient-to-br from-green-50 to-white">
-          <CardHeader className="pb-3">
-            <div className="flex items-center justify-between">
-              <CardTitle className="text-sm font-medium text-green-900">
-                Catégories
-              </CardTitle>
-              <Users className="w-5 h-5 text-green-600" />
-            </div>
-          </CardHeader>
-          <CardContent>
-            <div className="text-3xl font-bold text-green-900">{categories.length}</div>
-            <p className="text-xs text-green-700 mt-1">
-              {categories.length === 1 ? "catégorie disponible" : "catégories disponibles"}
-            </p>
-          </CardContent>
-        </Card>
-
-        <Card className="border-purple-200 bg-gradient-to-br from-purple-50 to-white">
-          <CardHeader className="pb-3">
-            <div className="flex items-center justify-between">
-              <CardTitle className="text-sm font-medium text-purple-900">
-                Équipages
-              </CardTitle>
-              <Users className="w-5 h-5 text-purple-600" />
-            </div>
-          </CardHeader>
-          <CardContent>
-            <div className="text-3xl font-bold text-purple-900">{totalCrews}</div>
-            <p className="text-xs text-purple-700 mt-1">
-              {totalCrews === 1 ? "équipage enregistré" : "équipages enregistrés"}
-            </p>
-          </CardContent>
-        </Card>
+          <StatCard
+            label="Générer"
+            value="Courses"
+            icon={Sparkles}
+            hint={
+              phases.length === 0
+                ? "Créez d'abord une phase"
+                : "Créer les courses automatiquement"
+            }
+            className={phases.length > 0 ? "hover:border-primary/50 transition-colors" : undefined}
+          />
+        </div>
+        <StatCard
+          label="Phases"
+          value={phases.length}
+          icon={Trophy}
+          hint={phases.length === 1 ? "phase créée" : "phases créées"}
+        />
+        <StatCard
+          label="Catégories"
+          value={categories.length}
+          icon={Users}
+          hint={categories.length === 1 ? "catégorie disponible" : "catégories disponibles"}
+        />
+        <StatCard
+          label="Équipages"
+          value={totalCrews}
+          icon={Users}
+          hint={totalCrews === 1 ? "équipage enregistré" : "équipages enregistrés"}
+        />
       </div>
 
       {/* Phases avec titre amélioré */}
       <div className="space-y-4">
         <div className="flex items-center justify-between">
-          <h2 className="text-xl font-semibold text-slate-800 flex items-center gap-2">
-            <Sparkles className="w-5 h-5 text-amber-500" />
+          <h2 className="text-xl font-semibold text-foreground flex items-center gap-2">
+            <Sparkles className="w-5 h-5 text-primary" />
             Phases de courses
             {phases.length > 0 && (
-              <span className="px-2 py-1 text-xs font-medium bg-amber-100 text-amber-700 rounded-full">
+              <span className="px-2 py-1 text-xs font-medium bg-primary/10 text-primary rounded-full">
                 {phases.length}
               </span>
             )}
@@ -230,10 +183,10 @@ export default function RacesPage() {
           <Card className="border-dashed border-2 border-gray-300">
             <CardContent className="flex flex-col items-center justify-center py-12">
               <Trophy className="w-12 h-12 text-gray-400 mb-4" />
-              <h3 className="text-lg font-semibold text-gray-700 mb-2">
+              <h3 className="text-lg font-semibold text-foreground mb-2">
                 Aucune phase créée
               </h3>
-              <p className="text-sm text-gray-500 text-center mb-4">
+              <p className="text-sm text-muted-foreground text-center mb-4">
                 Commencez par créer une phase pour organiser vos courses
               </p>
               <PhaseFormDialog onSubmit={handleCreatePhase} />
@@ -250,6 +203,6 @@ export default function RacesPage() {
           />
         )}
       </div>
-    </div>
+    </AdminPage>
   );
 }

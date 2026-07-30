@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useParams } from "react-router-dom";
 import { Download, FileUp, Info, Loader2 } from "lucide-react";
+import { AdminPage } from "@/components/layout/AdminPage";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
@@ -217,10 +218,14 @@ export default function ImportParticipantsPage() {
   };
 
   return (
-    <div className="space-y-6">
+    <AdminPage
+      title="Import de participants et d'équipages"
+      description="Importez en masse des participants et leurs équipages à partir d'un fichier CSV ou Excel"
+      icon={FileUp}
+    >
       <Card>
         <CardHeader>
-          <CardTitle>Import de participants et d'équipages</CardTitle>
+          <CardTitle>Fichier d'import</CardTitle>
         </CardHeader>
         <CardContent className="space-y-6">
           <div className="rounded-lg border bg-muted/30 p-4 flex gap-3 items-start">
@@ -391,7 +396,7 @@ export default function ImportParticipantsPage() {
           )}
         </CardContent>
       </Card>
-    </div>
+    </AdminPage>
   );
 }
 

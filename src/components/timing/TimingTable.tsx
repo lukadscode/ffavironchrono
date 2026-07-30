@@ -1,13 +1,34 @@
 import React from "react";
 import { Button } from "@/components/ui/button";
-import { EyeOff } from "lucide-react";
+import { EyeOff, Pencil } from "lucide-react";
 import dayjs from "dayjs";
 import api from "@/lib/axios";
 import { getSocket } from "@/lib/socket";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { formatTimestamp, formatDuration, formatTimeDifference } from "@/utils/formatTime";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { Badge } from "@/components/ui/badge";
+import { useToast } from "@/hooks/use-toast";
+import {
+  formatTimestamp,
+  formatDuration,
+  formatTimeDifference,
+  formatSpeed,
+  formatPace500m,
+} from "@/utils/formatTime";
+import {
+  CREW_STATUS_LABELS,
+  CrewStatus,
+  isParticipatingCrew,
+} from "@/constants/crewStatus";
+import { updateRaceCrewStatus } from "@/api/races";
+import { TimingEditDialog } from "@/components/timing/TimingEditDialog";
 
 type TimingPoint = {
   id: string;
@@ -20,9 +41,11 @@ type TimingPoint = {
 type Props = {
   race: {
     id: string;
+    status?: string;
     RaceCrews: {
       id: string;
       lane: number;
+      status?: string;
       Crew: { id: string; club_name: string };
     }[];
   };
@@ -31,6 +54,9 @@ type Props = {
     timestamp: string;
     status: string;
     relative_time_ms?: number | null;
+    segment_time_ms?: number | null;
+    segment_distance_m?: number | null;
+    speed_mps?: number | null;
     crew_id?: string | null;
     race_id?: string | null;
   }[];
@@ -46,6 +72,8 @@ type Props = {
   currentTimingPoint: TimingPoint | null;
   timingPoints: TimingPoint[];
   eventId: string;
+  raceStatus?: string;
+  onRefresh?: () => void;
 };
 
 export default function TimingTable({
@@ -61,9 +89,68 @@ export default function TimingTable({
   currentTimingPoint,
   timingPoints,
   eventId,
+  raceStatus,
+  onRefresh,
 }: Props) {
+  const { toast } = useToast();
   const [viewMode, setViewMode] = React.useState<'grid' | 'list'>('grid');
   const [laneInput, setLaneInput] = React.useState('');
+  const [editTiming, setEditTiming] = React.useState<Props["visibleTimings"][0] | null>(null);
+  const [crewStatuses, setCrewStatuses] = React.useState<Record<string, string>>({});
+
+  const isRaceOfficial = raceStatus === "official";
+
+  React.useEffect(() => {
+    const map: Record<string, string> = {};
+    race.RaceCrews?.forEach((rc) => {
+      map[rc.id] = rc.status || CrewStatus.REGISTERED;
+    });
+    setCrewStatuses(map);
+  }, [race.RaceCrews, selectedRaceId]);
+
+  const participatingCrews = React.useMemo(
+    () =>
+      (race.RaceCrews || []).filter((rc) =>
+        isParticipatingCrew(crewStatuses[rc.id] || rc.status || CrewStatus.REGISTERED)
+      ),
+    [race.RaceCrews, crewStatuses]
+  );
+
+  const handleAssignError = async (err: unknown) => {
+    const axiosErr = err as { response?: { status?: number; data?: { message?: string } } };
+    if (axiosErr.response?.status === 409) {
+      toast({
+        title: "Conflit d'assignation",
+        description: "Ce temps a déjà été assigné par un autre poste. Rafraîchissement…",
+        variant: "destructive",
+      });
+      onRefresh?.();
+    } else if (axiosErr.response?.status === 423) {
+      toast({
+        title: "Course verrouillée",
+        description: "Cette course est officielle, les temps ne sont plus modifiables.",
+        variant: "destructive",
+      });
+    } else {
+      toast({
+        title: "Erreur assignation",
+        description: axiosErr.response?.data?.message || "Une erreur est survenue",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const handleCrewStatusChange = async (raceCrewId: string, status: string) => {
+    if (isRaceOfficial) return;
+    try {
+      await updateRaceCrewStatus(raceCrewId, status);
+      setCrewStatuses((prev) => ({ ...prev, [raceCrewId]: status }));
+      toast({ title: `Statut : ${CREW_STATUS_LABELS[status as CrewStatus] || status}` });
+      onRefresh?.();
+    } catch {
+      toast({ title: "Erreur mise à jour statut", variant: "destructive" });
+    }
+  };
 
   const isStartPoint = currentTimingPoint?.order_index === 1;
   const isFinishPoint = timingPoints.length > 0 && currentTimingPoint?.order_index === timingPoints.length;
@@ -97,18 +184,9 @@ export default function TimingTable({
     }
 
     try {
-      const totalCrews = race.RaceCrews?.length || 0;
+      const totalCrews = participatingCrews.length;
 
-      console.log("📊 Race actuelle:", {
-        raceId: selectedRaceId,
-        totalCrews,
-        RaceCrews: race.RaceCrews
-      });
-
-      if (totalCrews === 0) {
-        console.log("⚠️ Aucun équipage dans cette course");
-        return;
-      }
+      if (totalCrews === 0) return;
 
       const res = await api.get(`/races/${selectedRaceId}`);
       const currentRace = res.data.data;
@@ -133,8 +211,9 @@ export default function TimingTable({
       const finishedCrews = new Set();
 
       for (const assignment of finishTimings) {
-        console.log(`✅ Crew ${assignment.crew_id} a franchi l'arrivée`);
-        finishedCrews.add(assignment.crew_id);
+        if (participatingCrews.some((rc) => rc.Crew?.id === assignment.crew_id)) {
+          finishedCrews.add(assignment.crew_id);
+        }
       }
 
       console.log(`🏁 Crews finis: ${finishedCrews.size}/${totalCrews}`, Array.from(finishedCrews));
@@ -218,7 +297,7 @@ export default function TimingTable({
 
       setLaneInput('');
     } catch (err) {
-      console.error("Erreur assignation", err);
+      await handleAssignError(err);
     }
   };
 
@@ -253,13 +332,27 @@ export default function TimingTable({
       await checkRaceStarted();
       await checkRaceFinished();
     } catch (err) {
-      console.error("Erreur assignation", err);
+      await handleAssignError(err);
     }
   };
 
   const sortedCrews = React.useMemo(() => {
     return [...(race.RaceCrews || [])].sort((a, b) => a.lane - b.lane);
   }, [race.RaceCrews]);
+
+  const renderSegmentInfo = (timing: Props["visibleTimings"][0]) => {
+    if (isStartPoint || !timing.segment_time_ms) return null;
+    return (
+      <div className="text-xs text-muted-foreground mt-0.5 space-y-0.5">
+        <div>Segment : {formatDuration(timing.segment_time_ms)}</div>
+        {timing.speed_mps && (
+          <div>
+            {formatSpeed(timing.speed_mps)} · {formatPace500m(timing.speed_mps)}
+          </div>
+        )}
+      </div>
+    );
+  };
 
   if (viewMode === 'list') {
     return (
@@ -287,7 +380,7 @@ export default function TimingTable({
 
         <div className="grid md:grid-cols-2 gap-4">
           <Card className="border rounded-lg">
-            <CardHeader className="bg-blue-50">
+            <CardHeader className="bg-muted/40 border-b">
               <CardTitle className="text-sm">Équipages (cliquer pour affecter)</CardTitle>
             </CardHeader>
             <CardContent className="p-2 space-y-1">
@@ -325,7 +418,7 @@ export default function TimingTable({
           </Card>
 
           <Card className="border rounded-lg">
-            <CardHeader className="bg-yellow-50">
+            <CardHeader className="bg-muted/40 border-b">
               <CardTitle className="text-sm">Temps enregistrés</CardTitle>
             </CardHeader>
             <CardContent className="p-2 space-y-1">
@@ -435,11 +528,35 @@ export default function TimingTable({
               .sort((a, b) => a.lane - b.lane)
               .map((rc) => (
                 <th key={rc.id} className="p-3 text-center font-semibold">
-                  Couloir {rc.lane}
-                  <br />
-                  <span className="text-xs text-muted-foreground">
+                  <div>Couloir {rc.lane}</div>
+                  <span className="text-xs text-muted-foreground font-normal">
                     {rc.Crew?.club_name}
                   </span>
+                  {(crewStatuses[rc.id] || rc.status) &&
+                    (crewStatuses[rc.id] || rc.status) !== CrewStatus.REGISTERED && (
+                      <Badge variant="secondary" className="mt-1 text-[10px]">
+                        {CREW_STATUS_LABELS[(crewStatuses[rc.id] || rc.status) as CrewStatus]}
+                      </Badge>
+                    )}
+                  {!isRaceOfficial && (
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button variant="ghost" size="sm" className="h-6 text-[10px] mt-1">
+                          Statut
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="center">
+                        {[CrewStatus.DNS, CrewStatus.DNF, CrewStatus.DISQUALIFIED, CrewStatus.WITHDRAWN, CrewStatus.REGISTERED].map((s) => (
+                          <DropdownMenuItem
+                            key={s}
+                            onClick={() => handleCrewStatusChange(rc.id, s)}
+                          >
+                            {CREW_STATUS_LABELS[s]}
+                          </DropdownMenuItem>
+                        ))}
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  )}
                 </th>
               ))}
             <th className="p-3 text-center font-semibold w-32">Actions</th>
@@ -451,12 +568,12 @@ export default function TimingTable({
             const assigned = assignments[timing.id] || [];
             const isAssignedToThisRace =
               assigned.length === 0 || assigned.some((a) => crewIdsInSelectedRace.includes(a.crew_id));
-            const isLocked = assigned.length > 0;
+            const isTimingAssigned = assigned.length > 0;
 
             return (
               <tr
                 key={timing.id}
-                className={`border-t hover:bg-accent transition ${isLocked ? "bg-green-50" : ""}`}
+                className={`border-t hover:bg-accent transition ${isTimingAssigned ? "bg-green-50" : ""}`}
               >
                 <td className="p-2 font-mono whitespace-nowrap">
                   <div className="flex flex-col gap-1">
@@ -475,6 +592,7 @@ export default function TimingTable({
                                 {formatTimeDifference(timing.relative_time_ms - getLeaderTime)}
                               </span>
                             )}
+                            {renderSegmentInfo(timing)}
                           </div>
                         ) : (
                           <span className="text-xs text-orange-500 italic">
@@ -497,7 +615,7 @@ export default function TimingTable({
                       <td key={rc.id} className="p-2 text-center">
                       <Checkbox
                         checked={isChecked}
-                        disabled={isLocked && !isChecked}
+                        disabled={isRaceOfficial || (isTimingAssigned && !isChecked)}
                         onCheckedChange={async (checked) => {
                           try {
                             if (checked) {
@@ -587,7 +705,7 @@ export default function TimingTable({
                               await checkRaceFinished();
                             }
                           } catch (err) {
-                            console.error("Erreur assignation", err);
+                            await handleAssignError(err);
                           }
                         }}
                         className="h-4 w-4 mx-auto"
@@ -597,6 +715,16 @@ export default function TimingTable({
                 })}
 
                 <td className="p-2 flex items-center justify-center gap-1">
+                  {!isRaceOfficial && (
+                    <>
+                  <Button
+                    size="icon"
+                    variant="outline"
+                    onClick={() => setEditTiming(timing)}
+                    title="Modifier le temps"
+                  >
+                    <Pencil className="w-4 h-4" />
+                  </Button>
                   <Button
                     size="icon"
                     variant="outline"
@@ -659,6 +787,11 @@ export default function TimingTable({
                   >
                     <EyeOff className="w-4 h-4" />
                   </Button>
+                    </>
+                  )}
+                  {isRaceOfficial && (
+                    <Badge variant="outline" className="text-xs">Verrouillé</Badge>
+                  )}
                 </td>
 
                 <td className="p-2 text-center">
@@ -684,6 +817,20 @@ export default function TimingTable({
         </tbody>
       </table>
       </div>
+
+      <TimingEditDialog
+        timing={editTiming}
+        open={!!editTiming}
+        onOpenChange={(open) => !open && setEditTiming(null)}
+        isLocked={isRaceOfficial}
+        onUpdated={() => onRefresh?.()}
+        onDeleted={() => {
+          if (editTiming) {
+            setTimings((prev) => prev.filter((t) => t.id !== editTiming.id));
+          }
+          onRefresh?.();
+        }}
+      />
     </div>
   );
 }

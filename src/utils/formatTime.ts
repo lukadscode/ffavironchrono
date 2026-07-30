@@ -97,3 +97,24 @@ export function formatTimeDifference(milliseconds: number): string {
     return `${sign}${secStr}.${msStr}`;
   }
 }
+
+/**
+ * Formate une vitesse en m/s
+ */
+export function formatSpeed(speedMps: number | null | undefined): string {
+  if (speedMps === null || speedMps === undefined || !isFinite(speedMps) || speedMps <= 0) {
+    return "—";
+  }
+  return `${speedMps.toFixed(2)} m/s`;
+}
+
+/**
+ * Formate une allure aviron (temps / 500m)
+ */
+export function formatPace500m(speedMps: number | null | undefined): string {
+  if (speedMps === null || speedMps === undefined || !isFinite(speedMps) || speedMps <= 0) {
+    return "—";
+  }
+  const msPer500m = 500 / speedMps;
+  return `${formatDuration(msPer500m)}/500m`;
+}

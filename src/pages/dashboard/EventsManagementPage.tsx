@@ -44,6 +44,7 @@ import {
   RefreshCw,
 } from "lucide-react";
 import dayjs from "dayjs";
+import { AdminPage } from "@/components/layout/AdminPage";
 
 type Event = {
   id: string;
@@ -403,15 +404,11 @@ export default function EventsManagementPage() {
   }
 
   return (
-    <div className="space-y-4 sm:space-y-6">
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-        <div>
-          <h2 className="text-xl sm:text-2xl font-semibold mb-2">Gestion des événements</h2>
-          <p className="text-sm sm:text-base text-muted-foreground">
-            Gérez tous les événements de la plateforme
-          </p>
-        </div>
-
+    <AdminPage
+      title="Gestion des événements"
+      description="Gérez tous les événements de la plateforme."
+      icon={Calendar}
+      actions={
         <Dialog
           open={dialogOpen}
           onOpenChange={(open) => {
@@ -701,8 +698,8 @@ export default function EventsManagementPage() {
             </DialogFooter>
           </DialogContent>
         </Dialog>
-      </div>
-
+      }
+    >
       {/* Barre de recherche et sélecteur de vue */}
       <Card>
         <CardContent className="p-4">
@@ -768,7 +765,7 @@ export default function EventsManagementPage() {
                 <div className="flex items-start gap-2 sm:gap-3 text-xs sm:text-sm">
                   <Calendar className="w-4 h-4 text-muted-foreground mt-0.5 flex-shrink-0" />
                   <div className="min-w-0 flex-1">
-                    <div className="font-semibold text-slate-700">Dates</div>
+                    <div className="font-semibold text-foreground">Dates</div>
                     <div className="text-muted-foreground break-words">
                       {dayjs(event.start_date).format("DD MMM YYYY")} -{" "}
                       {dayjs(event.end_date).format("DD MMM YYYY")}
@@ -779,7 +776,7 @@ export default function EventsManagementPage() {
                 <div className="flex items-start gap-2 sm:gap-3 text-xs sm:text-sm">
                   <MapPin className="w-4 h-4 text-muted-foreground mt-0.5 flex-shrink-0" />
                   <div className="min-w-0 flex-1">
-                    <div className="font-semibold text-slate-700">Lieu</div>
+                    <div className="font-semibold text-foreground">Lieu</div>
                     <div className="text-muted-foreground line-clamp-2 break-words">
                       {event.location}
                     </div>
@@ -1055,7 +1052,7 @@ export default function EventsManagementPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
-    </div>
+    </AdminPage>
   );
 }
 

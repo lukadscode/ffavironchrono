@@ -20,6 +20,7 @@ import { ArrowLeft, Download, Upload, FileText, File, AlertTriangle, Save, Troph
 import { formatTempsPronostique } from "@/utils/formatTime";
 import { useToast } from "@/hooks/use-toast";
 import NotificationDisplay from "@/components/notifications/NotificationDisplay";
+import { AdminPage } from "@/components/layout/AdminPage";
 import { useAuth } from "@/context/AuthContext";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { initializeClubsCache, getClubShortCode, getClubShortCodeSync } from "@/api/clubs";
@@ -1352,8 +1353,79 @@ export default function IndoorRaceDetailPage() {
   // Vérifier si la course a une distance (après chargement complet)
   const hasDistance = !loading && race && (race.distance || raceDistance || race.distance_id);
   
+  const currentDist = race.distance || raceDistance;
+  const distanceLabel = currentDist
+    ? currentDist.label ||
+      (currentDist.is_relay && currentDist.relay_count && currentDist.meters
+        ? `${currentDist.relay_count}x${currentDist.meters}m`
+        : currentDist.meters
+          ? `${currentDist.meters}m`
+          : `${distance}m`)
+    : null;
+
   return (
-    <div className="space-y-6">
+    <AdminPage
+      title={`Course ${race.race_number} - ${race.name}`}
+      description={
+        [
+          race.race_phase ? `Phase: ${race.race_phase.name}` : null,
+          dayjs(race.start_time).format("DD/MM/YYYY à HH:mm"),
+          distanceLabel ? `Distance: ${distanceLabel}` : null,
+        ]
+          .filter(Boolean)
+          .join(" • ") || undefined
+      }
+      icon={Trophy}
+      actions={
+        <div className="flex flex-wrap items-center gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => navigate(`/event/${eventId}/indoor`)}
+          >
+            <ArrowLeft className="w-4 h-4 mr-2" />
+            Retour
+          </Button>
+          <Button
+            variant="outline"
+            className="gap-2"
+            disabled={!raceId}
+            onClick={async () => {
+              if (!raceId) return;
+              try {
+                await api.put(`/races/${raceId}`, { status: "non_official" });
+                await fetchRace();
+                toast({
+                  title: "Statut mis à jour",
+                  description: "La course est maintenant en statut non officiel (en attente de validation arbitre).",
+                });
+              } catch (err: any) {
+                console.error("Erreur mise à jour statut non_official", err);
+                toast({
+                  title: "Erreur",
+                  description:
+                    err?.response?.data?.message ||
+                    "Impossible de mettre la course en statut non officiel",
+                  variant: "destructive",
+                });
+              }
+            }}
+          >
+            <Trophy className="w-4 h-4 mr-1" />
+            Marquer comme non officiel
+          </Button>
+          <Button
+            onClick={generateRac2File}
+            className="gap-2"
+            disabled={!hasDistance}
+            title={!hasDistance ? "Veuillez sélectionner une distance pour la course" : ""}
+          >
+            <Download className="w-4 h-4" />
+            Télécharger le fichier .rac2 (ErgRace)
+          </Button>
+        </div>
+      }
+    >
       {/* Message d'erreur et formulaire si pas de distance */}
       {!loading && race && !hasDistance && (
         <Card className="border-red-200 bg-red-50">
@@ -1464,103 +1536,6 @@ export default function IndoorRaceDetailPage() {
       
       {/* Notifications */}
       <NotificationDisplay eventId={eventId} raceId={raceId} />
-
-      {/* Header avec retour */}
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-4">
-          <Button
-            variant="outline"
-            size="icon"
-            onClick={() => navigate(`/event/${eventId}/indoor`)}
-          >
-            <ArrowLeft className="w-4 h-4" />
-          </Button>
-          <div>
-            <h2 className="text-2xl font-bold text-slate-900">
-              Course {race.race_number} - {race.name}
-            </h2>
-            <div className="flex items-center gap-4 mt-1">
-              {race.race_phase && (
-                <p className="text-sm text-muted-foreground">
-                  Phase: {race.race_phase.name} • {dayjs(race.start_time).format("DD/MM/YYYY à HH:mm")}
-                </p>
-              )}
-              {(race.distance || raceDistance) && (
-                <div className="flex items-center gap-2">
-                  <span className="text-sm font-semibold text-blue-600">
-                    Distance:
-                  </span>
-                  <span className="text-sm font-bold text-blue-800">
-                    {(() => {
-                      const currentDist = race.distance || raceDistance;
-                      if (!currentDist) return `${distance}m`;
-                      
-                      // Utiliser le label du backend qui est toujours formaté correctement
-                      if (currentDist.label) {
-                        return currentDist.label;
-                      }
-                      
-                      // Fallback pour les anciennes distances sans label
-                      if (currentDist.is_relay === true || (typeof currentDist.is_relay === 'number' && currentDist.is_relay === 1)) {
-                        if (currentDist.relay_count && currentDist.meters) {
-                          const totalDist = currentDist.meters * currentDist.relay_count;
-                          return `${currentDist.relay_count}x${currentDist.meters}m (${totalDist}m total)`;
-                        }
-                      }
-                      return currentDist.meters ? `${currentDist.meters}m` : `${distance}m`;
-                    })()}
-                  </span>
-                  {((race.distance?.is_relay === true || (typeof race.distance?.is_relay === 'number' && race.distance.is_relay === 1)) || 
-                    (raceDistance?.is_relay === true || (typeof raceDistance?.is_relay === 'number' && raceDistance.is_relay === 1))) && (
-                    <span className="text-xs px-2 py-0.5 bg-orange-100 text-orange-700 rounded-full font-medium">
-                      RELAIS
-                    </span>
-                  )}
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
-        <div className="flex items-center gap-3">
-          <Button
-            variant="outline"
-            className="gap-2"
-            disabled={!raceId}
-            onClick={async () => {
-              if (!raceId) return;
-              try {
-                await api.put(`/races/${raceId}`, { status: "non_official" });
-                await fetchRace();
-                toast({
-                  title: "Statut mis à jour",
-                  description: "La course est maintenant en statut non officiel (en attente de validation arbitre).",
-                });
-              } catch (err: any) {
-                console.error("Erreur mise à jour statut non_official", err);
-                toast({
-                  title: "Erreur",
-                  description:
-                    err?.response?.data?.message ||
-                    "Impossible de mettre la course en statut non officiel",
-                  variant: "destructive",
-                });
-              }
-            }}
-          >
-            <Trophy className="w-4 h-4 mr-1" />
-            Marquer comme non officiel
-          </Button>
-          <Button 
-            onClick={generateRac2File} 
-            className="gap-2"
-            disabled={!hasDistance}
-            title={!hasDistance ? "Veuillez sélectionner une distance pour la course" : ""}
-          >
-            <Download className="w-4 h-4" />
-            Télécharger le fichier .rac2 (ErgRace)
-          </Button>
-        </div>
-      </div>
 
       {/* Zones de dépôt de fichiers */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -2276,7 +2251,7 @@ export default function IndoorRaceDetailPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
-    </div>
+    </AdminPage>
   );
 }
 

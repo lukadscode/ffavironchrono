@@ -36,6 +36,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useEventRole } from "@/hooks/useEventRole";
 import { ROLE_PERMISSIONS } from "@/router/EventProtectedRoute";
 import { useAuth } from "@/context/AuthContext";
+import EventLiveDashboard from "@/components/event/EventLiveDashboard";
 import dayjs from "dayjs";
 
 const DEFAULT_EVENT_IMAGE =
@@ -497,7 +498,7 @@ export default function EventOverviewPage() {
             (e.target as HTMLImageElement).src = DEFAULT_EVENT_IMAGE;
           }}
         />
-        <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/40 to-black/20"></div>
+        <div className="absolute inset-0 bg-gradient-to-t from-primary/90 via-primary/50 to-primary/20"></div>
         <div className="absolute inset-0 flex flex-col justify-end p-4 sm:p-6 text-white">
           <div className="flex items-start justify-between">
             <div className="flex-1 min-w-0">
@@ -552,31 +553,31 @@ export default function EventOverviewPage() {
 
       {/* Alertes */}
       {(alerts.categoriesWithoutDistance.length > 0 || alerts.phasesWithUnassignedCrews.length > 0) && (
-        <Card className="border-orange-300 bg-gradient-to-br from-orange-50 to-orange-100/50 shadow-md">
+        <Card className="border-accent/30 bg-accent/5 shadow-md">
           <CardContent className="p-6">
             <div className="flex items-start gap-3">
-              <div className="p-2 rounded-lg bg-orange-200">
-                <AlertTriangle className="w-5 h-5 text-orange-700" />
+              <div className="p-2 rounded-lg bg-accent/10">
+                <AlertTriangle className="w-5 h-5 text-accent" />
               </div>
               <div className="flex-1">
-                <h3 className="text-lg font-semibold text-orange-900 mb-3">
+                <h3 className="text-lg font-semibold text-foreground mb-3">
                   Avertissements
                 </h3>
                 <div className="space-y-2">
                   {alerts.categoriesWithoutDistance.length > 0 && (
                     <div className="flex items-start gap-2">
-                      <AlertTriangle className="w-4 h-4 text-orange-600 mt-0.5 flex-shrink-0" />
+                      <AlertTriangle className="w-4 h-4 text-accent mt-0.5 flex-shrink-0" />
                       <div className="flex-1">
-                        <p className="text-sm text-orange-800 font-medium">
+                        <p className="text-sm text-foreground font-medium">
                           {alerts.categoriesWithoutDistance.length} {alerts.categoriesWithoutDistance.length === 1 ? "catégorie" : "catégories"} non affectée{alerts.categoriesWithoutDistance.length > 1 ? "s" : ""} à une distance
                         </p>
-                        <p className="text-xs text-orange-700 mt-1">
+                        <p className="text-xs text-muted-foreground mt-1">
                           {alerts.categoriesWithoutDistance.map((cat: any) => cat.label || cat.code).join(", ")}
                         </p>
                         <Button
                           variant="outline"
                           size="sm"
-                          className="mt-2 border-orange-300 text-orange-700 hover:bg-orange-200"
+                          className="mt-2 border-accent/30 text-accent hover:bg-accent/10"
                           onClick={() => navigate(`/event/${eventId}/distances`)}
                         >
                           Voir les distances
@@ -586,12 +587,12 @@ export default function EventOverviewPage() {
                   )}
                   {alerts.phasesWithUnassignedCrews.length > 0 && (
                     <div className="flex items-start gap-2">
-                      <AlertTriangle className="w-4 h-4 text-orange-600 mt-0.5 flex-shrink-0" />
+                      <AlertTriangle className="w-4 h-4 text-accent mt-0.5 flex-shrink-0" />
                       <div className="flex-1">
-                        <p className="text-sm text-orange-800 font-medium">
+                        <p className="text-sm text-foreground font-medium">
                           Équipages non affectés dans {alerts.phasesWithUnassignedCrews.length} {alerts.phasesWithUnassignedCrews.length === 1 ? "phase" : "phases"}
                         </p>
-                        <div className="text-xs text-orange-700 mt-1 space-y-1">
+                        <div className="text-xs text-muted-foreground mt-1 space-y-1">
                           {alerts.phasesWithUnassignedCrews.map((phase) => (
                             <div key={phase.phaseId}>
                               {phase.phaseName}: {phase.count} {phase.count === 1 ? "équipage" : "équipages"} non affecté{phase.count > 1 ? "s" : ""}
@@ -601,7 +602,7 @@ export default function EventOverviewPage() {
                         <Button
                           variant="outline"
                           size="sm"
-                          className="mt-2 border-orange-300 text-orange-700 hover:bg-orange-200"
+                          className="mt-2 border-accent/30 text-accent hover:bg-accent/10"
                           onClick={() => navigate(`/event/${eventId}/racePhases`)}
                         >
                           Voir les phases
@@ -615,6 +616,9 @@ export default function EventOverviewPage() {
           </CardContent>
         </Card>
       )}
+
+      {/* Tableau de bord live chronométrage */}
+      <EventLiveDashboard eventId={eventId!} />
 
       {/* Statistiques */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">

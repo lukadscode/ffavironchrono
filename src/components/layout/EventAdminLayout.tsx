@@ -28,6 +28,8 @@ import {
   UserX,
   Trophy,
   Waves,
+  Camera,
+  SlidersHorizontal,
 } from "lucide-react";
 
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -35,11 +37,6 @@ import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import { useTheme } from "@/hooks/use-theme";
 import api from "@/lib/axios";
-
-const logout = () => {
-  localStorage.clear();
-  window.location.href = "/";
-};
 
 const allNavItems = [
   { to: "", label: "Accueil", icon: Home, permission: "overview" },
@@ -54,11 +51,18 @@ const allNavItems = [
   { to: "notifications", label: "Notifications", icon: Bell, permission: "notifications" },
   { to: "indoor", label: "Indoor", icon: Activity, permission: "indoor" },
   { to: "arbitres", label: "Arbitres", icon: Gavel, permission: "arbitres" },
-  { to: "results", label: "Résultats", icon: Trophy, permission: "overview" }, // Organisateur, admin et superadmin
-  { to: "endurance-mer", label: "Résultats Mer", icon: Waves, permission: "overview" }, // Visible uniquement pour événements type mer
+  { to: "finishlynx", label: "FinishLynx", icon: Camera, permission: "finishlynx" },
+  { to: "results", label: "Résultats", icon: Trophy, permission: "overview" },
+  { to: "endurance-mer", label: "Résultats Mer", icon: Waves, permission: "overview" },
   { to: "export", label: "Exports", icon: FileDown, permission: "overview" },
-  { to: "update", label: "Mise à jour FFAviron", icon: RefreshCw, permission: "permissions" }, // Seulement organisateur
+  { to: "update", label: "Mise à jour FFAviron", icon: RefreshCw, permission: "permissions" },
   { to: "timingPoint", label: "Points", icon: Timer, permission: "timingPoint" },
+  {
+    to: "timing-profiles",
+    label: "Profils chrono",
+    icon: SlidersHorizontal,
+    permission: "timing-profiles",
+  },
   { to: "timing", label: "Chrono", icon: Timer, permission: "timing" },
 ];
 
@@ -73,11 +77,62 @@ export default function EventAdminLayout() {
   const [isIndoor, setIsIndoor] = useState<boolean>(false);
   const [isMer, setIsMer] = useState<boolean>(false);
 
-  // Vérifier si l'utilisateur est admin global
-  const { user, loading } = useAuth();
+  const { user, loading, logout } = useAuth();
   const isGlobalAdmin = user?.role === "admin" || user?.role === "superadmin";
+  const hasEventAccess = isGlobalAdmin || !!eventRole;
 
-  // 🔒 Protection : Seuls les admins et superadmins peuvent accéder à la page d'administration de l'événement
+  const handleLogout = () => {
+    logout();
+    window.location.href = "/";
+  };
+
+  const navItems = useMemo(() => {
+    let items = allNavItems;
+
+    if (isIndoor) {
+      items = items.filter(item => item.to !== "timingPoint" && item.to !== "timing" && item.to !== "endurance-mer");
+    } else {
+      items = items.filter(item => item.to !== "indoor");
+    }
+
+    if (isMer) {
+      items = items.filter(item => item.to !== "results");
+    } else {
+      items = items.filter(item => item.to !== "endurance-mer");
+    }
+
+    items = items.filter(item => {
+      if (item.to === "results") {
+        return isGlobalAdmin || eventRole === "organiser";
+      }
+      return true;
+    });
+
+    if (isGlobalAdmin) return items;
+    if (!eventRole) return items.filter(item => item.permission === "overview");
+    if (eventRole === "organiser") return items;
+
+    const permissions = ROLE_PERMISSIONS[eventRole] || [];
+    return items.filter(item => permissions.includes(item.permission));
+  }, [eventRole, isGlobalAdmin, isIndoor, isMer]);
+
+  useEffect(() => {
+    if (!eventId) return;
+    api
+      .get(`/events/${eventId}`)
+      .then((res) => {
+        const eventData = res.data.data;
+        setEventName(eventData.name || `Événement ${eventId}`);
+        const raceType = eventData.race_type?.toLowerCase() || "";
+        setIsIndoor(raceType.includes("indoor"));
+        setIsMer(raceType.includes("mer") || raceType.includes("coastal"));
+      })
+      .catch(() => {
+        setEventName(`Événement ${eventId}`);
+        setIsIndoor(false);
+      });
+  }, [eventId]);
+
   if (loading) {
     return (
       <div className="flex items-center justify-center min-h-screen">
@@ -90,69 +145,9 @@ export default function EventAdminLayout() {
     return <Navigate to="/admin/login" replace />;
   }
 
-  if (!isGlobalAdmin) {
+  if (!hasEventAccess) {
     return <Navigate to="/dashboard" replace />;
   }
-
-  // Filtrer les éléments de navigation selon les permissions et le type d'événement
-  const navItems = useMemo(() => {
-    let items = allNavItems;
-    
-    // Filtrer selon le type d'événement
-    if (isIndoor) {
-      // Si indoor : cacher "Points", "Chrono" et "Résultats Mer"
-      items = items.filter(item => item.to !== "timingPoint" && item.to !== "timing" && item.to !== "endurance-mer");
-    } else {
-      // Si pas indoor : cacher "Indoor"
-      items = items.filter(item => item.to !== "indoor");
-    }
-    // Pour les événements mer : afficher "Résultats Mer", masquer "Résultats" classique
-    if (isMer) {
-      items = items.filter(item => item.to !== "results");
-    } else {
-      items = items.filter(item => item.to !== "endurance-mer");
-    }
-    
-    // Filtrer "Résultats" - pour organisateur, admin et superadmin
-    items = items.filter(item => {
-      if (item.to === "results") {
-        // Visible pour les admins globaux ou les organisateurs
-        return isGlobalAdmin || eventRole === "organiser";
-      }
-      return true;
-    });
-    
-    // Les admins globaux voient tout (après filtrage par type)
-    if (isGlobalAdmin) return items;
-    
-    if (!eventRole) return items.filter(item => item.permission === "overview");
-    
-    // L'organisateur voit tout (après filtrage par type)
-    if (eventRole === "organiser") return items;
-    
-    // Pour les autres rôles, filtrer selon les permissions
-    const permissions = ROLE_PERMISSIONS[eventRole] || [];
-    return items.filter(item => permissions.includes(item.permission));
-  }, [eventRole, isGlobalAdmin, isIndoor, isMer]);
-
-  useEffect(() => {
-    if (!eventId) return;
-    api
-      .get(`/events/${eventId}`)
-      .then((res) => {
-        const eventData = res.data.data;
-        setEventName(eventData.name || `Événement ${eventId}`);
-        // Déterminer si c'est un événement indoor
-        // On vérifie si race_type contient "indoor" (insensible à la casse)
-        const raceType = eventData.race_type?.toLowerCase() || "";
-        setIsIndoor(raceType.includes("indoor"));
-        setIsMer(raceType.includes("mer") || raceType.includes("coastal"));
-      })
-      .catch(() => {
-        setEventName(`Événement ${eventId}`);
-        setIsIndoor(false);
-      });
-  }, [eventId]);
 
   return (
     <div className="flex min-h-screen bg-background text-foreground">
@@ -210,7 +205,7 @@ export default function EventAdminLayout() {
         {/* FOOTER ACTIONS */}
         <div className="p-3 sm:p-4 border-t mt-auto flex flex-col gap-2">
           <Button
-            onClick={logout}
+            onClick={handleLogout}
             variant="ghost"
             className="w-full flex items-center gap-2 text-red-600 hover:text-red-700 text-xs sm:text-sm"
           >
@@ -279,7 +274,7 @@ export default function EventAdminLayout() {
                   </ScrollArea>
                   <div className="p-4 border-t space-y-2">
                     <Button
-                      onClick={logout}
+                      onClick={handleLogout}
                       variant="ghost"
                       className="w-full flex items-center gap-2 text-red-600 hover:text-red-700 text-sm"
                     >
@@ -308,7 +303,7 @@ export default function EventAdminLayout() {
           </div>
         </header>
 
-        <main className="flex-1 p-4 sm:p-6 bg-slate-100 dark:bg-background">
+        <main className="flex-1 p-4 sm:p-6 bg-background">
           <Outlet />
         </main>
       </div>

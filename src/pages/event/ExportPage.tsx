@@ -5,6 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
 import { Download, FileSpreadsheet, FileText, Loader2, Users, Flag } from "lucide-react";
+import { AdminPage } from "@/components/layout/AdminPage";
 import * as XLSX from "xlsx";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
@@ -2413,14 +2414,11 @@ export default function ExportPage() {
   }
 
   return (
-    <div className="space-y-6">
-      <div>
-        <h1 className="text-3xl font-bold mb-2">Exports</h1>
-        <p className="text-muted-foreground">
-          Exportez les données de l'événement dans différents formats
-        </p>
-      </div>
-
+    <AdminPage
+      title="Exports"
+      description="Exportez les données de l'événement dans différents formats"
+      icon={FileSpreadsheet}
+    >
       <div className="grid gap-6 md:grid-cols-2">
         {/* Export Global Excel */}
         <Card>
@@ -2799,7 +2797,7 @@ export default function ExportPage() {
           </CardContent>
         </Card>
       </div>
-    </div>
+    </AdminPage>
   );
 }
 

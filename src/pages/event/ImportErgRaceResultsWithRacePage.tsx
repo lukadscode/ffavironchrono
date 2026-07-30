@@ -20,6 +20,7 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { ScrollArea } from "@/components/ui/scroll-area";
 
 import { AlertCircle, ArrowLeft, CheckCircle2, Loader2, Upload, X, Search, UserPlus } from "lucide-react";
+import { AdminPage } from "@/components/layout/AdminPage";
 
 interface Distance {
   id: string;
@@ -1183,29 +1184,21 @@ export default function ImportErgRaceResultsWithRacePage() {
   }
 
   return (
-    <div className="container mx-auto py-6 px-4 max-w-7xl">
-      <div className="space-y-6">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-4">
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => navigate(`/event/${eventId}/indoor`)}
-            >
-              <ArrowLeft className="w-4 h-4 mr-2" />
-              Retour
-            </Button>
-            <div>
-              <h1 className="text-3xl font-bold text-slate-900">
-                Importer une course ErgRace avec résultats
-              </h1>
-              <p className="text-sm text-gray-500 mt-1">
-                Importez un fichier de résultats ErgRace (JSON/TXT) pour créer
-                automatiquement la course et ses résultats indoor.
-              </p>
-            </div>
-          </div>
-        </div>
+    <AdminPage
+      title="Importer une course ErgRace avec résultats"
+      description="Importez un fichier de résultats ErgRace (JSON/TXT) pour créer automatiquement la course et ses résultats indoor"
+      icon={Upload}
+      actions={
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => navigate(`/event/${eventId}/indoor`)}
+        >
+          <ArrowLeft className="w-4 h-4 mr-2" />
+          Retour
+        </Button>
+      }
+    >
 
         {step === "upload" && (
           <Card>
@@ -2088,8 +2081,7 @@ export default function ImportErgRaceResultsWithRacePage() {
             </CardContent>
           </Card>
         )}
-      </div>
-    </div>
+    </AdminPage>
   );
 }
 

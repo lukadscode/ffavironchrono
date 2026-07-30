@@ -15,6 +15,7 @@ import {
   AlertCircle,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { AdminPage } from "@/components/layout/AdminPage";
 
 type WebSocketState = "CONNECTING" | "OPEN" | "CLOSING" | "CLOSED";
 
@@ -243,21 +244,11 @@ export default function WebSocketTestPage() {
   }, []);
 
   return (
-    <div className="space-y-6 max-w-6xl mx-auto p-4">
-      {/* Header */}
-      <div className="relative overflow-hidden rounded-xl bg-gradient-to-br from-blue-600 via-blue-700 to-blue-800 text-white p-6 shadow-lg">
-        <div className="absolute inset-0 bg-[url('data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNjAiIGhlaWdodD0iNjAiIHZpZXdCb3g9IjAgMCA2MCA2MCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48ZyBmaWxsPSJub25lIiBmaWxsLXJ1bGU9ImV2ZW5vZGQiPjxnIGZpbGw9IiNmZmYiIGZpbGwtb3BhY2l0eT0iMC4xIj48cGF0aCBkPSJNMzYgMzRWMjJIMjR2MTJIMTJ2MTJIMjR2MTJIMzZWMzR6Ii8+PC9nPjwvZz48L3N2Zz4=')] opacity-20"></div>
-        <div className="relative z-10">
-          <h1 className="text-3xl font-bold mb-2 flex items-center gap-3">
-            <Activity className="w-8 h-8" />
-            Test WebSocket
-          </h1>
-          <p className="text-blue-100">
-            Connectez-vous à un serveur WebSocket pour recevoir des données en temps réel
-          </p>
-        </div>
-      </div>
-
+    <AdminPage
+      title="Test WebSocket"
+      description="Connectez-vous à un serveur WebSocket pour recevoir des données en temps réel."
+      icon={Activity}
+    >
       {/* Configuration */}
       <Card>
         <CardHeader>
@@ -310,7 +301,7 @@ export default function WebSocketTestPage() {
           </div>
 
           {/* État de la connexion */}
-          <div className="flex items-center gap-3 p-3 bg-slate-50 rounded-lg border">
+          <div className="flex items-center gap-3 p-3 bg-muted/50 rounded-lg border">
             <div className="flex items-center gap-2">
               <div className={`w-3 h-3 rounded-full ${getStateColor(socketState)}`}></div>
               <span className="text-sm font-medium">État:</span>
@@ -574,7 +565,7 @@ export default function WebSocketTestPage() {
           </p>
         </CardContent>
       </Card>
-    </div>
+    </AdminPage>
   );
 }
 

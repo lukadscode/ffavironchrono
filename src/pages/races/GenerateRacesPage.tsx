@@ -15,6 +15,7 @@ import { CSS } from "@dnd-kit/utilities";
 import { Loader2, GripVertical, Tag, Info, ArrowLeft, Save, Sparkles, Plus, X, Minus, FileText, Download, Copy, CheckCircle2, ArrowUp, ArrowDown } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { AdminPage } from "@/components/layout/AdminPage";
 
 interface Category {
   id: string;
@@ -1464,32 +1465,20 @@ export default function GenerateRacesPage() {
   };
 
   return (
-    <div className="space-y-4 sm:space-y-6">
-      {/* Header avec gradient */}
-      <div className="relative overflow-hidden rounded-xl bg-gradient-to-br from-blue-600 via-blue-700 to-blue-800 text-white p-6 shadow-lg">
-        <div className="absolute inset-0 bg-[url('data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNjAiIGhlaWdodD0iNjAiIHZpZXdCb3g9IjAgMCA2MCA2MCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48ZyBmaWxsPSJub25lIiBmaWxsLXJ1bGU9ImV2ZW5vZGQiPjxnIGZpbGw9IiNmZmYiIGZpbGwtb3BhY2l0eT0iMC4xIj48cGF0aCBkPSJNMzYgMzRWMjJIMjR2MTJIMTJ2MTJIMjR2MTJIMzZWMzR6Ii8+PC9nPjwvZz48L3N2Zz4=')] opacity-20"></div>
-        
-        <div className="relative z-10">
-          <div className="flex items-center gap-3 mb-4">
-            <Button
-              variant="ghost"
-              size="icon"
-              className="text-white hover:bg-white/20"
-              onClick={() => navigate(`/event/${eventId}/racePhases`)}
-            >
-              <ArrowLeft className="w-5 h-5" />
-            </Button>
-            <h1 className="text-3xl font-bold flex items-center gap-3">
-              <Sparkles className="w-8 h-8" />
-              Génération des courses
-            </h1>
-          </div>
-          <p className="text-blue-100 text-lg">
-            Configurez les paramètres et organisez les catégories en séries pour générer automatiquement les courses
-          </p>
-        </div>
-      </div>
-
+    <AdminPage
+      title="Génération des courses"
+      description="Configurez les paramètres et organisez les catégories en séries pour générer automatiquement les courses."
+      icon={Sparkles}
+      actions={
+        <Button
+          variant="outline"
+          onClick={() => navigate(`/event/${eventId}/racePhases`)}
+        >
+          <ArrowLeft className="w-4 h-4 mr-2" />
+          Retour aux phases
+        </Button>
+      }
+    >
       {/* Configuration initiale */}
       <Card>
         <CardHeader>
@@ -2100,7 +2089,7 @@ export default function GenerateRacesPage() {
           </div>
         </DialogContent>
       </Dialog>
-    </div>
+    </AdminPage>
   );
 }
 

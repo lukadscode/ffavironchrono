@@ -8,6 +8,8 @@ import {
   formatTimeRemaining,
 } from "@/utils/jwt";
 import dayjs from "dayjs";
+import { AdminPage } from "@/components/layout/AdminPage";
+import { User } from "lucide-react";
 
 export default function ProfilePage() {
   const { user } = useAuth();
@@ -52,9 +54,11 @@ export default function ProfilePage() {
   }, []);
 
   return (
-    <div className="space-y-4 sm:space-y-6">
-      <h2 className="text-xl sm:text-2xl font-semibold mb-4">Votre profil 👤</h2>
-      
+    <AdminPage
+      title="Votre profil"
+      description="Informations de compte et session active."
+      icon={User}
+    >
       <Card>
         <CardHeader>
           <CardTitle className="text-lg sm:text-xl">Informations personnelles</CardTitle>
@@ -118,6 +122,6 @@ export default function ProfilePage() {
           )}
         </CardContent>
       </Card>
-    </div>
+    </AdminPage>
   );
 }

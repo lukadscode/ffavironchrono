@@ -3,14 +3,15 @@ import { useNavigate, useParams } from "react-router-dom";
 import api from "@/lib/axios";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import { Skeleton } from "@/components/ui/skeleton";
+import { AdminPage } from "@/components/layout/AdminPage";
 import {
   Timer,
   MapPin,
   Hash,
   ArrowRight,
-  Loader2,
   Clock,
 } from "lucide-react";
 
@@ -35,7 +36,7 @@ export default function TimingOverviewPage() {
       .get(`/timing-points/event/${eventId}`)
       .then((res) => {
         const sorted = res.data.data.sort(
-          (a: any, b: any) => a.order_index - b.order_index
+          (a: TimingPoint, b: TimingPoint) => a.order_index - b.order_index
         );
         setTimingPoints(sorted);
       })
@@ -52,7 +53,7 @@ export default function TimingOverviewPage() {
   if (loading) {
     return (
       <div className="space-y-6">
-        <Skeleton className="h-32 w-full" />
+        <Skeleton className="h-20 w-full" />
         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
           {[1, 2, 3].map((i) => (
             <Skeleton key={i} className="h-48 w-full" />
@@ -64,43 +65,32 @@ export default function TimingOverviewPage() {
 
   if (timingPoints.length === 0) {
     return (
-      <Card>
-        <CardContent className="py-12 text-center">
-          <Timer className="w-16 h-16 mx-auto mb-4 text-muted-foreground opacity-50" />
-          <p className="text-lg font-semibold text-muted-foreground mb-2">
-            Aucun point de chronométrage
-          </p>
-          <p className="text-sm text-muted-foreground">
-            Créez des points de chronométrage pour commencer
-          </p>
-        </CardContent>
-      </Card>
+      <AdminPage
+        title="Chronométrage"
+        description="Aucun point de chronométrage configuré pour cet événement."
+        icon={Timer}
+      >
+        <Card>
+          <CardContent className="py-12 text-center">
+            <Timer className="w-12 h-12 mx-auto mb-4 text-muted-foreground opacity-40" />
+            <p className="font-medium text-muted-foreground">
+              Créez des points de chronométrage pour commencer
+            </p>
+          </CardContent>
+        </Card>
+      </AdminPage>
     );
   }
 
   return (
-    <div className="space-y-6">
-      {/* Header compact */}
-      <div className="relative overflow-hidden rounded-xl bg-gradient-to-br from-emerald-600 via-emerald-700 to-emerald-800 text-white p-4 shadow-lg">
-        <div className="absolute inset-0 bg-[url('data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNjAiIGhlaWdodD0iNjAiIHZpZXdCb3g9IjAgMCA2MCA2MCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48ZyBmaWxsPSJub25lIiBmaWxsLXJ1bGU9ImV2ZW5vZGQiPjxnIGZpbGw9IiNmZmYiIGZpbGwtb3BhY2l0eT0iMC4xIj48cGF0aCBkPSJNMzYgMzRWMjJIMjR2MTJIMTJ2MTJIMjR2MTJIMzZWMzR6Ii8+PC9nPjwvZz48L3N2Zz4=')] opacity-20"></div>
-        <div className="relative z-10 flex items-center justify-between">
-          <div>
-            <h1 className="text-2xl font-bold mb-1 flex items-center gap-2">
-              <Timer className="w-6 h-6" />
-              Points de chronométrage
-            </h1>
-            <p className="text-emerald-100 text-sm">
-              Sélectionnez un point pour commencer le chronométrage
-            </p>
-          </div>
-          <div className="bg-white/20 backdrop-blur-sm rounded-lg px-4 py-2 border border-white/30">
-            <div className="text-xs text-emerald-100 mb-1">Total points</div>
-            <div className="text-2xl font-bold">{timingPoints.length}</div>
-          </div>
-        </div>
-      </div>
-
-      {/* Grille des points */}
+    <AdminPage
+      title="Postes de chronométrage"
+      description="Sélectionnez un point pour ouvrir l'écran de prise de temps."
+      icon={Timer}
+      actions={
+        <Badge variant="outline">{timingPoints.length} point{timingPoints.length > 1 ? "s" : ""}</Badge>
+      }
+    >
       <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
         {timingPoints.map((point) => {
           const isStart = point.order_index === 1;
@@ -109,74 +99,58 @@ export default function TimingOverviewPage() {
           return (
             <Card
               key={point.id}
-              className="relative overflow-hidden transition-all duration-200 hover:shadow-lg border-2 hover:border-emerald-400 cursor-pointer group"
+              className="transition-all hover:shadow-md hover:border-primary/40 cursor-pointer group"
               onClick={() => navigate(`/event/${eventId}/timing/${point.id}`)}
             >
-              {/* Badge spécial */}
-              <div className="absolute top-3 right-3 z-10">
-                {isStart && (
-                  <span className="px-2 py-1 rounded-full text-xs font-bold bg-green-500 text-white border border-green-400">
-                    🏁 DÉPART
-                  </span>
-                )}
-                {isFinish && (
-                  <span className="px-2 py-1 rounded-full text-xs font-bold bg-red-500 text-white border border-red-400">
-                    🏁 ARRIVÉE
-                  </span>
-                )}
-                {!isStart && !isFinish && (
-                  <span className="px-2 py-1 rounded-full text-xs font-medium bg-slate-100 text-slate-700 border border-slate-300">
-                    #{point.order_index}
-                  </span>
-                )}
-              </div>
+              <CardContent className="p-5">
+                <div className="flex items-start justify-between mb-3">
+                  <Badge
+                    variant={isStart ? "default" : isFinish ? "destructive" : "secondary"}
+                    className="text-xs"
+                  >
+                    {isStart ? "Départ" : isFinish ? "Arrivée" : `#${point.order_index}`}
+                  </Badge>
+                  <ArrowRight className="h-4 w-4 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity" />
+                </div>
 
-              <CardContent className="p-5 pt-12">
-                {/* Label principal */}
-                <h3 className="text-xl font-bold mb-4 text-center group-hover:text-emerald-600 transition-colors">
+                <h3 className="text-lg font-semibold mb-4 group-hover:text-primary transition-colors">
                   {point.label}
                 </h3>
 
-                {/* Informations */}
-                <div className="space-y-2 mb-4">
-                  <div className="flex items-center justify-between p-2 bg-slate-50 rounded-lg">
-                    <div className="flex items-center gap-2">
-                      <MapPin className="w-4 h-4 text-muted-foreground" />
-                      <span className="text-sm font-medium text-muted-foreground">
-                        Distance
-                      </span>
-                    </div>
-                    <span className="font-bold">{point.distance_m}m</span>
+                <div className="space-y-2 text-sm">
+                  <div className="flex items-center justify-between">
+                    <span className="flex items-center gap-1.5 text-muted-foreground">
+                      <MapPin className="h-3.5 w-3.5" />
+                      Distance
+                    </span>
+                    <span className="font-medium">{point.distance_m} m</span>
                   </div>
-
-                  <div className="flex items-center justify-between p-2 bg-slate-50 rounded-lg">
-                    <div className="flex items-center gap-2">
-                      <Hash className="w-4 h-4 text-muted-foreground" />
-                      <span className="text-sm font-medium text-muted-foreground">
-                        Ordre
-                      </span>
-                    </div>
-                    <span className="font-bold">#{point.order_index}</span>
+                  <div className="flex items-center justify-between">
+                    <span className="flex items-center gap-1.5 text-muted-foreground">
+                      <Hash className="h-3.5 w-3.5" />
+                      Ordre
+                    </span>
+                    <span className="font-medium">{point.order_index}</span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="flex items-center gap-1.5 text-muted-foreground">
+                      <Clock className="h-3.5 w-3.5" />
+                      Type
+                    </span>
+                    <span className="font-medium">
+                      {isStart ? "Départ" : isFinish ? "Arrivée" : "Intermédiaire"}
+                    </span>
                   </div>
                 </div>
 
-                {/* Bouton d'action */}
-                <Button
-                  className="w-full group-hover:bg-emerald-600 group-hover:text-white transition-colors"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    navigate(`/event/${eventId}/timing/${point.id}`);
-                  }}
-                >
-                  <Clock className="w-4 h-4 mr-2" />
-                  Chronométrer
-                  <ArrowRight className="w-4 h-4 ml-2" />
+                <Button className="w-full mt-4" variant="outline" size="sm">
+                  Ouvrir le poste
                 </Button>
               </CardContent>
             </Card>
           );
         })}
       </div>
-    </div>
+    </AdminPage>
   );
 }

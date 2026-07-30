@@ -27,6 +27,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Badge } from "@/components/ui/badge";
 import { Link } from "react-router-dom";
 import dayjs from "dayjs";
+import { AdminPage } from "@/components/layout/AdminPage";
 
 interface ClubRanking {
   id: string;
@@ -496,14 +497,11 @@ export default function ClubRankingsPage() {
   }
 
   return (
-    <div className="space-y-6">
-      <div>
-        <h1 className="text-3xl font-bold mb-2">Classements des Clubs</h1>
-        <p className="text-muted-foreground">
-          Consultez les classements des clubs par type d'événement
-        </p>
-      </div>
-
+    <AdminPage
+      title="Classements des clubs"
+      description="Consultez les classements des clubs par type d'événement."
+      icon={Trophy}
+    >
       {/* Sélecteur de type d'événement */}
       <Card>
         <CardHeader>
@@ -1134,7 +1132,7 @@ export default function ClubRankingsPage() {
             })}
           </div>
         ))}
-    </div>
+    </AdminPage>
   );
 }
 

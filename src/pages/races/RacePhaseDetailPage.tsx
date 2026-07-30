@@ -941,7 +941,7 @@ export default function RacePhaseDetailPage() {
           {/* Colonne gauche - Skeleton */}
           <div className="w-full md:w-1/3 space-y-4">
             <Card>
-              <CardHeader className="bg-red-50">
+              <CardHeader className="bg-accent/5 border-b border-accent/20">
                 <Skeleton className="h-6 w-48" />
                 <Skeleton className="h-10 w-full mt-2" />
               </CardHeader>
@@ -989,7 +989,7 @@ export default function RacePhaseDetailPage() {
             />
           )}
           <Card>
-            <CardHeader className="bg-red-50">
+            <CardHeader className="bg-accent/5 border-b border-accent/20">
               <CardTitle>Équipages non affectés</CardTitle>
               <div className="mt-2">
                 <div className="relative">
@@ -1197,25 +1197,25 @@ export default function RacePhaseDetailPage() {
               </div>
             </div>
 
-            <div className="space-y-1.5 md:space-y-2 p-2 md:p-2.5 lg:p-3 bg-gradient-to-r from-blue-50 to-indigo-50 rounded-lg border border-blue-200">
+            <div className="space-y-1.5 md:space-y-2 p-2 md:p-2.5 lg:p-3 bg-muted/50 rounded-lg border border-border">
               <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-1.5 md:gap-2">
                 <div>
-                  <h3 className="text-xs md:text-sm font-semibold text-gray-700">Configuration des horaires</h3>
-                  <p className="text-[11px] md:text-xs text-gray-600">
+                  <h3 className="text-xs md:text-sm font-semibold text-foreground">Configuration des horaires</h3>
+                  <p className="text-[11px] md:text-xs text-muted-foreground">
                     1ʳᵉ course : {firstStartLocal ? firstStartLocal.replace("T", " ") : "non définie"} ·
                     {" "}Intervalle par défaut : {formatMinutesToMmSs(slotMinutes)}
                   </p>
                 </div>
                 <div className="flex flex-wrap gap-1.5 md:gap-2">
                   <button
-                    className="px-2 md:px-3 py-1 md:py-1.5 text-xs md:text-sm font-medium rounded-md border border-blue-500 text-blue-700 bg-white hover:bg-blue-50 transition-colors shadow-sm"
+                    className="px-2 md:px-3 py-1 md:py-1.5 text-xs md:text-sm font-medium rounded-md border border-primary text-primary bg-background hover:bg-muted transition-colors shadow-sm"
                     onClick={() => setScheduleDialogOpen(true)}
                     type="button"
                   >
                     Configurer
                   </button>
                   <button
-                    className="px-2 md:px-3 py-1 md:py-1.5 text-xs md:text-sm font-medium rounded-md bg-blue-600 text-white hover:bg-blue-700 transition-colors shadow-sm"
+                    className="px-2 md:px-3 py-1 md:py-1.5 text-xs md:text-sm font-medium rounded-md bg-primary text-primary-foreground hover:bg-primary/90 transition-colors shadow-sm"
                     onClick={applySchedule}
                     type="button"
                     title="Enregistrer les horaires recalculés"

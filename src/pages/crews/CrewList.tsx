@@ -27,6 +27,8 @@ import {
   Plus,
 } from "lucide-react";
 import { CrewStatusBadge } from "@/components/crew/CrewStatusBadge";
+import { AdminPage } from "@/components/layout/AdminPage";
+import { StatCard } from "@/components/layout/StatCard";
 
 function getCrewParticipantsRaw(crew: any): any[] {
   const raw =
@@ -159,36 +161,22 @@ export default function CrewList() {
   }
 
   return (
-    <div className="space-y-6">
-      {/* Header avec statistiques */}
-      <div className="relative overflow-hidden rounded-xl bg-gradient-to-br from-blue-600 via-blue-700 to-blue-800 text-white p-4 sm:p-6 shadow-lg">
-        <div className="absolute inset-0 bg-[url('data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNjAiIGhlaWdodD0iNjAiIHZpZXdCb3g9IjAgMCA2MCA2MCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48ZyBmaWxsPSJub25lIiBmaWxsLXJ1bGU9ImV2ZW5vZGQiPjxnIGZpbGw9IiNmZmYiIGZpbGwtb3BhY2l0eT0iMC4xIj48cGF0aCBkPSJNMzYgMzRWMjJIMjR2MTJIMTJ2MTJIMjR2MTJIMzZWMzR6Ii8+PC9nPjwvZz48L3N2Zz4=')] opacity-20"></div>
-        
-        <div className="relative z-10">
-          <h1 className="text-3xl font-bold mb-6 flex items-center gap-3">
-            <Rows className="w-8 h-8" />
-            Équipages
-          </h1>
-
-          <div className="grid grid-cols-1 gap-4 md:grid-cols-4">
-            <div className="bg-white/10 backdrop-blur-md rounded-lg p-4 border border-white/20">
-              <div className="text-sm text-blue-100 mb-1">Total équipages</div>
-              <div className="text-3xl font-bold">{stats.total}</div>
-            </div>
-            <div className="bg-white/10 backdrop-blur-md rounded-lg p-4 border border-white/20">
-              <div className="text-sm text-blue-100 mb-1">Clubs représentés</div>
-              <div className="text-3xl font-bold">{stats.uniqueClubs}</div>
-            </div>
-            <div className="bg-white/10 backdrop-blur-md rounded-lg p-4 border border-white/20">
-              <div className="text-sm text-blue-100 mb-1">Catégories</div>
-              <div className="text-3xl font-bold">{stats.uniqueCategories}</div>
-            </div>
-            <div className="bg-white/10 backdrop-blur-md rounded-lg p-4 border border-white/20">
-              <div className="text-sm text-blue-100 mb-1">Total participants</div>
-              <div className="text-3xl font-bold">{stats.totalParticipants}</div>
-            </div>
-          </div>
-        </div>
+    <AdminPage
+      title="Équipages"
+      description="Liste des équipages inscrits à l'événement"
+      icon={Rows}
+      actions={
+        <Button onClick={() => navigate(`/event/${eventId}/crews/new`)}>
+          <Plus className="w-4 h-4 mr-2" />
+          Nouvel équipage
+        </Button>
+      }
+    >
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-4">
+        <StatCard label="Total équipages" value={stats.total} icon={Rows} />
+        <StatCard label="Clubs représentés" value={stats.uniqueClubs} icon={Building2} />
+        <StatCard label="Catégories" value={stats.uniqueCategories} icon={Award} />
+        <StatCard label="Total participants" value={stats.totalParticipants} icon={Users} />
       </div>
 
       {/* Barre de recherche et toggle d'affichage */}
@@ -205,13 +193,6 @@ export default function CrewList() {
               />
             </div>
             <div className="flex gap-2">
-              <Button
-                onClick={() => navigate(`/event/${eventId}/crews/new`)}
-                className="bg-blue-600 hover:bg-blue-700"
-              >
-                <Plus className="w-4 h-4 mr-2" />
-                Nouvel équipage
-              </Button>
               <div className="flex gap-2 border rounded-lg p-1 bg-muted">
                 <Button
                   variant={viewMode === "cards" ? "default" : "ghost"}
@@ -495,6 +476,6 @@ export default function CrewList() {
           {filteredAndSortedCrews.length} résultat{filteredAndSortedCrews.length > 1 ? 's' : ''} trouvé{filteredAndSortedCrews.length > 1 ? 's' : ''}
         </div>
       )}
-    </div>
+    </AdminPage>
   );
 }

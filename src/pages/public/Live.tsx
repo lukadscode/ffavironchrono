@@ -819,7 +819,7 @@ export default function Live() {
 
   return (
     <div className="space-y-6">
-      <h2 className="text-2xl font-bold text-slate-900">Live - Courses en cours</h2>
+      <h2 className="text-2xl font-bold text-foreground border-b pb-4 mb-6">Live - Courses en cours</h2>
 
       {races.map((race) => {
         // Si c'est une course indoor avec des résultats, afficher les résultats indoor

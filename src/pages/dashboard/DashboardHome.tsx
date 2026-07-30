@@ -1,20 +1,20 @@
 import { useAuth } from "@/context/AuthContext";
-import { CalendarDays, MapPin } from "lucide-react";
+import { CalendarDays, LayoutDashboard, MapPin } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Link } from "react-router-dom";
+import { AdminPage } from "@/components/layout/AdminPage";
 
 export default function DashboardHome() {
   const { user } = useAuth();
   const events = user?.events || [];
 
   return (
-    <div className="space-y-4 sm:space-y-6">
-      <h2 className="text-xl sm:text-2xl font-semibold">Bienvenue {user?.name} 👋</h2>
-      <p className="text-sm sm:text-base text-muted-foreground">
-        Voici les événements auxquels vous avez accès :
-      </p>
-
+    <AdminPage
+      title={`Bienvenue ${user?.name ?? ""}`}
+      description="Voici les événements auxquels vous avez accès."
+      icon={LayoutDashboard}
+    >
       {events.length === 0 ? (
         <p className="text-sm text-muted-foreground">Aucun événement pour l'instant.</p>
       ) : (
@@ -45,7 +45,7 @@ export default function DashboardHome() {
               <CardContent>
                 <Button asChild className="w-full mt-2" variant="outline">
                   <Link to={`/event/${event.id}`}>
-                    Accéder à l’administration
+                    Accéder à l'administration
                   </Link>
                 </Button>
               </CardContent>
@@ -53,6 +53,6 @@ export default function DashboardHome() {
           ))}
         </div>
       )}
-    </div>
+    </AdminPage>
   );
 }

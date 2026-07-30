@@ -25,6 +25,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { AdminPage } from "@/components/layout/AdminPage";
 
 type Category = {
   id: string;
@@ -337,11 +338,11 @@ export default function RacesPage() {
   }
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <h1 className="text-3xl font-bold">Gestion des courses</h1>
-      </div>
-
+    <AdminPage
+      title="Gestion des courses"
+      description="Consultez et modifiez les courses et leurs équipages"
+      icon={Trophy}
+    >
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Liste des courses */}
         <Card>
@@ -645,6 +646,6 @@ export default function RacesPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
-    </div>
+    </AdminPage>
   );
 }

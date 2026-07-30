@@ -1,6 +1,7 @@
 import { Navigate, createBrowserRouter, RouterProvider } from "react-router-dom";
 import Register from "@/pages/Register";
 import ProtectedRoute from "@/router/ProtectedRoute";
+import SuperAdminRoute from "@/router/SuperAdminRoute";
 import EventProtectedRoute from "@/router/EventProtectedRoute";
 import Logout from "@/pages/Logout";
 import DashboardLayout from "@/components/layout/DashboardLayout";
@@ -26,6 +27,7 @@ import CrewStatusManagementPage from "@/pages/event/CrewStatusManagementPage";
 import DistancesPage from "@/pages/event/DistancesPage";
 import EventPermissionsPage from "@/pages/event/EventPermissionsPage";
 import TimingPointsPage from "@/pages/event/TimingPointsPage";
+import TimingProfilesPage from "@/pages/event/TimingProfilesPage";
 import NotificationsPage from "@/pages/event/NotificationsPage";
 import RacePhasesPage from "@/pages/races/RacePhasesPage";
 import TimingOverviewPage from "@/pages/timing/TimingOverviewPage";
@@ -42,10 +44,10 @@ import ImportParticipantsPage from "@/pages/event/ImportParticipantsPage";
 import ExportPage from "@/pages/event/ExportPage";
 import EventUpdatePage from "@/pages/event/EventUpdatePage";
 import EventResultsPage from "@/pages/event/EventResultsPage";
+import FinishLynxImportPage from "@/pages/event/FinishLynxImportPage";
 import EnduranceMerPage from "@/pages/event/EnduranceMerPage";
 import ClubRankingsPage from "@/pages/dashboard/ClubRankingsPage";
 import EventStatisticsPage from "@/pages/dashboard/EventStatisticsPage";
-import EventsList from "@/pages/public/EventsList";
 import PublicEvent from "@/pages/public/PublicEvent";
 import Live from "@/pages/public/Live";
 import Startlist from "@/pages/public/Startlist";
@@ -57,6 +59,7 @@ import AdminRedirect from "@/pages/AdminRedirect";
 import WebSocketTestPage from "@/pages/websocket/WebSocketTestPage";
 import VerifyEmailPage from "@/pages/VerifyEmailPage";
 import ResetPasswordPage from "@/pages/ResetPasswordPage";
+import NotFoundPage from "@/pages/NotFoundPage";
 import ForgotPassword from "@/pages/ForgotPassword";
 
 const router = createBrowserRouter([
@@ -110,7 +113,7 @@ const router = createBrowserRouter([
       { path: "profile", element: <ProfilePage /> },
       { path: "club-rankings", element: <ClubRankingsPage /> },
       { path: "event-statistics", element: <EventStatisticsPage /> },
-      { path: "websocket-test", element: <WebSocketTestPage /> },
+      { path: "websocket-test", element: <SuperAdminRoute><WebSocketTestPage /></SuperAdminRoute> },
     ],
   },
 
@@ -286,6 +289,15 @@ const router = createBrowserRouter([
           </EventProtectedRoute>
         )
       },
+      // Profils de chronométrage (règles configurables) - organisateur et chronométreur
+      { 
+        path: "timing-profiles", 
+        element: (
+          <EventProtectedRoute allowedRoles={["organiser", "timing"]}>
+            <TimingProfilesPage />
+          </EventProtectedRoute>
+        )
+      },
       // Arbitres - organisateur et arbitre
       { 
         path: "arbitres", 
@@ -294,6 +306,15 @@ const router = createBrowserRouter([
             <ArbitresPage />
           </EventProtectedRoute>
         )
+      },
+      // Import FinishLynx - organisateur, arbitre et chronométreur
+      {
+        path: "finishlynx",
+        element: (
+          <EventProtectedRoute allowedRoles={["organiser", "referee", "timing"]}>
+            <FinishLynxImportPage />
+          </EventProtectedRoute>
+        ),
       },
       // Indoor - organisateur et chronométreur
       { 
@@ -377,7 +398,7 @@ const router = createBrowserRouter([
 
   {
     path: "*",
-    element: <Navigate to="/" replace />,
+    element: <NotFoundPage />,
   },
 ]);
 

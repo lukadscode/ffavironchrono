@@ -28,6 +28,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Checkbox } from "@/components/ui/checkbox";
 import { CrewStatus, CREW_STATUS_LABELS, NON_PARTICIPATING_STATUSES } from "@/constants/crewStatus";
 import { CrewStatusBadge } from "@/components/crew/CrewStatusBadge";
+import { AdminPage } from "@/components/layout/AdminPage";
 import { CrewInfoEditDialog } from "@/components/crew/CrewInfoEditDialog";
 import {
   Alert,
@@ -921,24 +922,21 @@ export default function CrewStatusManagementPage() {
   }
 
   return (
-    <div className="space-y-6">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <Button
-            variant="ghost"
-            onClick={() => navigate(`/event/${eventId}`)}
-            className="mb-4"
-          >
-            <ArrowLeft className="w-4 h-4 mr-2" />
-            Retour
-          </Button>
-          <h1 className="text-3xl font-bold">Gestion des statuts d'équipages</h1>
-          <p className="text-muted-foreground mt-2">
-            Gérer les forfaits, abandons, disqualifications et changements d'équipages
-          </p>
-        </div>
-      </div>
+    <AdminPage
+      title="Gestion des statuts d'équipages"
+      description="Gérer les forfaits, abandons, disqualifications et changements d'équipages"
+      icon={Users}
+      actions={
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => navigate(`/event/${eventId}`)}
+        >
+          <ArrowLeft className="w-4 h-4 mr-2" />
+          Retour
+        </Button>
+      }
+    >
 
       {/* Étape 1: Sélection de l'équipage (ou du participant en multi-phase) */}
       {step === 1 && (
@@ -2067,7 +2065,7 @@ export default function CrewStatusManagementPage() {
           }}
         />
       )}
-    </div>
+    </AdminPage>
   );
 }
 

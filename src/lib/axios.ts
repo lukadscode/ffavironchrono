@@ -109,15 +109,23 @@ api.interceptors.response.use(
 
       try {
         const stored = JSON.parse(localStorage.getItem("authTokens")!);
-        const refreshed = await refreshToken(stored.refresh_token);
+        const refreshedResponse = await refreshToken(stored.refresh_token);
+        const refreshed = refreshedResponse?.data ?? refreshedResponse;
 
-        localStorage.setItem("authTokens", JSON.stringify(refreshed));
+        const nextTokens = {
+          ...stored,
+          ...refreshed,
+          // Si l'API ne renvoie pas de refresh_token (compat), conserver l'ancien.
+          refresh_token: refreshed?.refresh_token ?? stored.refresh_token,
+        };
 
-        api.defaults.headers.common.Authorization = `Bearer ${refreshed.access_token}`;
-        onTokenRefreshed(refreshed.access_token);
+        localStorage.setItem("authTokens", JSON.stringify(nextTokens));
+
+        api.defaults.headers.common.Authorization = `Bearer ${nextTokens.access_token}`;
+        onTokenRefreshed(nextTokens.access_token);
         isRefreshing = false;
 
-        originalRequest.headers.Authorization = `Bearer ${refreshed.access_token}`;
+        originalRequest.headers.Authorization = `Bearer ${nextTokens.access_token}`;
         return api(originalRequest);
       } catch (refreshErr) {
         isRefreshing = false;

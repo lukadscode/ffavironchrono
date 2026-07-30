@@ -759,8 +759,8 @@ export default function Results() {
 
   return (
     <div className="space-y-4 sm:space-y-6">
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-        <h2 className="text-xl sm:text-2xl font-bold text-slate-900">Résultats</h2>
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 border-b pb-4 mb-6">
+        <h2 className="text-xl sm:text-2xl font-bold text-foreground">Résultats</h2>
         {hasActiveFilters && (
           <Button
             variant="outline"
@@ -1087,7 +1087,7 @@ export default function Results() {
                       return (
                         <div className="space-y-6">
                           <div className="mb-4 pb-2 border-b-2 border-primary">
-                            <h2 className="text-xl font-bold text-slate-900">
+                            <h2 className="text-xl font-bold text-foreground">
                               {seriesKey}
                             </h2>
                           </div>
@@ -1096,7 +1096,7 @@ export default function Results() {
                             return (
                               <div key={categoryLabel} className="space-y-2">
                                 <div className="flex items-center gap-2 pb-2 border-b-2 border-primary">
-                                  <h3 className="text-lg font-bold text-slate-900">
+                                  <h3 className="text-lg font-bold text-foreground">
                                     {categoryLabel}
                                   </h3>
                                   <span className="text-sm text-muted-foreground">
@@ -1351,7 +1351,7 @@ export default function Results() {
                           return (
                             <div key={categoryLabel} className="space-y-2">
                               <div className="flex items-center gap-2 pb-2 border-b-2 border-primary">
-                                <h3 className="text-lg font-bold text-slate-900">
+                                <h3 className="text-lg font-bold text-foreground">
                                   {categoryLabel}
                                 </h3>
                                 <span className="text-sm text-muted-foreground">

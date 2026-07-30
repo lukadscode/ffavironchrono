@@ -26,6 +26,7 @@ import {
 } from "@dnd-kit/core";
 import { CSS } from "@dnd-kit/utilities";
 import clsx from "clsx";
+import { AdminPage } from "@/components/layout/AdminPage";
 
 type Distance = {
   id: string;
@@ -1495,18 +1496,11 @@ export default function DistancesPage() {
     : null;
 
   return (
-    <div className="space-y-6 max-w-full overflow-hidden">
-      {/* Header amélioré */}
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <h1 className="text-3xl font-bold text-slate-900 flex items-center gap-3">
-            <Gauge className="w-8 h-8 text-blue-600" />
-            Gestion des distances
-          </h1>
-          <p className="text-muted-foreground mt-2">
-            Organisez les catégories et courses par distance avec drag & drop
-          </p>
-        </div>
+    <AdminPage
+      title="Gestion des distances"
+      description="Organisez les catégories et courses par distance avec drag & drop"
+      icon={Gauge}
+      actions={
         <div className="flex gap-3 items-center flex-wrap">
           <Button
             variant={viewMode === "categories" ? "default" : "outline"}
@@ -1576,11 +1570,12 @@ export default function DistancesPage() {
             </Button>
           )}
         </div>
-      </div>
+      }
+    >
 
       {/* Liste des distances améliorée */}
       <Card className="border-gray-200 shadow-sm">
-        <CardHeader className="bg-gradient-to-r from-slate-50 to-white border-b">
+        <CardHeader className="border-b">
           <CardTitle className="flex items-center gap-2 text-lg">
             <Gauge className="w-5 h-5 text-blue-600" />
             Liste des distances
@@ -1601,9 +1596,9 @@ export default function DistancesPage() {
                 return (
                   <Card 
                     key={distance.id} 
-                    className="text-center p-4 flex flex-col items-center hover:shadow-lg transition-all border-2 border-blue-100 hover:border-blue-300 bg-gradient-to-br from-blue-50 to-white group"
+                    className="text-center p-4 flex flex-col items-center hover:shadow-lg transition-all border-2 border-border hover:border-primary/40 bg-card group"
                   >
-                    <div className="w-16 h-16 rounded-full bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center text-white text-lg font-bold mb-2 shadow-md group-hover:scale-110 transition-transform">
+                    <div className="w-16 h-16 rounded-full bg-primary text-primary-foreground flex items-center justify-center text-lg font-bold mb-2 group-hover:scale-110 transition-transform">
                       {distance.label && distance.label.trim() !== "" 
                         ? distance.label 
                         : (distance.is_time_based && distance.duration_seconds
@@ -1657,8 +1652,8 @@ export default function DistancesPage() {
               {/* Carte pour ajout avec modale */}
               <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
                 <DialogTrigger asChild>
-                  <Card className="flex flex-col items-center justify-center text-center p-4 cursor-pointer hover:shadow-lg transition-all border-2 border-dashed border-gray-300 hover:border-blue-400 bg-gradient-to-br from-gray-50 to-white group min-h-[180px]">
-                    <div className="w-16 h-16 rounded-full bg-gradient-to-br from-blue-100 to-indigo-100 flex items-center justify-center mb-3 group-hover:scale-110 transition-transform">
+                  <Card className="flex flex-col items-center justify-center text-center p-4 cursor-pointer hover:shadow-lg transition-all border-2 border-dashed border-border hover:border-primary bg-card group min-h-[180px]">
+                    <div className="w-16 h-16 rounded-full bg-primary/10 text-primary flex items-center justify-center mb-3 group-hover:scale-110 transition-transform">
                       <PlusIcon className="w-8 h-8 text-blue-600" />
                     </div>
                     <div className="font-semibold text-blue-600 group-hover:text-blue-700">Ajouter une distance</div>
@@ -1986,6 +1981,6 @@ export default function DistancesPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
-    </div>
+    </AdminPage>
   );
 }

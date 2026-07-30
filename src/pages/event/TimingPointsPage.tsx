@@ -48,6 +48,8 @@ import {
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
+import { AdminPage } from "@/components/layout/AdminPage";
+import { StatCard } from "@/components/layout/StatCard";
 
 type TimingPoint = {
   id: string;
@@ -234,38 +236,104 @@ export default function TimingPointsPage() {
     );
   }
 
-  return (
-    <div className="space-y-6">
-      {/* Header avec statistiques */}
-      <div className="relative overflow-hidden rounded-xl bg-gradient-to-br from-orange-600 via-orange-700 to-orange-800 text-white p-6 shadow-lg">
-        <div className="absolute inset-0 bg-[url('data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNjAiIGhlaWdodD0iNjAiIHZpZXdCb3g9IjAgMCA2MCA2MCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48ZyBmaWxsPSJub25lIiBmaWxsLXJ1bGU9ImV2ZW5vZGQiPjxnIGZpbGw9IiNmZmYiIGZpbGwtb3BhY2l0eT0iMC4xIj48cGF0aCBkPSJNMzYgMzRWMjJIMjR2MTJIMTJ2MTJIMjR2MTJIMzZWMzR6Ii8+PC9nPjwvZz48L3N2Zz4=')] opacity-20"></div>
-        
-        <div className="relative z-10">
-          <h1 className="text-3xl font-bold mb-6 flex items-center gap-3">
-            <Timer className="w-8 h-8" />
-            Points de chronométrage
-          </h1>
-
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <div className="bg-white/10 backdrop-blur-md rounded-lg p-4 border border-white/20">
-              <div className="text-sm text-orange-100 mb-1">Total points</div>
-              <div className="text-3xl font-bold">{timingPoints.length}</div>
-            </div>
-            <div className="bg-white/10 backdrop-blur-md rounded-lg p-4 border border-white/20">
-              <div className="text-sm text-orange-100 mb-1">Distance totale</div>
-              <div className="text-3xl font-bold">{totalDistance}m</div>
-            </div>
-            <div className="bg-white/10 backdrop-blur-md rounded-lg p-4 border border-white/20">
-              <div className="text-sm text-orange-100 mb-1">Distance finale</div>
-              <div className="text-3xl font-bold">
-                {timingPoints.length > 0
-                  ? timingPoints[timingPoints.length - 1].distance_m
-                  : 0}
-                m
-              </div>
-            </div>
+  const addPointDialog = (
+    <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+      <DialogTrigger asChild>
+        <Button>
+          <Plus className="w-4 h-4 mr-2" />
+          Ajouter un point
+        </Button>
+      </DialogTrigger>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Ajouter un point de chronométrage</DialogTitle>
+          <DialogDescription>
+            Créez un nouveau point de timing pour cet événement
+          </DialogDescription>
+        </DialogHeader>
+        <div className="grid gap-4 py-4">
+          <div className="space-y-2">
+            <Label htmlFor="label">Nom du point *</Label>
+            <Input
+              id="label"
+              value={newLabel}
+              onChange={(e) => setNewLabel(e.target.value)}
+              placeholder="Ex: Départ, 500m, Arrivée"
+            />
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="order">Ordre *</Label>
+            <Input
+              id="order"
+              type="number"
+              min="1"
+              value={newOrder}
+              onChange={(e) => setNewOrder(e.target.value)}
+              placeholder="1"
+            />
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="distance">Distance (mètres) *</Label>
+            <Input
+              id="distance"
+              type="number"
+              min="0"
+              value={newDistance}
+              onChange={(e) => setNewDistance(e.target.value)}
+              placeholder="1000"
+            />
           </div>
         </div>
+        <DialogFooter>
+          <Button
+            variant="outline"
+            onClick={() => {
+              setDialogOpen(false);
+              setNewLabel("");
+              setNewOrder("");
+              setNewDistance("");
+            }}
+            disabled={isSaving}
+          >
+            Annuler
+          </Button>
+          <Button onClick={handleAdd} disabled={isSaving}>
+            {isSaving ? (
+              <>
+                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                Ajout...
+              </>
+            ) : (
+              <>
+                <Plus className="w-4 h-4 mr-2" />
+                Ajouter
+              </>
+            )}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+
+  return (
+    <AdminPage
+      title="Points de chronométrage"
+      description="Configurez les points de passage pour le chronométrage de l'événement"
+      icon={Timer}
+      actions={timingPoints.length > 0 ? addPointDialog : undefined}
+    >
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <StatCard label="Total points" value={timingPoints.length} icon={Hash} />
+        <StatCard label="Distance totale" value={`${totalDistance}m`} icon={MapPin} />
+        <StatCard
+          label="Distance finale"
+          value={
+            timingPoints.length > 0
+              ? `${timingPoints[timingPoints.length - 1].distance_m}m`
+              : "0m"
+          }
+          icon={Timer}
+        />
       </div>
 
       {/* Liste des points */}
@@ -279,167 +347,14 @@ export default function TimingPointsPage() {
             <p className="text-sm text-muted-foreground mb-4">
               Ajoutez votre premier point pour commencer
             </p>
-            <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-              <DialogTrigger asChild>
-                <Button>
-                  <Plus className="w-4 h-4 mr-2" />
-                  Ajouter un point
-                </Button>
-              </DialogTrigger>
-              <DialogContent>
-                <DialogHeader>
-                  <DialogTitle>Ajouter un point de chronométrage</DialogTitle>
-                  <DialogDescription>
-                    Créez un nouveau point de timing pour cet événement
-                  </DialogDescription>
-                </DialogHeader>
-                <div className="grid gap-4 py-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="label">Nom du point *</Label>
-                    <Input
-                      id="label"
-                      value={newLabel}
-                      onChange={(e) => setNewLabel(e.target.value)}
-                      placeholder="Ex: Départ, 500m, Arrivée"
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="order">Ordre *</Label>
-                    <Input
-                      id="order"
-                      type="number"
-                      min="1"
-                      value={newOrder}
-                      onChange={(e) => setNewOrder(e.target.value)}
-                      placeholder="1"
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="distance">Distance (mètres) *</Label>
-                    <Input
-                      id="distance"
-                      type="number"
-                      min="0"
-                      value={newDistance}
-                      onChange={(e) => setNewDistance(e.target.value)}
-                      placeholder="1000"
-                    />
-                  </div>
-                </div>
-                <DialogFooter>
-                  <Button
-                    variant="outline"
-                    onClick={() => {
-                      setDialogOpen(false);
-                      setNewLabel("");
-                      setNewOrder("");
-                      setNewDistance("");
-                    }}
-                    disabled={isSaving}
-                  >
-                    Annuler
-                  </Button>
-                  <Button onClick={handleAdd} disabled={isSaving}>
-                    {isSaving ? (
-                      <>
-                        <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                        Ajout...
-                      </>
-                    ) : (
-                      <>
-                        <Plus className="w-4 h-4 mr-2" />
-                        Ajouter
-                      </>
-                    )}
-                  </Button>
-                </DialogFooter>
-              </DialogContent>
-            </Dialog>
+            {addPointDialog}
           </CardContent>
         </Card>
       ) : (
         <>
-          <div className="flex items-center justify-between">
-            <p className="text-sm text-muted-foreground">
-              Glissez-déposez les cartes pour réorganiser l'ordre
-            </p>
-            <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-              <DialogTrigger asChild>
-                <Button>
-                  <Plus className="w-4 h-4 mr-2" />
-                  Ajouter un point
-                </Button>
-              </DialogTrigger>
-              <DialogContent>
-                <DialogHeader>
-                  <DialogTitle>Ajouter un point de chronométrage</DialogTitle>
-                  <DialogDescription>
-                    Créez un nouveau point de timing pour cet événement
-                  </DialogDescription>
-                </DialogHeader>
-                <div className="grid gap-4 py-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="label">Nom du point *</Label>
-                    <Input
-                      id="label"
-                      value={newLabel}
-                      onChange={(e) => setNewLabel(e.target.value)}
-                      placeholder="Ex: Départ, 500m, Arrivée"
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="order">Ordre *</Label>
-                    <Input
-                      id="order"
-                      type="number"
-                      min="1"
-                      value={newOrder}
-                      onChange={(e) => setNewOrder(e.target.value)}
-                      placeholder="1"
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="distance">Distance (mètres) *</Label>
-                    <Input
-                      id="distance"
-                      type="number"
-                      min="0"
-                      value={newDistance}
-                      onChange={(e) => setNewDistance(e.target.value)}
-                      placeholder="1000"
-                    />
-                  </div>
-                </div>
-                <DialogFooter>
-                  <Button
-                    variant="outline"
-                    onClick={() => {
-                      setDialogOpen(false);
-                      setNewLabel("");
-                      setNewOrder("");
-                      setNewDistance("");
-                    }}
-                    disabled={isSaving}
-                  >
-                    Annuler
-                  </Button>
-                  <Button onClick={handleAdd} disabled={isSaving}>
-                    {isSaving ? (
-                      <>
-                        <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                        Ajout...
-                      </>
-                    ) : (
-                      <>
-                        <Plus className="w-4 h-4 mr-2" />
-                        Ajouter
-                      </>
-                    )}
-                  </Button>
-                </DialogFooter>
-              </DialogContent>
-            </Dialog>
-          </div>
+          <p className="text-sm text-muted-foreground">
+            Glissez-déposez les cartes pour réorganiser l'ordre
+          </p>
 
           <DndContext
             sensors={sensors}
@@ -521,7 +436,7 @@ export default function TimingPointsPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
-    </div>
+    </AdminPage>
   );
 }
 

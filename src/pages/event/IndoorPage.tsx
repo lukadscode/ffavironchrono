@@ -4,7 +4,8 @@ import api from "@/lib/axios";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
-import { Download, Loader2, Upload } from "lucide-react";
+import { Download, Loader2, Upload, Activity } from "lucide-react";
+import { AdminPage } from "@/components/layout/AdminPage";
 import dayjs from "dayjs";
 import { initializeClubsCache, getClubShortCode } from "@/api/clubs";
 import { useAuth } from "@/context/AuthContext";
@@ -387,16 +388,17 @@ export default function IndoorPage() {
   }
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <h2 className="text-2xl font-bold text-slate-900">Indoor - Liste des courses</h2>
-        <div className="flex gap-2">
+    <AdminPage
+      title="Indoor - Liste des courses"
+      description="Gestion des courses indoor et export ErgRace"
+      icon={Activity}
+      actions={
+        <div className="flex flex-wrap gap-2">
           {isAdmin && (
             <>
               <Button
                 onClick={() => navigate(`/event/${eventId}/indoor/import-ergrace`)}
                 variant="outline"
-                className="bg-green-50 hover:bg-green-100 text-green-700 border-green-300"
               >
                 <Upload className="w-4 h-4 mr-2" />
                 Importer une course ErgRace
@@ -406,7 +408,6 @@ export default function IndoorPage() {
                   navigate(`/event/${eventId}/indoor/import-ergrace-results`)
                 }
                 variant="outline"
-                className="bg-purple-50 hover:bg-purple-100 text-purple-700 border-purple-300"
               >
                 <Upload className="w-4 h-4 mr-2" />
                 Importer course + résultats (JSON)
@@ -419,7 +420,6 @@ export default function IndoorPage() {
                     )
                   }
                   variant="outline"
-                  className="bg-amber-50 hover:bg-amber-100 text-amber-900 border-amber-400"
                 >
                   <Upload className="w-4 h-4 mr-2" />
                   Import JSON express (super admin)
@@ -431,7 +431,6 @@ export default function IndoorPage() {
             <Button
               onClick={downloadAllRac2Files}
               disabled={isDownloadingAll}
-              className="bg-blue-600 hover:bg-blue-700"
             >
               {isDownloadingAll ? (
                 <>
@@ -447,7 +446,8 @@ export default function IndoorPage() {
             </Button>
           )}
         </div>
-      </div>
+      }
+    >
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
         {races.length === 0 ? (
@@ -483,7 +483,7 @@ export default function IndoorPage() {
           ))
         )}
       </div>
-    </div>
+    </AdminPage>
   );
 }
 

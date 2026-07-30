@@ -10,6 +10,7 @@ import { useToast } from "@/hooks/use-toast";
 import * as XLSX from "xlsx";
 import dayjs from "dayjs";
 import { formatDuration } from "@/utils/formatTime";
+import { AdminPage } from "@/components/layout/AdminPage";
 
 // Types basés sur la documentation API
 interface Category {
@@ -318,10 +319,13 @@ export default function EventResultsPage() {
         setCategoryResults(normalizedResults);
       } catch (err: any) {
         console.error("Erreur récupération résultats:", err);
+        const status = err?.response?.status;
         setError(
-          err?.response?.data?.message || 
-          err?.message || 
-          "Impossible de charger les résultats"
+          status === 429
+            ? "Trop de requêtes vers l'API. Attendez une minute puis rechargez la page."
+            : err?.response?.data?.message ||
+              err?.message ||
+              "Impossible de charger les résultats"
         );
       } finally {
         setLoading(false);
@@ -537,14 +541,11 @@ export default function EventResultsPage() {
   }
 
   return (
-    <div className="container mx-auto px-4 py-8">
-      <div className="mb-6">
-        <h1 className="text-3xl font-bold mb-2">Résultats de l'événement</h1>
-        <p className="text-muted-foreground">
-          Consultez les résultats organisés par catégorie ou par club
-        </p>
-      </div>
-
+    <AdminPage
+      title="Résultats de l'événement"
+      description="Consultez les résultats organisés par catégorie ou par club"
+      icon={Trophy}
+    >
       <div className="mb-6">
         <div className="flex items-center justify-between gap-4 mb-4">
           <div className="flex gap-2 border-b bg-muted/30 flex-1">
@@ -1050,7 +1051,7 @@ export default function EventResultsPage() {
           )}
         </div>
       )}
-    </div>
+    </AdminPage>
   );
 }
 

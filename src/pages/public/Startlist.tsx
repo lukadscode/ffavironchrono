@@ -268,8 +268,8 @@ export default function Startlist() {
 
   return (
     <div className="space-y-4 sm:space-y-6">
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-        <h2 className="text-xl sm:text-2xl font-bold text-slate-900">Startlist des courses</h2>
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 border-b pb-4 mb-6">
+        <h2 className="text-xl sm:text-2xl font-bold text-foreground">Startlist des courses</h2>
         {hasActiveFilters && (
           <Button
             variant="outline"

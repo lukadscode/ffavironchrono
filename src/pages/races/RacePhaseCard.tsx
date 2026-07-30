@@ -38,6 +38,20 @@ interface RacePhaseCardProps {
   enableCrewDrag?: boolean;
 }
 
+function normalizeRace(race: any) {
+  const crews = (race.race_crews || race.crews || []).map((rc: any) => ({
+    ...rc,
+    crew: rc.crew
+      ? {
+          ...rc.crew,
+          category_label: rc.crew.category?.label || rc.crew.category_label,
+        }
+      : rc.crew,
+  }));
+
+  return { ...race, crews };
+}
+
 export default function RacePhaseCard({
   phase,
   onDelete,
@@ -52,19 +66,32 @@ export default function RacePhaseCard({
 
   const fetchRaces = async () => {
     try {
-      const res = await api.get(`/races/event/${eventId}`);
-      const racesForPhase = res.data.data.filter((r: any) => r.phase_id === phase.id);
+      let phaseRaces: any[] = [];
 
-      const racesWithCrews = await Promise.all(
-        racesForPhase.map(async (race: any) => {
-          const crewsRes = await api.get(`/race-crews/${race.id}`);
-          return { ...race, crews: crewsRes.data.data };
-        })
+      try {
+        const res = await api.get(`/race-phases/${phase.id}/races-with-crews`);
+        phaseRaces = (res.data.data || []).map(normalizeRace);
+      } catch (err: any) {
+        // Repli : endpoint agrégé indisponible → une seule requête event (déjà inclut race_crews)
+        if (err?.response?.status === 404) {
+          const res = await api.get(`/races/event/${eventId}`);
+          phaseRaces = (res.data.data || [])
+            .filter((r: any) => r.phase_id === phase.id)
+            .map(normalizeRace);
+        } else {
+          throw err;
+        }
+      }
+
+      setRaces(
+        phaseRaces.sort((a, b) => (a.race_number || 0) - (b.race_number || 0))
       );
-
-      setRaces(racesWithCrews);
-    } catch (err) {
-      toast({ title: "Erreur lors du chargement des courses", variant: "destructive" });
+    } catch (err: any) {
+      toast({
+        title: "Erreur lors du chargement des courses",
+        description: err?.response?.data?.message || "Impossible de charger les courses de cette phase.",
+        variant: "destructive",
+      });
     }
   };
 
@@ -89,7 +116,10 @@ export default function RacePhaseCard({
 
   // Grouper par catégorie
   const groupedByCategory = races.reduce((acc: Record<string, any[]>, race) => {
-    const label = race.crews[0]?.crew?.category_label || "Sans catégorie";
+    const label =
+      race.crews[0]?.crew?.category?.label ||
+      race.crews[0]?.crew?.category_label ||
+      "Sans catégorie";
     if (!acc[label]) acc[label] = [];
     acc[label].push(race);
     return acc;
@@ -99,18 +129,18 @@ export default function RacePhaseCard({
   const totalCrews = races.reduce((sum, race) => sum + (race.crews?.length || 0), 0);
 
   return (
-    <Card className="min-w-[320px] w-full rounded-xl shadow-md hover:shadow-lg transition-shadow flex flex-col border-gray-200 bg-white">
-      <CardHeader className="border-b bg-gradient-to-r from-slate-50 to-white px-4 py-3 flex items-center justify-between">
+    <Card className="min-w-[320px] w-full rounded-xl shadow-md hover:shadow-lg transition-shadow flex flex-col border-border bg-card">
+      <CardHeader className="border-b border-border bg-muted/30 px-4 py-3 flex items-center justify-between">
         <div className="flex-1 min-w-0">
-          <CardTitle className="text-base font-semibold text-slate-900 truncate">
+          <CardTitle className="text-base font-semibold text-foreground truncate">
             {phase.name}
           </CardTitle>
           <div className="flex items-center gap-3 mt-1.5">
-            <span className="text-xs text-slate-600 flex items-center gap-1">
+            <span className="text-xs text-muted-foreground flex items-center gap-1">
               <Trophy className="w-3 h-3" />
               {totalRaces} {totalRaces === 1 ? "course" : "courses"}
             </span>
-            <span className="text-xs text-slate-600 flex items-center gap-1">
+            <span className="text-xs text-muted-foreground flex items-center gap-1">
               <Users className="w-3 h-3" />
               {totalCrews} {totalCrews === 1 ? "équipage" : "équipages"}
             </span>

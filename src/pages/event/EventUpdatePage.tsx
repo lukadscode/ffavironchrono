@@ -7,6 +7,8 @@ import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Loader2, RefreshCw, ArrowLeft, CheckCircle2, XCircle, Info, Users, Ship, Flag, MapPin, FileText } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
+import { AdminPage } from "@/components/layout/AdminPage";
+import { StatCard } from "@/components/layout/StatCard";
 
 interface UpdateResult {
   event_id: string;
@@ -154,26 +156,21 @@ export default function EventUpdatePage() {
   }
 
   return (
-    <div className="space-y-6">
-      {/* Header */}
-      <div className="flex items-center gap-4">
+    <AdminPage
+      title="Mise à jour depuis FFAviron"
+      description="Synchronisez votre événement avec les dernières données de l'API FFAviron"
+      icon={RefreshCw}
+      actions={
         <Button
-          variant="ghost"
-          size="icon"
+          variant="outline"
+          size="sm"
           onClick={() => navigate(`/event/${eventId}`)}
         >
-          <ArrowLeft className="w-5 h-5" />
+          <ArrowLeft className="w-4 h-4 mr-2" />
+          Retour
         </Button>
-        <div>
-          <h1 className="text-3xl font-bold flex items-center gap-3">
-            <RefreshCw className="w-8 h-8" />
-            Mise à jour depuis FFAviron
-          </h1>
-          <p className="text-muted-foreground mt-1">
-            Synchronisez votre événement avec les dernières données de l'API FFAviron
-          </p>
-        </div>
-      </div>
+      }
+    >
 
       {/* Configuration */}
       <Card>
@@ -239,32 +236,24 @@ export default function EventUpdatePage() {
             {/* Statistiques globales */}
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
               <StatCard
-                icon={<Flag className="w-5 h-5" />}
                 label="Nouvelles catégories"
                 value={updateResult.new_categories_count}
-                color="text-blue-600"
-                bgColor="bg-blue-100"
+                icon={Flag}
               />
               <StatCard
-                icon={<Ship className="w-5 h-5" />}
                 label="Nouveaux équipages"
                 value={updateResult.new_crews_count}
-                color="text-indigo-600"
-                bgColor="bg-indigo-100"
+                icon={Ship}
               />
               <StatCard
-                icon={<Users className="w-5 h-5" />}
                 label="Nouveaux participants"
                 value={updateResult.new_participants_count}
-                color="text-green-600"
-                bgColor="bg-green-100"
+                icon={Users}
               />
               <StatCard
-                icon={<MapPin className="w-5 h-5" />}
                 label="Nouvelles distances"
                 value={updateResult.new_distances_count}
-                color="text-purple-600"
-                bgColor="bg-purple-100"
+                icon={MapPin}
               />
             </div>
 
@@ -405,35 +394,6 @@ export default function EventUpdatePage() {
           </CardContent>
         </Card>
       )}
-    </div>
+    </AdminPage>
   );
 }
-
-function StatCard({
-  icon,
-  label,
-  value,
-  color,
-  bgColor,
-}: {
-  icon: React.ReactNode;
-  label: string;
-  value: number;
-  color?: string;
-  bgColor?: string;
-}) {
-  return (
-    <div className={`p-4 rounded-lg border-2 ${bgColor || "bg-gray-100"} ${color || "text-gray-600"}`}>
-      <div className="flex items-center gap-3">
-        <div className={`p-2 rounded ${bgColor || "bg-gray-200"}`}>
-          {icon}
-        </div>
-        <div>
-          <div className="text-2xl font-bold">{value}</div>
-          <div className="text-xs text-muted-foreground">{label}</div>
-        </div>
-      </div>
-    </div>
-  );
-}
-

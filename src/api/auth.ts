@@ -43,8 +43,10 @@ export const fetchUserProfile = async () => {
 };
 
 export async function refreshToken(refresh_token: string) {
-  const res = await api.post("/auth/refresh", { refresh_token });
-  return res.data; // doit renvoyer un nouvel access_token
+  // API: POST /auth/refresh-token { refresh_token }
+  // Réponse: { status: "success", data: { access_token, refresh_token? } }
+  const res = await api.post("/auth/refresh-token", { refresh_token });
+  return res.data;
 }
 
 export async function verifyEmail(token: string) {

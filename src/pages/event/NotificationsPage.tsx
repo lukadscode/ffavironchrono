@@ -45,6 +45,7 @@ import {
 } from "lucide-react";
 import dayjs from "dayjs";
 import type { Notification } from "@/components/notifications/NotificationDisplay";
+import { AdminPage } from "@/components/layout/AdminPage";
 
 interface Race {
   id: string;
@@ -242,158 +243,157 @@ export default function NotificationsPage() {
     }
   };
 
-  return (
-    <div className="space-y-6">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={() => navigate(`/event/${eventId}`)}
-          >
-            <ArrowLeft className="w-5 h-5" />
-          </Button>
-          <div>
-            <h1 className="text-3xl font-bold flex items-center gap-3">
-              <Bell className="w-8 h-8" />
-              Gestion des notifications
-            </h1>
-            <p className="text-muted-foreground mt-1">
-              Créez et gérez les notifications pour cet événement
+  const notificationDialog = (
+    <Dialog
+      open={dialogOpen}
+      onOpenChange={(open) => {
+        setDialogOpen(open);
+        if (!open) resetForm();
+      }}
+    >
+      <DialogTrigger asChild>
+        <Button>
+          <Plus className="w-4 h-4 mr-2" />
+          Nouvelle notification
+        </Button>
+      </DialogTrigger>
+      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle>
+            {editingNotification ? "Modifier la notification" : "Nouvelle notification"}
+          </DialogTitle>
+        </DialogHeader>
+        <div className="space-y-4">
+          <div className="space-y-2">
+            <Label>Course (optionnel)</Label>
+            <Select
+              value={form.race_id || "__none__"}
+              onValueChange={(value) => setForm({ ...form, race_id: value === "__none__" ? "__none__" : value })}
+            >
+              <SelectTrigger>
+                <SelectValue placeholder="Toutes les courses (notification générale)" />
+              </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="__none__">Toutes les courses (notification générale)</SelectItem>
+                  {races.map((race) => (
+                    <SelectItem key={race.id} value={race.id}>
+                      Course {race.race_number} - {race.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+            </Select>
+            <p className="text-xs text-muted-foreground">
+              Sélectionner "Toutes les courses" pour une notification générale à tout l'événement
             </p>
           </div>
-        </div>
-        <Dialog
-          open={dialogOpen}
-          onOpenChange={(open) => {
-            setDialogOpen(open);
-            if (!open) resetForm();
-          }}
-        >
-          <DialogTrigger asChild>
-            <Button>
-              <Plus className="w-4 h-4 mr-2" />
-              Nouvelle notification
+
+          <div className="space-y-2">
+            <Label>Message *</Label>
+            <Textarea
+              value={form.message}
+              onChange={(e) => setForm({ ...form, message: e.target.value })}
+              placeholder="Entrez le message de la notification..."
+              rows={4}
+              maxLength={1000}
+            />
+            <p className="text-xs text-muted-foreground">
+              {form.message.length}/1000 caractères
+            </p>
+          </div>
+
+          <div className="space-y-2">
+            <Label>Importance</Label>
+            <Select
+              value={form.importance}
+              onValueChange={(value: any) => setForm({ ...form, importance: value })}
+            >
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="info">Information (bleu)</SelectItem>
+                <SelectItem value="success">Succès (vert)</SelectItem>
+                <SelectItem value="warning">Avertissement (orange)</SelectItem>
+                <SelectItem value="error">Erreur (rouge)</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <input
+              type="checkbox"
+              id="is_active"
+              checked={form.is_active}
+              onChange={(e) => setForm({ ...form, is_active: e.target.checked })}
+              className="rounded"
+            />
+            <Label htmlFor="is_active" className="cursor-pointer">
+              Notification active
+            </Label>
+          </div>
+
+          <div className="space-y-2">
+            <Label>Date de début (optionnel)</Label>
+            <Input
+              type="datetime-local"
+              value={form.start_date}
+              onChange={(e) => setForm({ ...form, start_date: e.target.value })}
+            />
+            <p className="text-xs text-muted-foreground">
+              Si vide, la notification est immédiate
+            </p>
+          </div>
+
+          <div className="space-y-2">
+            <Label>Date de fin (optionnel)</Label>
+            <Input
+              type="datetime-local"
+              value={form.end_date}
+              onChange={(e) => setForm({ ...form, end_date: e.target.value })}
+            />
+            <p className="text-xs text-muted-foreground">
+              Si vide, la notification n'expire pas
+            </p>
+          </div>
+
+          <div className="flex justify-end gap-2 pt-4">
+            <Button
+              variant="outline"
+              onClick={() => {
+                setDialogOpen(false);
+                resetForm();
+              }}
+            >
+              Annuler
             </Button>
-          </DialogTrigger>
-          <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
-            <DialogHeader>
-              <DialogTitle>
-                {editingNotification ? "Modifier la notification" : "Nouvelle notification"}
-              </DialogTitle>
-            </DialogHeader>
-            <div className="space-y-4">
-              <div className="space-y-2">
-                <Label>Course (optionnel)</Label>
-                <Select
-                  value={form.race_id || "__none__"}
-                  onValueChange={(value) => setForm({ ...form, race_id: value === "__none__" ? "__none__" : value })}
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Toutes les courses (notification générale)" />
-                  </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="__none__">Toutes les courses (notification générale)</SelectItem>
-                      {races.map((race) => (
-                        <SelectItem key={race.id} value={race.id}>
-                          Course {race.race_number} - {race.name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                </Select>
-                <p className="text-xs text-muted-foreground">
-                  Sélectionner "Toutes les courses" pour une notification générale à tout l'événement
-                </p>
-              </div>
+            <Button onClick={handleCreate}>
+              {editingNotification ? "Modifier" : "Créer"}
+            </Button>
+          </div>
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
 
-              <div className="space-y-2">
-                <Label>Message *</Label>
-                <Textarea
-                  value={form.message}
-                  onChange={(e) => setForm({ ...form, message: e.target.value })}
-                  placeholder="Entrez le message de la notification..."
-                  rows={4}
-                  maxLength={1000}
-                />
-                <p className="text-xs text-muted-foreground">
-                  {form.message.length}/1000 caractères
-                </p>
-              </div>
-
-              <div className="space-y-2">
-                <Label>Importance</Label>
-                <Select
-                  value={form.importance}
-                  onValueChange={(value: any) => setForm({ ...form, importance: value })}
-                >
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="info">Information (bleu)</SelectItem>
-                    <SelectItem value="success">Succès (vert)</SelectItem>
-                    <SelectItem value="warning">Avertissement (orange)</SelectItem>
-                    <SelectItem value="error">Erreur (rouge)</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-
-              <div className="flex items-center gap-2">
-                <input
-                  type="checkbox"
-                  id="is_active"
-                  checked={form.is_active}
-                  onChange={(e) => setForm({ ...form, is_active: e.target.checked })}
-                  className="rounded"
-                />
-                <Label htmlFor="is_active" className="cursor-pointer">
-                  Notification active
-                </Label>
-              </div>
-
-              <div className="space-y-2">
-                <Label>Date de début (optionnel)</Label>
-                <Input
-                  type="datetime-local"
-                  value={form.start_date}
-                  onChange={(e) => setForm({ ...form, start_date: e.target.value })}
-                />
-                <p className="text-xs text-muted-foreground">
-                  Si vide, la notification est immédiate
-                </p>
-              </div>
-
-              <div className="space-y-2">
-                <Label>Date de fin (optionnel)</Label>
-                <Input
-                  type="datetime-local"
-                  value={form.end_date}
-                  onChange={(e) => setForm({ ...form, end_date: e.target.value })}
-                />
-                <p className="text-xs text-muted-foreground">
-                  Si vide, la notification n'expire pas
-                </p>
-              </div>
-
-              <div className="flex justify-end gap-2 pt-4">
-                <Button
-                  variant="outline"
-                  onClick={() => {
-                    setDialogOpen(false);
-                    resetForm();
-                  }}
-                >
-                  Annuler
-                </Button>
-                <Button onClick={handleCreate}>
-                  {editingNotification ? "Modifier" : "Créer"}
-                </Button>
-              </div>
-            </div>
-          </DialogContent>
-        </Dialog>
-      </div>
+  return (
+    <AdminPage
+      title="Gestion des notifications"
+      description="Créez et gérez les notifications pour cet événement"
+      icon={Bell}
+      actions={
+        <div className="flex flex-wrap items-center gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => navigate(`/event/${eventId}`)}
+          >
+            <ArrowLeft className="w-4 h-4 mr-2" />
+            Retour
+          </Button>
+          {notificationDialog}
+        </div>
+      }
+    >
 
       {/* Liste des notifications */}
       <Card>
@@ -501,7 +501,7 @@ export default function NotificationsPage() {
           )}
         </CardContent>
       </Card>
-    </div>
+    </AdminPage>
   );
 }
 

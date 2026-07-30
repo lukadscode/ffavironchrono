@@ -1,6 +1,6 @@
 import { Button } from "@/components/ui/button";
-import dayjs from "dayjs";
 import { formatTimestamp } from "@/utils/formatTime";
+import api from "@/lib/axios";
 
 type Props = {
   hiddenTimings: {
@@ -15,11 +15,7 @@ type Props = {
 export default function DebugTimings({ hiddenTimings, setTimings, toast }: Props) {
   const restoreTiming = async (id: string) => {
     try {
-      await fetch(`/api/timings/${id}`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ status: "pending" }),
-      });
+      await api.put(`/timings/${id}`, { status: "pending" });
 
       setTimings((prev) =>
         prev.map((t) => (t.id === id ? { ...t, status: "pending" } : t))
@@ -51,7 +47,7 @@ export default function DebugTimings({ hiddenTimings, setTimings, toast }: Props
               <td className="p-2">{timing.status}</td>
               <td className="p-2 text-center">
                 <Button size="sm" variant="outline" onClick={() => restoreTiming(timing.id)}>
-                  🔁 Restaurer
+                  Restaurer
                 </Button>
               </td>
             </tr>

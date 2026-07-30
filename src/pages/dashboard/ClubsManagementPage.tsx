@@ -45,6 +45,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
+import { AdminPage } from "@/components/layout/AdminPage";
 
 type Club = {
   id: string;
@@ -351,19 +352,12 @@ export default function ClubsManagementPage() {
   }
 
   return (
-    <div className="space-y-6">
-      {/* Header */}
-      <div className="flex items-center justify-between flex-wrap gap-4">
-        <div>
-          <h1 className="text-3xl font-bold flex items-center gap-2">
-            <Building2 className="w-8 h-8" />
-            Gestion des clubs
-          </h1>
-          <p className="text-muted-foreground mt-1">
-            Synchronisez et gérez les clubs depuis l'API FFAviron
-          </p>
-        </div>
-        <div className="flex gap-2 flex-wrap">
+    <AdminPage
+      title="Gestion des clubs"
+      description="Synchronisez et gérez les clubs depuis l'API FFAviron."
+      icon={Building2}
+      actions={
+        <>
           <Button onClick={handleSync} disabled={syncing} variant="outline">
             {syncing ? (
               <>
@@ -385,9 +379,9 @@ export default function ClubsManagementPage() {
             <Download className="w-4 h-4 mr-2" />
             Exporter
           </Button>
-        </div>
-      </div>
-
+        </>
+      }
+    >
       {/* Résultats de synchronisation */}
       {syncResult && (
         <Card className="border-green-200 bg-green-50">
@@ -709,7 +703,7 @@ export default function ClubsManagementPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
-    </div>
+    </AdminPage>
   );
 }
 

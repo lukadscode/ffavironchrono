@@ -42,6 +42,7 @@ import {
   MapPin,
 } from "lucide-react";
 import dayjs from "dayjs";
+import { AdminPage } from "@/components/layout/AdminPage";
 
 type UserDetail = {
   id: string;
@@ -386,27 +387,20 @@ export default function UserDetailPage() {
   }
 
   return (
-    <div className="space-y-4 sm:space-y-6">
-      {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-        <div className="flex items-center gap-2 sm:gap-4">
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={() => navigate("/dashboard/users-management")}
-          >
-            <ArrowLeft className="w-4 h-4" />
-          </Button>
-          <div>
-            <h2 className="text-xl sm:text-2xl font-semibold mb-1 sm:mb-2 flex items-center gap-2">
-              <User className="w-5 h-5 sm:w-6 sm:h-6" />
-              {user.name}
-            </h2>
-            <p className="text-sm sm:text-base text-muted-foreground">{user.email}</p>
-          </div>
-        </div>
-      </div>
-
+    <AdminPage
+      title={user.name}
+      description={user.email}
+      icon={User}
+      actions={
+        <Button
+          variant="outline"
+          onClick={() => navigate("/dashboard/users-management")}
+        >
+          <ArrowLeft className="w-4 h-4 mr-2" />
+          Retour
+        </Button>
+      }
+    >
       {/* Informations utilisateur */}
       <Card>
         <CardHeader>
@@ -685,7 +679,7 @@ export default function UserDetailPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
-    </div>
+    </AdminPage>
   );
 }
 

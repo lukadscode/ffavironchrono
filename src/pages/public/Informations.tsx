@@ -41,7 +41,7 @@ export default function Informations() {
     return (
       <div className="flex items-center justify-center py-12">
         <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto mb-4"></div>
           <p className="text-lg text-muted-foreground">Chargement des informations...</p>
         </div>
       </div>
@@ -54,11 +54,15 @@ export default function Informations() {
 
   return (
     <div className="space-y-6">
-      {/* Informations de l'événement */}
+      <h2 className="text-xl sm:text-2xl font-bold text-foreground border-b pb-4 mb-6 flex items-center gap-2">
+        <InfoIcon className="w-5 h-5 text-primary" />
+        Informations
+      </h2>
+
       <Card>
         <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <InfoIcon className="w-5 h-5" />
+          <CardTitle className="flex items-center gap-2 text-foreground">
+            <InfoIcon className="w-5 h-5 text-primary" />
             Informations de l'événement
           </CardTitle>
         </CardHeader>
@@ -72,7 +76,7 @@ export default function Informations() {
 
           <div className="grid md:grid-cols-2 gap-6">
             <div className="flex items-start gap-3">
-              <Calendar className="w-5 h-5 text-blue-600 mt-1 flex-shrink-0" />
+              <Calendar className="w-5 h-5 text-primary mt-1 flex-shrink-0" />
               <div>
                 <h3 className="font-semibold mb-1">Dates</h3>
                 <p className="text-muted-foreground">
@@ -93,7 +97,7 @@ export default function Informations() {
             </div>
 
             <div className="flex items-start gap-3">
-              <MapPin className="w-5 h-5 text-blue-600 mt-1 flex-shrink-0" />
+              <MapPin className="w-5 h-5 text-primary mt-1 flex-shrink-0" />
               <div>
                 <h3 className="font-semibold mb-1">Lieu</h3>
                 <p className="text-muted-foreground">{event?.location}</p>
@@ -102,7 +106,7 @@ export default function Informations() {
 
             {event?.race_type && (
               <div className="flex items-start gap-3">
-                <Trophy className="w-5 h-5 text-blue-600 mt-1 flex-shrink-0" />
+                <Trophy className="w-5 h-5 text-primary mt-1 flex-shrink-0" />
                 <div>
                   <h3 className="font-semibold mb-1">Type de course</h3>
                   <p className="text-muted-foreground">{event.race_type}</p>

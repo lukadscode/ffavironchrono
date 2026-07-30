@@ -11,12 +11,23 @@ import {
   SelectItem,
   SelectContent,
 } from "@/components/ui/select";
+import { Badge } from "@/components/ui/badge";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
 import dayjs from "dayjs";
 import TimingTable from "@/components/timing/TimingTable";
+import TimeTrialPanel from "@/components/timing/TimeTrialPanel";
+import TimeBasedCountdownPanel from "@/components/timing/TimeBasedCountdownPanel";
+import RelayLegBadge from "@/components/timing/RelayLegBadge";
+import ReconciliationPanel from "@/components/timing/ReconciliationPanel";
 import DebugTimings from "@/components/timing/DebugTimings";
+import { AdminPage } from "@/components/layout/AdminPage";
+import { useOfflineTimingQueue } from "@/hooks/useOfflineTimingQueue";
+import { useAuth } from "@/context/AuthContext";
+import { eventHasTimeTrialRaces, getNextTimeTrialRace } from "@/utils/timeTrial";
+import { getDeviceId } from "@/utils/deviceId";
 import { formatTimestamp } from "@/utils/formatTime";
+import { gunStart, falseStart } from "@/api/races";
 import {
   Timer,
   Clock,
@@ -31,6 +42,8 @@ import {
   Loader2,
   ChevronRight,
   ChevronLeft,
+  WifiOff,
+  CloudUpload,
 } from "lucide-react";
 
 type Race = {
@@ -38,9 +51,20 @@ type Race = {
   name: string;
   race_number: number;
   status: string;
+  start_time?: string | null;
+  race_type?: string;
+  Distance?: {
+    meters?: number | null;
+    is_relay?: boolean;
+    relay_count?: number | null;
+    is_time_based?: boolean;
+    duration_seconds?: number | null;
+    label?: string | null;
+  };
   RaceCrews: {
     id: string;
     lane: number;
+    status?: string;
     Crew: {
       id: string;
       club_name: string;
@@ -120,6 +144,8 @@ const getStatusBadge = (status: string) => {
 export default function TimingPage() {
   const { timingPointId, eventId } = useParams();
   const { toast } = useToast();
+  const { user } = useAuth();
+  const canUseDebug = import.meta.env.DEV || user?.role === "superadmin";
 
   const [races, setRaces] = useState<Race[]>([]);
   const [selectedRaceId, setSelectedRaceId] = useState<string | null>(null);
@@ -135,6 +161,18 @@ export default function TimingPage() {
   const [currentTimingPoint, setCurrentTimingPoint] =
     useState<TimingPoint | null>(null);
   const [isManualTimingLoading, setIsManualTimingLoading] = useState(false);
+  const [isRaceActionLoading, setIsRaceActionLoading] = useState(false);
+
+  const { isOnline, queueLength, isFlushing, postTiming } = useOfflineTimingQueue(
+    timingPointId,
+    (data) => {
+      const timing = data as Timing;
+      setTimings((prev) => {
+        if (prev.some((t) => t.id === timing.id)) return prev;
+        return [...prev, timing];
+      });
+    }
+  );
 
   const socketRef = useRef<any>(null);
 
@@ -227,10 +265,21 @@ export default function TimingPage() {
       }
     );
 
+    socket.on("gunStart", () => {
+      fetchRaces();
+    });
+
+    socket.on("falseStart", () => {
+      fetchRaces();
+      fetchTimings();
+    });
+
     fetchTimings();
     fetchAssignments();
 
     return () => {
+      socket.off("gunStart");
+      socket.off("falseStart");
       socket.emit("leaveRoom", { event_id: eventId, race_id: selectedRaceId });
     };
   }, [selectedRaceId, timingPointId]);
@@ -239,6 +288,15 @@ export default function TimingPage() {
     fetchRaces();
     syncServerTime();
     fetchTimingPoints();
+
+    const interval = setInterval(syncServerTime, 60_000);
+    const onOnline = () => syncServerTime();
+    window.addEventListener("online", onOnline);
+
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener("online", onOnline);
+    };
   }, []);
 
   useEffect(() => {
@@ -278,9 +336,12 @@ export default function TimingPage() {
       const res = await api.get(`/races/event/${eventId}`);
       const mapped = res.data.data.map((race: any) => ({
         ...race,
+        start_time: race.start_time,
+        race_type: race.race_type,
         RaceCrews: (race.race_crews || []).map((rc: any) => ({
           id: rc.id,
           lane: rc.lane,
+          status: rc.status || "registered",
           Crew: rc.crew
             ? {
                 id: rc.crew.id,
@@ -295,9 +356,15 @@ export default function TimingPage() {
       setRaces(sorted);
 
       if (!selectedRaceId && sorted.length > 0) {
-        const autoSelectRace = sorted.find(
-          (r: Race) => r.status === "in_progress" || r.status === "not_started"
-        );
+        const nowMs = Date.now() + serverTimeOffset;
+        const ttNext = eventHasTimeTrialRaces(sorted)
+          ? getNextTimeTrialRace(sorted, nowMs)
+          : null;
+        const autoSelectRace =
+          ttNext ||
+          sorted.find(
+            (r: Race) => r.status === "in_progress" || r.status === "not_started"
+          );
         if (autoSelectRace) {
           setSelectedRaceId(autoSelectRace.id);
         }
@@ -360,10 +427,16 @@ export default function TimingPage() {
 
   const syncServerTime = async () => {
     try {
-      const res = await api.get("/server-time");
+      const clientTime = new Date().toISOString();
+      const res = await api.get("/server-time-offset", {
+        params: { client_time: clientTime },
+      });
       const serverTime = new Date(res.data.server_time).getTime();
-      const localTime = Date.now();
-      setServerTimeOffset(serverTime - localTime);
+      const offset =
+        typeof res.data.offset_ms === "number"
+          ? res.data.offset_ms
+          : serverTime - Date.now();
+      setServerTimeOffset(offset);
     } catch {
       toast({
         title: "Erreur",
@@ -373,26 +446,83 @@ export default function TimingPage() {
     }
   };
 
+  const handleGunStart = async (raceId?: string, startTime?: string) => {
+    const targetId = raceId || selectedRaceId;
+    if (!targetId) return;
+    setIsRaceActionLoading(true);
+    try {
+      const gunTime =
+        startTime || new Date(Date.now() + serverTimeOffset).toISOString();
+      await gunStart(targetId, gunTime);
+      if (targetId !== selectedRaceId) {
+        setSelectedRaceId(targetId);
+      }
+      await fetchRaces();
+      toast({
+        title: "Départ lancé",
+        description: "La course est passée en cours",
+      });
+    } catch {
+      toast({
+        title: "Erreur",
+        description: "Impossible de lancer le départ",
+        variant: "destructive",
+      });
+    } finally {
+      setIsRaceActionLoading(false);
+    }
+  };
+
+  const handleFalseStart = async () => {
+    if (!selectedRaceId) return;
+    setIsRaceActionLoading(true);
+    try {
+      await falseStart(selectedRaceId);
+      await fetchRaces();
+      await fetchTimings();
+      toast({
+        title: "Faux départ",
+        description: "La course a été remise à zéro",
+      });
+    } catch {
+      toast({
+        title: "Erreur",
+        description: "Impossible d'annuler le départ",
+        variant: "destructive",
+      });
+    } finally {
+      setIsRaceActionLoading(false);
+    }
+  };
+
   const handleManualTiming = async () => {
     setIsManualTimingLoading(true);
     const timestamp = new Date(Date.now() + serverTimeOffset).toISOString();
     try {
-      const res = await api.post("/timings", {
-        timing_point_id: timingPointId,
+      const result = await postTiming({
+        timing_point_id: timingPointId!,
         timestamp,
         manual_entry: true,
-        status: "pending",
+        device_id: getDeviceId(),
       });
-      setTimings((prev) => {
-        const exists = prev.some((t) => t.id === res.data.data.id);
-        if (exists) return prev;
-        return [...prev, res.data.data];
-      });
-      toast({
-        title: "Timing enregistré",
-        description: `Timing manuel ajouté à ${formatTimestamp(timestamp)}`,
-      });
-    } catch (err: any) {
+
+      if (result.ok) {
+        setTimings((prev) => {
+          const exists = prev.some((t) => t.id === result.data.id);
+          if (exists) return prev;
+          return [...prev, result.data];
+        });
+        toast({
+          title: "Timing enregistré",
+          description: `Timing manuel ajouté à ${formatTimestamp(timestamp)}`,
+        });
+      } else {
+        toast({
+          title: "Hors ligne — mis en file d'attente",
+          description: "L'impulsion sera envoyée dès la reconnexion",
+        });
+      }
+    } catch (err: unknown) {
       console.error("Erreur ajout timing:", err);
       toast({
         title: "Erreur",
@@ -515,55 +645,95 @@ export default function TimingPage() {
     }
   };
 
+  const isTimeTrialMode = useMemo(
+    () => eventHasTimeTrialRaces(races),
+    [races]
+  );
+
+  const selectedRaceDistance = selectedRace?.Distance;
+  const isTimeBasedRace =
+    !!selectedRaceDistance?.is_time_based &&
+    !!selectedRaceDistance.duration_seconds;
+  const isRelayRace = !!selectedRaceDistance?.is_relay;
+
+  const pointLabel = currentTimingPoint
+    ? `${currentTimingPoint.label} (${currentTimingPoint.distance_m}m)`
+    : "Chronométrage";
+
   return (
-    <div className="space-y-4 sm:space-y-6 max-w-7xl mx-auto p-4 sm:p-6">
-      {/* Header compact */}
-      <div className="relative overflow-hidden rounded-xl bg-gradient-to-br from-emerald-600 via-emerald-700 to-emerald-800 text-white p-4 sm:p-6 shadow-lg">
-        <div className="absolute inset-0 bg-[url('data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNjAiIGhlaWdodD0iNjAiIHZpZXdCb3g9IjAgMCA2MCA2MCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48ZyBmaWxsPSJub25lIiBmaWxsLXJ1bGU9ImV2ZW5vZGQiPjxnIGZpbGw9IiNmZmYiIGZpbGwtb3BhY2l0eT0iMC4xIj48cGF0aCBkPSJNMzYgMzRWMjJIMjR2MTJIMTJ2MTJIMjR2MTJIMzZWMzR6Ii8+PC9nPjwvZz48L3N2Zz4=')] opacity-20"></div>
-        <div className="relative z-10 flex items-center justify-between">
-          <div className="flex items-center gap-4">
-            <Timer className="w-6 h-6" />
-            <div>
-              <h1 className="text-xl font-bold mb-1">
-                {currentTimingPoint ? currentTimingPoint.label : "Chronométrage"}
-              </h1>
-              {currentTimingPoint && (
-                <div className="flex items-center gap-2 text-sm text-emerald-100">
-                  <MapPin className="w-3.5 h-3.5" />
-                  <span>{currentTimingPoint.distance_m}m</span>
-                  {isStartPoint && (
-                    <span className="ml-2 px-2 py-0.5 rounded-full text-xs font-bold bg-green-500 text-white">
-                      DÉPART
-                    </span>
-                  )}
-                  {isFinishPoint && (
-                    <span className="ml-2 px-2 py-0.5 rounded-full text-xs font-bold bg-red-500 text-white">
-                      ARRIVÉE
-                    </span>
-                  )}
-                </div>
-              )}
-            </div>
-          </div>
-          <div className="flex items-center gap-4">
-            {selectedRace && (
-              <div className="bg-white/20 backdrop-blur-sm rounded-lg px-3 py-2 border border-white/30">
-                <div className="text-xs text-emerald-100 mb-0.5">Progression</div>
-                <div className="text-lg font-bold">
-                  {stats.finishedCrews}/{stats.totalCrews}
-                </div>
-              </div>
+    <AdminPage
+      title={pointLabel}
+      description={
+        isStartPoint
+          ? "Point de départ"
+          : isFinishPoint
+            ? "Point d'arrivée"
+            : "Point intermédiaire"
+      }
+      icon={Timer}
+      actions={
+        <div className="flex flex-wrap items-center gap-2">
+            {!isOnline && (
+              <Badge variant="destructive" className="gap-1">
+                <WifiOff className="h-3.5 w-3.5" />
+                Hors ligne
+              </Badge>
             )}
-            <div className="flex items-center gap-2 bg-white/20 backdrop-blur-sm rounded-lg px-3 py-2 border border-white/30">
-              <Users className="w-4 h-4" />
-              <div>
-                <div className="text-xs text-emerald-100">Postes</div>
-                <div className="text-lg font-bold">{viewerCount}</div>
-              </div>
-            </div>
+            {queueLength > 0 && (
+              <Badge variant="secondary" className="gap-1">
+                <CloudUpload className="h-3.5 w-3.5" />
+                {isFlushing ? "Envoi…" : `${queueLength} en attente`}
+              </Badge>
+            )}
+            {selectedRace && (
+              <Badge variant="outline">
+                {stats.finishedCrews}/{stats.totalCrews} arrivées
+              </Badge>
+            )}
+            <Badge variant="outline" className="gap-1">
+              <Users className="h-3.5 w-3.5" />
+              {viewerCount} poste{viewerCount !== 1 ? "s" : ""}
+            </Badge>
+            {isRelayRace && currentTimingPoint && (
+              <RelayLegBadge
+                distance={selectedRaceDistance}
+                timingPointDistanceM={currentTimingPoint.distance_m}
+              />
+            )}
           </div>
-        </div>
-      </div>
+      }
+    >
+      {isTimeBasedRace && selectedRace && selectedRaceDistance && (
+        <TimeBasedCountdownPanel
+          distance={selectedRaceDistance}
+          raceStatus={selectedRace.status}
+          startTime={selectedRace.start_time}
+          serverTimeOffset={serverTimeOffset}
+          isFinishPoint={!!isFinishPoint}
+        />
+      )}
+
+      {isTimeTrialMode && (
+        <TimeTrialPanel
+          races={races}
+          selectedRaceId={selectedRaceId}
+          serverTimeOffset={serverTimeOffset}
+          onSelectRace={setSelectedRaceId}
+          onGunStart={handleGunStart}
+          isStartPoint={!!isStartPoint}
+          isGunStartLoading={isRaceActionLoading}
+        />
+      )}
+
+      {timingPointId && (
+        <ReconciliationPanel
+          timingPointId={timingPointId}
+          onReconciled={() => {
+            fetchTimings();
+            fetchAssignments();
+          }}
+        />
+      )}
 
       {/* Contrôles */}
       <Card className="shadow-md border-2">
@@ -572,7 +742,7 @@ export default function TimingPage() {
             {/* Sélection de course */}
             <div className="space-y-3">
               <Label className="text-base font-semibold flex items-center gap-2">
-                <Trophy className="w-5 h-5 text-emerald-600" />
+                <Trophy className="w-5 h-5 text-primary" />
                 Sélectionner une course
               </Label>
               <div className="flex gap-2">
@@ -630,7 +800,7 @@ export default function TimingPage() {
                       variant="ghost"
                       size="sm"
                       onClick={handleNextRace}
-                      className="text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50"
+                      className="text-primary hover:text-primary/80 hover:bg-primary/10"
                     >
                       Course suivante
                       <ChevronRight className="w-4 h-4 ml-1" />
@@ -643,11 +813,11 @@ export default function TimingPage() {
             {/* Horloge et contrôles */}
             <div className="space-y-3">
               <Label className="text-base font-semibold flex items-center gap-2">
-                <Clock className="w-5 h-5 text-emerald-600" />
+                <Clock className="w-5 h-5 text-primary" />
                 Horloge serveur
               </Label>
               <div className="relative">
-                <div className="px-6 py-4 rounded-lg bg-gradient-to-br from-slate-900 to-slate-800 text-white font-mono text-3xl text-center border-2 border-slate-700 shadow-lg">
+                <div className="px-6 py-4 rounded-lg bg-primary text-primary-foreground font-mono text-3xl text-center border border-primary/30 shadow-sm">
                   {liveTime || (
                     <div className="flex items-center justify-center gap-2">
                       <Loader2 className="w-6 h-6 animate-spin" />
@@ -656,6 +826,34 @@ export default function TimingPage() {
                   )}
                 </div>
               </div>
+              {selectedRace && isStartPoint && (
+                <div className="flex gap-2">
+                  <Button
+                    variant="default"
+                    className="flex-1 h-11"
+                    disabled={
+                      isRaceActionLoading ||
+                      selectedRace.status === "official" ||
+                      selectedRace.status === "in_progress"
+                    }
+                    onClick={() => handleGunStart()}
+                  >
+                    Départ canon
+                  </Button>
+                  <Button
+                    variant="outline"
+                    className="flex-1 h-11"
+                    disabled={
+                      isRaceActionLoading ||
+                      selectedRace.status === "official" ||
+                      selectedRace.status === "not_started"
+                    }
+                    onClick={handleFalseStart}
+                  >
+                    Faux départ
+                  </Button>
+                </div>
+              )}
               <div className="flex gap-2">
                 <Button
                   className="flex-1 h-12 text-base font-semibold"
@@ -675,24 +873,26 @@ export default function TimingPage() {
                     </>
                   )}
                 </Button>
-                <Button
-                  variant="outline"
-                  size="lg"
-                  className="h-12"
-                  onClick={() => setDebugMode((prev) => !prev)}
-                >
-                  {debugMode ? (
-                    <>
-                      <CheckCircle2 className="w-5 h-5 mr-2" />
-                      Quitter Debug
-                    </>
-                  ) : (
-                    <>
-                      <Bug className="w-5 h-5 mr-2" />
-                      Debug
-                    </>
-                  )}
-                </Button>
+                {canUseDebug && (
+                  <Button
+                    variant="outline"
+                    size="lg"
+                    className="h-12"
+                    onClick={() => setDebugMode((prev) => !prev)}
+                  >
+                    {debugMode ? (
+                      <>
+                        <CheckCircle2 className="w-5 h-5 mr-2" />
+                        Quitter Debug
+                      </>
+                    ) : (
+                      <>
+                        <Bug className="w-5 h-5 mr-2" />
+                        Debug
+                      </>
+                    )}
+                  </Button>
+                )}
               </div>
             </div>
           </div>
@@ -714,17 +914,23 @@ export default function TimingPage() {
           currentTimingPoint={currentTimingPoint}
           timingPoints={timingPoints}
           eventId={eventId!}
+          raceStatus={selectedRace.status}
+          onRefresh={() => {
+            fetchTimings();
+            fetchAssignments();
+            fetchRaces();
+          }}
         />
       )}
 
       {/* Mode debug */}
-      {debugMode && (
+      {canUseDebug && debugMode && (
         <DebugTimings
           hiddenTimings={hiddenTimings}
           setTimings={setTimings}
           toast={toast}
         />
       )}
-    </div>
+    </AdminPage>
   );
 }

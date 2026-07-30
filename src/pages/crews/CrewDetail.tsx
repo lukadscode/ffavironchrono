@@ -30,6 +30,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { CrewInfoEditDialog } from "@/components/crew/CrewInfoEditDialog";
+import { AdminPage } from "@/components/layout/AdminPage";
 
 function SortableRow({ participant, onRemove }: { participant: any; onRemove: (id: string) => void }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
@@ -64,14 +65,14 @@ function SortableRow({ participant, onRemove }: { participant: any; onRemove: (i
         </div>
 
         {/* Badge de position */}
-        <div className="flex-shrink-0 w-10 h-10 rounded-full bg-gradient-to-br from-blue-500 to-blue-600 flex items-center justify-center text-white font-bold text-sm shadow-md">
+        <div className="flex-shrink-0 w-10 h-10 rounded-full bg-primary text-primary-foreground flex items-center justify-center font-bold text-sm">
           {participant.seat_position}
         </div>
 
         {/* Informations du participant */}
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 mb-1">
-            <h3 className="font-semibold text-slate-900 text-lg">
+            <h3 className="font-semibold text-foreground text-lg">
               {participantData.first_name} {participantData.last_name}
             </h3>
             {participant.is_coxswain && (
@@ -80,7 +81,7 @@ function SortableRow({ participant, onRemove }: { participant: any; onRemove: (i
               </span>
             )}
           </div>
-          <div className="flex flex-wrap items-center gap-3 text-sm text-slate-600">
+          <div className="flex flex-wrap items-center gap-3 text-sm text-muted-foreground">
             {participantData.license_number && (
               <div className="flex items-center gap-1">
                 <span className="font-medium">Licence:</span>
@@ -611,66 +612,48 @@ export default function CrewDetail() {
   }
 
   return (
-    <div className="space-y-4 sm:space-y-6">
-      {/* Header avec gradient */}
-      <div className="relative overflow-hidden rounded-xl bg-gradient-to-br from-blue-600 via-blue-700 to-blue-800 text-white p-4 sm:p-6 shadow-lg">
-        <div className="absolute inset-0 bg-[url('data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNjAiIGhlaWdodD0iNjAiIHZpZXdCb3g9IjAgMCA2MCA2MCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48ZyBmaWxsPSJub25lIiBmaWxsLXJ1bGU9ImV2ZW5vZGQiPjxnIGZpbGw9IiNmZmYiIGZpbGwtb3BhY2l0eT0iMC4xIj48cGF0aCBkPSJNMzYgMzRWMjJIMjR2MTJIMTJ2MTJIMjR2MTJIMzZWMzR6Ii8+PC9nPjwvZz48L3N2Zz4=')] opacity-20"></div>
-        
-        <div className="relative z-10">
-          <div className="flex items-start justify-between mb-4">
-            <div className="flex-1">
-              <div className="flex items-center gap-3 mb-2">
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="text-white hover:bg-white/20"
-                  onClick={() => eventId && navigate(`/event/${eventId}/crews`)}
-                >
-                  <ArrowLeft className="w-5 h-5" />
-                </Button>
-                <h1 className="text-xl sm:text-2xl md:text-3xl font-bold break-words">
-                  {crew.category?.code || crew.category?.label || 'Équipage'}
-                </h1>
-              </div>
-              <p className="text-blue-100 text-sm sm:text-base md:text-lg break-words">{crew.club_name}</p>
-            </div>
-            <div className="text-right flex flex-wrap items-center justify-end gap-2 sm:gap-3">
-              <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-white/20 backdrop-blur-md border border-white/30">
-                <Users className="w-5 h-5" />
-                <span className="font-semibold">{participants.length} participant{participants.length > 1 ? 's' : ''}</span>
-              </div>
-              <Button
-                variant="secondary"
-                size="sm"
-                className="bg-white/20 hover:bg-white/30 text-white border border-white/40"
-                onClick={() => setEditInfoOpen(true)}
-              >
-                <Pencil className="w-4 h-4 mr-2" />
-                Modifier les infos
-              </Button>
-              <Button
-                variant="destructive"
-                size="sm"
-                className="bg-red-600 hover:bg-red-700"
-                onClick={() => setDeleteDialogOpen(true)}
-              >
-                <Trash2 className="w-4 h-4 mr-2" />
-                Supprimer
-              </Button>
-            </div>
-          </div>
-
-          {/* Informations de l'événement */}
-          {crew.Event && (
-            <div className="mt-4 pt-4 border-t border-white/20">
-              <p className="text-sm text-blue-100">{crew.Event.name}</p>
-              <p className="text-xs text-blue-200 mt-1">
-                {dayjs(crew.Event.start_date).format("DD MMMM YYYY")} - {crew.Event.location}
-              </p>
-            </div>
+    <AdminPage
+      title={crew.category?.code || crew.category?.label || "Équipage"}
+      description={[
+        crew.club_name,
+        crew.Event ? `${crew.Event.name} • ${dayjs(crew.Event.start_date).format("DD MMMM YYYY")} - ${crew.Event.location}` : null,
+      ].filter(Boolean).join(" • ")}
+      icon={Users}
+      actions={
+        <div className="flex flex-wrap items-center gap-2">
+          {eventId && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => navigate(`/event/${eventId}/crews`)}
+            >
+              <ArrowLeft className="w-4 h-4 mr-2" />
+              Retour
+            </Button>
           )}
+          <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-muted border border-border text-sm font-medium">
+            <Users className="w-4 h-4" />
+            {participants.length} participant{participants.length > 1 ? "s" : ""}
+          </div>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setEditInfoOpen(true)}
+          >
+            <Pencil className="w-4 h-4 mr-2" />
+            Modifier les infos
+          </Button>
+          <Button
+            variant="destructive"
+            size="sm"
+            onClick={() => setDeleteDialogOpen(true)}
+          >
+            <Trash2 className="w-4 h-4 mr-2" />
+            Supprimer
+          </Button>
         </div>
-      </div>
+      }
+    >
 
       {/* Informations de l'équipage */}
       <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
@@ -1176,6 +1159,6 @@ export default function CrewDetail() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
-    </div>
+    </AdminPage>
   );
 }

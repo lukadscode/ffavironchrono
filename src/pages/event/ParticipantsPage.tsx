@@ -32,6 +32,8 @@ import {
   TableHead,
   TableRow,
 } from "@/components/ui/table";
+import { AdminPage } from "@/components/layout/AdminPage";
+import { StatCard } from "@/components/layout/StatCard";
 
 type Crew = {
   club_name: string;
@@ -177,32 +179,15 @@ export default function ParticipantsPage() {
   }
 
   return (
-    <div className="space-y-6">
-      {/* Header avec statistiques */}
-      <div className="relative overflow-hidden rounded-xl bg-gradient-to-br from-purple-600 via-purple-700 to-purple-800 text-white p-4 sm:p-6 shadow-lg">
-        <div className="absolute inset-0 bg-[url('data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNjAiIGhlaWdodD0iNjAiIHZpZXdCb3g9IjAgMCA2MCA2MCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48ZyBmaWxsPSJub25lIiBmaWxsLXJ1bGU9ImV2ZW5vZGQiPjxnIGZpbGw9IiNmZmYiIGZpbGwtb3BhY2l0eT0iMC4xIj48cGF0aCBkPSJNMzYgMzRWMjJIMjR2MTJIMTJ2MTJIMjR2MTJIMzZWMzR6Ii8+PC9nPjwvZz48L3N2Zz4=')] opacity-20"></div>
-        
-        <div className="relative z-10">
-          <h1 className="text-3xl font-bold mb-6 flex items-center gap-3">
-            <Users className="w-8 h-8" />
-            Participants
-          </h1>
-
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <div className="bg-white/10 backdrop-blur-md rounded-lg p-4 border border-white/20">
-              <div className="text-sm text-purple-100 mb-1">Total participants</div>
-              <div className="text-3xl font-bold">{stats.total}</div>
-            </div>
-            <div className="bg-white/10 backdrop-blur-md rounded-lg p-4 border border-white/20">
-              <div className="text-sm text-purple-100 mb-1">Clubs représentés</div>
-              <div className="text-3xl font-bold">{stats.uniqueClubs}</div>
-            </div>
-            <div className="bg-white/10 backdrop-blur-md rounded-lg p-4 border border-white/20">
-              <div className="text-sm text-purple-100 mb-1">Catégories</div>
-              <div className="text-3xl font-bold">{stats.uniqueCategories}</div>
-            </div>
-          </div>
-        </div>
+    <AdminPage
+      title="Participants"
+      description="Liste des participants inscrits à l'événement"
+      icon={Users}
+    >
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <StatCard label="Total participants" value={stats.total} icon={Users} />
+        <StatCard label="Clubs représentés" value={stats.uniqueClubs} icon={Building2} />
+        <StatCard label="Catégories" value={stats.uniqueCategories} icon={Award} />
       </div>
 
       {/* Barre de recherche, import et toggle d'affichage */}
@@ -476,6 +461,6 @@ export default function ParticipantsPage() {
           {filteredAndSortedParticipants.length} résultat{filteredAndSortedParticipants.length > 1 ? 's' : ''} trouvé{filteredAndSortedParticipants.length > 1 ? 's' : ''}
         </div>
       )}
-    </div>
+    </AdminPage>
   );
 }

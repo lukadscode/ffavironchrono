@@ -33,6 +33,7 @@ import {
 } from "lucide-react";
 import { formatTempsPronostique } from "@/utils/formatTime";
 import dayjs from "dayjs";
+import { AdminPage } from "@/components/layout/AdminPage";
 
 export default function ParticipantDetailsPage() {
   const { participantId, eventId } = useParams();
@@ -396,55 +397,42 @@ export default function ParticipantDetailsPage() {
   });
 
   return (
-    <div className="space-y-6">
-      {/* Header avec gradient */}
-      <div className="relative overflow-hidden rounded-xl bg-gradient-to-br from-purple-600 via-purple-700 to-purple-800 text-white p-6 shadow-lg">
-        <div className="absolute inset-0 bg-[url('data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNjAiIGhlaWdodD0iNjAiIHZpZXdCb3g9IjAgMCA2MCA2MCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48ZyBmaWxsPSJub25lIiBmaWxsLXJ1bGU9ImV2ZW5vZGQiPjxnIGZpbGw9IiNmZmYiIGZpbGwtb3BhY2l0eT0iMC4xIj48cGF0aCBkPSJNMzYgMzRWMjJIMjR2MTJIMTJ2MTJIMjR2MTJIMzZWMzR6Ii8+PC9nPjwvZz48L3N2Zz4=')] opacity-20"></div>
-        
-        <div className="relative z-10">
-          <div className="flex items-start justify-between mb-4">
-            <div className="flex-1">
-              <div className="flex items-center gap-3 mb-2">
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="text-white hover:bg-white/20"
-                  onClick={() => eventId && navigate(`/event/${eventId}/participants`)}
-                >
-                  <ArrowLeft className="w-5 h-5" />
-                </Button>
-                <h1 className="text-3xl font-bold">
-                  {participant.last_name} {participant.first_name}
-                </h1>
-              </div>
-              {participant.license_number && (
-                <p className="text-purple-100 text-lg">Licence: {participant.license_number}</p>
-              )}
-            </div>
-            <div className="text-right">
-              {participant.gender && (
-                <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-white/20 backdrop-blur-md border border-white/30">
-                  <User className="w-5 h-5" />
-                  <span className="font-semibold">{participant.gender}</span>
-                </div>
-              )}
-            </div>
-          </div>
-
-          {currentEventCrews.length > 0 && (
-            <div className="mt-4 pt-4 border-t border-white/20">
-              <div className="flex items-center gap-2 text-purple-100">
-                <Users className="w-4 h-4" />
-                <span className="text-sm">
-                  {currentEventCrews.length} équipage{currentEventCrews.length > 1 ? 's' : ''} dans cet événement
-                  {otherEventsCrews.length > 0 && ` • ${otherEventsCrews.length} dans d'autres événements`}
-                </span>
-              </div>
+    <AdminPage
+      title={`${participant.last_name} ${participant.first_name}`}
+      description={
+        [
+          participant.license_number ? `Licence: ${participant.license_number}` : null,
+          currentEventCrews.length > 0
+            ? `${currentEventCrews.length} équipage${currentEventCrews.length > 1 ? "s" : ""} dans cet événement${
+                otherEventsCrews.length > 0 ? ` • ${otherEventsCrews.length} dans d'autres événements` : ""
+              }`
+            : null,
+        ]
+          .filter(Boolean)
+          .join(" • ") || undefined
+      }
+      icon={User}
+      actions={
+        <div className="flex flex-wrap items-center gap-2">
+          {eventId && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => navigate(`/event/${eventId}/participants`)}
+            >
+              <ArrowLeft className="w-4 h-4 mr-2" />
+              Retour
+            </Button>
+          )}
+          {participant.gender && (
+            <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-muted border border-border text-sm font-medium">
+              <User className="w-4 h-4" />
+              {participant.gender}
             </div>
           )}
         </div>
-      </div>
-
+      }
+    >
       {/* Informations du participant */}
       <Card>
         <CardHeader>
@@ -637,7 +625,7 @@ export default function ParticipantDetailsPage() {
                             <p className="text-sm text-muted-foreground">Code: {crew.club_code}</p>
                           )}
                         </div>
-                        <div className="flex-shrink-0 w-10 h-10 rounded-full bg-gradient-to-br from-blue-500 to-blue-600 flex items-center justify-center text-white font-bold text-sm shadow-md">
+                        <div className="flex-shrink-0 w-10 h-10 rounded-full bg-primary text-primary-foreground flex items-center justify-center font-bold text-sm">
                           {cp.seat_position || "—"}
                         </div>
                       </div>
@@ -751,7 +739,7 @@ export default function ParticipantDetailsPage() {
                             <p className="text-sm text-muted-foreground">Code: {crew.club_code}</p>
                           )}
                         </div>
-                        <div className="flex-shrink-0 w-10 h-10 rounded-full bg-gradient-to-br from-purple-500 to-purple-600 flex items-center justify-center text-white font-bold text-sm shadow-md">
+                        <div className="flex-shrink-0 w-10 h-10 rounded-full bg-primary text-primary-foreground flex items-center justify-center font-bold text-sm">
                           {cp.seat_position || "—"}
                         </div>
                       </div>
@@ -890,6 +878,6 @@ export default function ParticipantDetailsPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
-    </div>
+    </AdminPage>
   );
 }

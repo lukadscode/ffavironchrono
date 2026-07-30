@@ -176,7 +176,7 @@ export default function HomePage() {
   }, [todayEvents, ongoingEvents, upcomingEvents, filteredEvents]);
 
   return (
-    <div className="min-h-screen flex flex-col bg-gradient-to-br from-slate-50 via-blue-50/20 to-slate-50">
+    <div className="min-h-screen flex flex-col bg-background">
       <PublicHeader />
 
       {/* Hero Section (image + texte central aligné à gauche, style maquette) */}
@@ -189,13 +189,13 @@ export default function HomePage() {
             className="w-full h-full object-cover"
           />
           {/* Overlay avec dégradé sombre à droite */}
-          <div className="absolute inset-0 bg-gradient-to-r from-slate-950/85 via-slate-900/60 to-transparent" />
+          <div className="absolute inset-0 bg-gradient-to-r from-primary/90 via-primary/70 to-transparent" />
         </div>
 
         <div className="relative z-10 w-full">
           <div className="max-w-6xl mx-auto px-4 lg:px-6">
             <div className="max-w-xl lg:max-w-2xl ml-0 lg:ml-10 space-y-5 sm:space-y-6">
-              <p className="text-[11px] sm:text-xs font-semibold tracking-[0.28em] uppercase text-emerald-300">
+              <p className="text-[11px] sm:text-xs font-semibold tracking-[0.28em] uppercase text-accent">
                 Officiel de la
               </p>
 
@@ -204,22 +204,22 @@ export default function HomePage() {
                 <span className="block">d&apos;aviron</span>
               </h1>
 
-              <p className="text-sm sm:text-base md:text-lg text-slate-100/85 max-w-lg">
+              <p className="text-sm sm:text-base md:text-lg text-primary-foreground/85 max-w-lg">
                 Suivez les résultats des compétitions, consultez les classements
                 et accédez aux lives des événements officiels FFAviron.
               </p>
 
               <div className="flex flex-wrap items-center gap-3 pt-2">
-                <div className="flex items-center gap-2 px-4 py-2 rounded-full bg-slate-950/70 border border-emerald-400/70 shadow-sm">
-                  <Clock className="w-4 h-4 text-emerald-300" />
-                  <span className="text-[11px] uppercase tracking-[0.18em] text-emerald-200 font-medium">
+                <div className="flex items-center gap-2 px-4 py-2 rounded-full bg-primary/80 border border-accent/70 shadow-sm">
+                  <Clock className="w-4 h-4 text-accent" />
+                  <span className="text-[11px] uppercase tracking-[0.18em] text-primary-foreground font-medium">
                     Temps réel 0.001s
                   </span>
                 </div>
 
-                <div className="hidden sm:flex items-center gap-2 px-4 py-2 rounded-full bg-slate-950/60 border border-slate-700/80">
-                  <TrendingUp className="w-4 h-4 text-emerald-200" />
-                  <span className="text-[11px] uppercase tracking-[0.18em] text-slate-100 font-medium">
+                <div className="hidden sm:flex items-center gap-2 px-4 py-2 rounded-full bg-primary/70 border border-primary-foreground/20">
+                  <TrendingUp className="w-4 h-4 text-primary-foreground" />
+                  <span className="text-[11px] uppercase tracking-[0.18em] text-primary-foreground font-medium">
                     {events.length} compétitions
                   </span>
                 </div>
@@ -233,25 +233,25 @@ export default function HomePage() {
         {/* Barre de recherche inspirée du bandeau de navigation intermédiaire */}
         <section className="flex flex-col md:flex-row md:items-end gap-4 md:gap-8">
           <div className="flex-1 space-y-2">
-            <p className="text-xs uppercase tracking-[0.18em] text-emerald-500 font-semibold">
+            <p className="text-xs uppercase tracking-[0.18em] text-accent font-semibold">
               Live results
             </p>
-            <h2 className="text-2xl md:text-3xl font-semibold text-slate-900">
+            <h2 className="text-2xl md:text-3xl font-semibold text-foreground">
               Compétitions d&apos;aviron
             </h2>
-            <p className="text-sm text-slate-500 max-w-xl">
+            <p className="text-sm text-muted-foreground max-w-xl">
               Recherchez une compétition, filtrez par type d&apos;événement et
               accédez aux lives, aux prochaines courses et aux archives.
             </p>
           </div>
-          <Card className="w-full md:w-[420px] shadow-sm border-slate-200/70">
+          <Card className="w-full md:w-[420px] shadow-sm border-border">
             <CardContent className="pt-4 pb-4 space-y-3">
               <div className="space-y-1.5">
-                <Label htmlFor="search" className="text-xs font-medium text-slate-600">
+                <Label htmlFor="search" className="text-xs font-medium text-muted-foreground">
                   Recherche
                 </Label>
                 <div className="relative">
-                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
                   <Input
                     id="search"
                     placeholder="Nom de l'événement, lieu..."
@@ -263,7 +263,7 @@ export default function HomePage() {
               </div>
               <div className="flex items-center gap-2">
                 <div className="flex-1 space-y-1.5">
-                  <Label htmlFor="type" className="text-xs font-medium text-slate-600">
+                  <Label htmlFor="type" className="text-xs font-medium text-muted-foreground">
                     Type
                   </Label>
                   <Select value={selectedType} onValueChange={setSelectedType}>
@@ -299,27 +299,27 @@ export default function HomePage() {
           <div className="space-y-4">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
-                <span className="h-2 w-2 rounded-full bg-emerald-500" />
-                <p className="text-xs uppercase tracking-[0.18em] text-emerald-600 font-semibold">
+                <span className="h-2 w-2 rounded-full bg-accent animate-pulse" />
+                <p className="text-xs uppercase tracking-[0.18em] text-accent font-semibold">
                   Live
                 </p>
               </div>
-              <span className="text-[11px] text-slate-500">
+              <span className="text-[11px] text-muted-foreground">
                 {liveEvents.length} compétitions
               </span>
             </div>
 
             {loading ? (
               <div className="flex items-center justify-center py-10">
-                <div className="w-8 h-8 border-4 border-emerald-500 border-t-transparent rounded-full animate-spin" />
+                <div className="w-8 h-8 border-4 border-primary border-t-transparent rounded-full animate-spin" />
               </div>
             ) : liveEvents.length === 0 ? (
-              <Card className="border-dashed border-slate-200">
+              <Card className="border-dashed border-border">
                 <CardContent className="py-8 flex flex-col items-start gap-2">
-                  <p className="text-sm font-medium text-slate-700">
+                  <p className="text-sm font-medium text-foreground">
                     Aucune compétition en direct pour le moment.
                   </p>
-                  <p className="text-xs text-slate-500">
+                  <p className="text-xs text-muted-foreground">
                     Consultez les prochaines compétitions dans la colonne &quot;Next up&quot;.
                   </p>
                 </CardContent>
@@ -339,7 +339,7 @@ export default function HomePage() {
                     <button
                       type="button"
                       onClick={() => scrollLive("left")}
-                      className="hidden md:flex absolute -left-4 top-1/2 -translate-y-1/2 h-8 w-8 items-center justify-center rounded-full bg-slate-900/80 text-slate-100 border border-slate-700 hover:border-emerald-400/70 hover:text-emerald-100 shadow-md"
+                      className="hidden md:flex absolute -left-4 top-1/2 -translate-y-1/2 h-8 w-8 items-center justify-center rounded-full bg-primary text-primary-foreground border border-primary-foreground/20 hover:border-accent hover:text-accent shadow-md"
                       aria-label="Défiler vers la gauche"
                     >
                       <ChevronLeft className="w-4 h-4" />
@@ -347,7 +347,7 @@ export default function HomePage() {
                     <button
                       type="button"
                       onClick={() => scrollLive("right")}
-                      className="hidden md:flex absolute -right-4 top-1/2 -translate-y-1/2 h-8 w-8 items-center justify-center rounded-full bg-slate-900/80 text-slate-100 border border-slate-700 hover:border-emerald-400/70 hover:text-emerald-100 shadow-md"
+                      className="hidden md:flex absolute -right-4 top-1/2 -translate-y-1/2 h-8 w-8 items-center justify-center rounded-full bg-primary text-primary-foreground border border-primary-foreground/20 hover:border-accent hover:text-accent shadow-md"
                       aria-label="Défiler vers la droite"
                     >
                       <ChevronRight className="w-4 h-4" />
@@ -361,25 +361,25 @@ export default function HomePage() {
           {/* NEXT UP (à venir) */}
           <div className="space-y-4">
             <div className="flex items-center justify-between">
-              <p className="text-xs uppercase tracking-[0.18em] text-slate-600 font-semibold">
+              <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground font-semibold">
                 Next up
               </p>
-              <span className="text-[11px] text-slate-500">
+              <span className="text-[11px] text-muted-foreground">
                 {upcomingEvents.length} compétitions
               </span>
             </div>
 
             {loading ? (
               <div className="flex items-center justify-center py-10">
-                <div className="w-8 h-8 border-4 border-slate-400 border-t-transparent rounded-full animate-spin" />
+                <div className="w-8 h-8 border-4 border-muted-foreground border-t-transparent rounded-full animate-spin" />
               </div>
             ) : upcomingEvents.length === 0 ? (
-              <Card className="border-dashed border-slate-200">
+              <Card className="border-dashed border-border">
                 <CardContent className="py-8 flex flex-col items-start gap-2">
-                  <p className="text-sm font-medium text-slate-700">
+                  <p className="text-sm font-medium text-foreground">
                     Aucune compétition planifiée.
                   </p>
-                  <p className="text-xs text-slate-500">
+                  <p className="text-xs text-muted-foreground">
                     De nouveaux événements apparaîtront ici dès leur publication.
                   </p>
                 </CardContent>
@@ -389,8 +389,8 @@ export default function HomePage() {
                 {upcomingEvents.slice(0, 4).map((event, index) => (
                   <Card
                     key={event.id}
-                    className={`group overflow-hidden border-slate-200/80 hover:border-emerald-400 hover:shadow-md transition-all cursor-pointer ${
-                      index === 0 ? "bg-emerald-500 text-white" : "bg-white"
+                    className={`group overflow-hidden border-border hover:border-primary hover:shadow-md transition-all cursor-pointer ${
+                      index === 0 ? "bg-primary text-primary-foreground" : "bg-card"
                     }`}
                   >
                     <Link to={`/public/event/${event.id}`}>
@@ -398,15 +398,15 @@ export default function HomePage() {
                         <p
                           className={`text-xs font-semibold line-clamp-2 ${
                             index === 0
-                              ? "text-white"
-                              : "text-slate-900 group-hover:text-emerald-700"
+                              ? "text-primary-foreground"
+                              : "text-foreground group-hover:text-primary"
                           }`}
                         >
                           {event.name}
                         </p>
                         <p
                           className={`text-[11px] flex items-center gap-1.5 ${
-                            index === 0 ? "text-emerald-50" : "text-slate-500"
+                            index === 0 ? "text-primary-foreground/80" : "text-muted-foreground"
                           }`}
                         >
                           <Calendar className="w-3 h-3" />
@@ -417,7 +417,7 @@ export default function HomePage() {
                         </p>
                         <p
                           className={`text-[11px] flex items-center gap-1.5 ${
-                            index === 0 ? "text-emerald-50" : "text-slate-500"
+                            index === 0 ? "text-primary-foreground/80" : "text-muted-foreground"
                           }`}
                         >
                           <MapPin className="w-3 h-3" />
@@ -435,34 +435,34 @@ export default function HomePage() {
         {/* Focus event juste au-dessus de "All events" */}
         {focusEvent && (
           <section className="space-y-3" id="focus">
-            <p className="text-xs uppercase tracking-[0.18em] text-slate-600 font-semibold">
+            <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground font-semibold">
               Focus event
             </p>
-            <Card className="relative overflow-hidden border-0 shadow-xl rounded-2xl bg-slate-950">
+            <Card className="relative overflow-hidden border-0 shadow-xl rounded-2xl bg-primary">
               <div className="absolute inset-0">
                 <img
                   src={focusEvent.cover_url || focusEvent.image_url || DEFAULT_EVENT_IMAGE}
                   alt={focusEvent.name}
                   className="w-full h-full object-cover opacity-80"
                 />
-                <div className="absolute inset-0 bg-gradient-to-r from-slate-950 via-slate-900/80 to-transparent" />
+                <div className="absolute inset-0 bg-gradient-to-r from-primary via-primary/80 to-transparent" />
               </div>
               <CardContent className="relative z-10 px-6 md:px-10 py-8 md:py-10 flex flex-col md:flex-row md:items-end gap-6 md:gap-10">
                 <div className="flex-1 space-y-3 max-w-xl">
-                  <p className="text-[11px] uppercase tracking-[0.2em] text-emerald-400 font-semibold">
+                  <p className="text-[11px] uppercase tracking-[0.2em] text-accent font-semibold">
                     En avant
                   </p>
-                  <h3 className="text-xl md:text-2xl font-semibold text-white leading-tight">
+                  <h3 className="text-xl md:text-2xl font-semibold text-primary-foreground leading-tight">
                     {focusEvent.name}
                   </h3>
-                  <p className="text-sm md:text-base text-slate-200 flex items-center gap-2">
+                  <p className="text-sm md:text-base text-primary-foreground/80 flex items-center gap-2">
                     <Calendar className="w-4 h-4" />
                     <span>
                       {dayjs(focusEvent.start_date).format("DD MMM YYYY")} -{" "}
                       {dayjs(focusEvent.end_date).format("DD MMM YYYY")}
                     </span>
                   </p>
-                  <p className="text-xs md:text-sm text-slate-300 flex items-center gap-2">
+                  <p className="text-xs md:text-sm text-primary-foreground/70 flex items-center gap-2">
                     <MapPin className="w-4 h-4" />
                     <span className="line-clamp-2">{focusEvent.location}</span>
                   </p>
@@ -471,7 +471,7 @@ export default function HomePage() {
                   <Button
                     asChild
                     size="lg"
-                    className="bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-semibold px-6 md:px-8"
+                    className="bg-accent hover:bg-accent/90 text-accent-foreground font-semibold px-6 md:px-8"
                   >
                     <Link to={`/public/event/${focusEvent.id}`}>
                       Accéder au live
@@ -486,10 +486,10 @@ export default function HomePage() {
         {/* Grille des compétitions (tous au même style carte verte) */}
         <section className="space-y-4">
           <div className="flex items-center justify-between">
-            <p className="text-xs uppercase tracking-[0.18em] text-slate-600 font-semibold">
+            <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground font-semibold">
               All events
             </p>
-            <span className="text-[11px] text-slate-500">
+            <span className="text-[11px] text-muted-foreground">
               {filteredEvents.length} compétitions trouvées
             </span>
           </div>
@@ -500,13 +500,13 @@ export default function HomePage() {
             </div>
           ) : filteredEvents.length === 0 ? (
             <div className="text-center py-12">
-              <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-slate-100 mb-4">
-                <Calendar className="w-8 h-8 text-slate-400" />
+              <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-muted mb-4">
+                <Calendar className="w-8 h-8 text-muted-foreground" />
               </div>
-              <h3 className="text-lg font-semibold text-slate-900 mb-1">
+              <h3 className="text-lg font-semibold text-foreground mb-1">
                 Aucune compétition trouvée
               </h3>
-              <p className="text-sm text-slate-500">
+              <p className="text-sm text-muted-foreground">
                 Modifiez vos critères de recherche ou revenez plus tard.
               </p>
             </div>
@@ -534,26 +534,26 @@ function EventCard({ event, status }: { event: Event; status: "today" | "ongoing
   const statusConfig = {
     today: {
       badge: "Aujourd'hui",
-      badgeColor: "bg-emerald-100 text-emerald-800 border-emerald-200",
-      accent: "border-emerald-500",
+      badgeColor: "bg-accent/10 text-accent border-accent/30",
+      accent: "border-accent",
       pulse: true,
     },
     ongoing: {
       badge: "En cours",
-      badgeColor: "bg-emerald-100 text-emerald-800 border-emerald-200",
-      accent: "border-emerald-500",
+      badgeColor: "bg-accent/10 text-accent border-accent/30",
+      accent: "border-accent",
       pulse: true,
     },
     upcoming: {
       badge: "À venir",
-      badgeColor: "bg-teal-100 text-teal-800 border-teal-200",
-      accent: "border-teal-500",
+      badgeColor: "bg-primary/10 text-primary border-primary/30",
+      accent: "border-primary",
       pulse: false,
     },
     past: {
       badge: "Terminé",
-      badgeColor: "bg-slate-100 text-slate-700 border-slate-200",
-      accent: "border-slate-300",
+      badgeColor: "bg-muted text-muted-foreground border-border",
+      accent: "border-border",
       pulse: false,
     },
   };
@@ -565,7 +565,7 @@ function EventCard({ event, status }: { event: Event; status: "today" | "ongoing
     <Link to={`/public/event/${event.id}`}>
       <Card
         className={`group relative overflow-hidden h-full transition-all duration-300 hover:shadow-xl hover:-translate-y-1 border-2 rounded-xl ${config.accent} ${
-          config.pulse ? "ring-2 ring-emerald-400/25" : ""
+          config.pulse ? "ring-2 ring-accent/25" : ""
         }`}
       >
         {/* Badges de statut et type */}
@@ -585,7 +585,7 @@ function EventCard({ event, status }: { event: Event; status: "today" | "ongoing
         </div>
 
         {/* Image/Header avec gradient */}
-        <div className="relative h-24 sm:h-28 bg-gradient-to-br from-emerald-500 via-teal-600 to-slate-900 overflow-hidden">
+        <div className="relative h-24 sm:h-28 bg-primary overflow-hidden">
           {event.cover_url || event.image_url ? (
             <>
               <img
@@ -597,27 +597,25 @@ function EventCard({ event, status }: { event: Event; status: "today" | "ongoing
                   (e.target as HTMLImageElement).style.display = "none";
                 }}
               />
-              <div className="absolute inset-0 bg-slate-950/50"></div>
+              <div className="absolute inset-0 bg-primary/50"></div>
             </>
           ) : (
             <>
               <div className="absolute inset-0 bg-[url('data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNjAiIGhlaWdodD0iNjAiIHZpZXdCb3g9IjAgMCA2MCA2MCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48ZyBmaWxsPSJub25lIiBmaWxsLXJ1bGU9ImV2ZW5vZGQiPjxnIGZpbGw9IiNmZmYiIGZpbGwtb3BhY2l0eT0iMC4xIj48cGF0aCBkPSJNMzYgMzRWMjJIMjR2MTJIMTJ2MTJIMjR2MTJIMzZWMzR6Ii8+PC9nPjwvZz48L3N2Zz4=')] opacity-20"></div>
               
-              {/* Icône Timer au centre */}
               <div className="absolute inset-0 flex items-center justify-center">
-                <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-full bg-emerald-500/15 backdrop-blur-md border border-emerald-300/80 flex items-center justify-center group-hover:scale-110 transition-transform">
-                  <Timer className="w-5 h-5 sm:w-6 sm:h-6 text-emerald-100" />
+                <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-full bg-primary-foreground/10 backdrop-blur-md border border-primary-foreground/30 flex items-center justify-center group-hover:scale-110 transition-transform">
+                  <Timer className="w-5 h-5 sm:w-6 sm:h-6 text-primary-foreground" />
                 </div>
               </div>
             </>
           )}
 
-          {/* Overlay au hover */}
-        <div className="absolute inset-0 bg-slate-950/0 group-hover:bg-slate-950/15 transition-colors"></div>
+        <div className="absolute inset-0 bg-primary/0 group-hover:bg-primary/10 transition-colors"></div>
         </div>
 
         <CardHeader className="pb-2 px-3 pt-3">
-          <CardTitle className="text-sm font-bold text-slate-900 line-clamp-2 group-hover:text-emerald-700 transition-colors leading-tight">
+          <CardTitle className="text-sm font-bold text-foreground line-clamp-2 group-hover:text-primary transition-colors leading-tight">
             {event.name}
           </CardTitle>
         </CardHeader>
@@ -626,15 +624,15 @@ function EventCard({ event, status }: { event: Event; status: "today" | "ongoing
           {/* Informations */}
           <div className="space-y-1.5">
             <div className="flex items-start gap-1.5">
-              <Calendar className="w-3 h-3 text-emerald-600 mt-0.5 flex-shrink-0" />
+              <Calendar className="w-3 h-3 text-primary mt-0.5 flex-shrink-0" />
               <div className="flex-1 min-w-0">
-                <div className="text-xs font-semibold text-slate-700">Dates</div>
-                <div className="text-xs text-slate-500 leading-tight">
+                <div className="text-xs font-semibold text-foreground">Dates</div>
+                <div className="text-xs text-muted-foreground leading-tight">
                   {dayjs(event.start_date).format("DD MMM")} -{" "}
                   {dayjs(event.end_date).format("DD MMM YYYY")}
                 </div>
                 {daysUntil !== null && daysUntil >= 0 && (
-                  <div className="text-xs text-emerald-600 font-medium mt-0.5">
+                  <div className="text-xs text-accent font-medium mt-0.5">
                     Dans {daysUntil === 0 ? "aujourd'hui" : `${daysUntil}j`}
                   </div>
                 )}
@@ -642,9 +640,9 @@ function EventCard({ event, status }: { event: Event; status: "today" | "ongoing
             </div>
 
             <div className="flex items-start gap-1.5">
-              <MapPin className="w-3 h-3 text-emerald-600 mt-0.5 flex-shrink-0" />
+              <MapPin className="w-3 h-3 text-primary mt-0.5 flex-shrink-0" />
               <div className="flex-1 min-w-0">
-                <div className="text-xs font-semibold text-slate-700">Lieu</div>
+                <div className="text-xs font-semibold text-foreground">Lieu</div>
                 <div className="text-xs text-muted-foreground line-clamp-2 leading-tight">{event.location}</div>
               </div>
             </div>
@@ -652,7 +650,7 @@ function EventCard({ event, status }: { event: Event; status: "today" | "ongoing
 
           {/* Bouton d'action */}
           <Button
-            className="w-full mt-2 h-7 text-xs bg-slate-950 text-emerald-200 hover:bg-emerald-500 hover:text-slate-950 border border-transparent group-hover:bg-emerald-500 group-hover:text-slate-950 transition-colors"
+            className="w-full mt-2 h-7 text-xs bg-primary text-primary-foreground hover:bg-accent hover:text-accent-foreground border border-transparent group-hover:bg-accent group-hover:text-accent-foreground transition-colors"
             variant="outline"
             size="sm"
           >
@@ -663,11 +661,6 @@ function EventCard({ event, status }: { event: Event; status: "today" | "ongoing
             <Timer className="w-3 h-3 ml-1" />
           </Button>
         </CardContent>
-
-        {/* Effet de brillance au hover */}
-        <div className="absolute inset-0 pointer-events-none opacity-0 group-hover:opacity-100 transition-opacity">
-          <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/10 to-transparent transform -skew-x-12 translate-x-[-200%] group-hover:translate-x-[200%] transition-transform duration-1000"></div>
-        </div>
       </Card>
     </Link>
   );
@@ -687,7 +680,7 @@ function LiveEventCard({ event }: { event: Event }) {
               alt={event.name}
               className="w-full h-full object-cover"
             />
-            <div className="absolute inset-0 bg-gradient-to-b from-slate-950/10 via-slate-950/35 to-slate-950/90" />
+            <div className="absolute inset-0 bg-gradient-to-b from-primary/10 via-primary/35 to-primary/90" />
           </>
         ) : (
           <div className="absolute inset-0 bg-white" />
@@ -698,14 +691,14 @@ function LiveEventCard({ event }: { event: Event }) {
           <div className="space-y-1">
             <p
               className={`text-[11px] font-semibold tracking-[0.18em] uppercase leading-snug line-clamp-3 ${
-                hasImage ? "text-white" : "text-slate-900"
+                hasImage ? "text-primary-foreground" : "text-foreground"
               }`}
             >
               {event.name}
             </p>
             <p
               className={`text-[11px] ${
-                hasImage ? "text-slate-100" : "text-slate-600"
+                hasImage ? "text-primary-foreground/80" : "text-muted-foreground"
               }`}
             >
               {dayjs(event.start_date).format("DD - DD MMMM")}
@@ -716,8 +709,8 @@ function LiveEventCard({ event }: { event: Event }) {
             type="button"
             className={`w-full h-7 rounded-full border text-[11px] font-medium uppercase tracking-[0.16em] ${
               hasImage
-                ? "border-white/80 text-white/90 bg-transparent hover:bg-white/10"
-                : "border-emerald-500 text-emerald-600 hover:bg-emerald-50"
+                ? "border-primary-foreground/80 text-primary-foreground bg-transparent hover:bg-primary-foreground/10"
+                : "border-accent text-accent hover:bg-accent/5"
             }`}
           >
             En direct
@@ -736,17 +729,17 @@ function PastEventCard({ event }: { event: Event }) {
 
   return (
     <Link to={`/public/event/${event.id}`}>
-      <Card className="group h-full border-0 bg-emerald-500/90 hover:bg-emerald-500 rounded-xl shadow-sm hover:shadow-md transition-all">
+      <Card className="group h-full border-0 bg-primary hover:bg-primary/90 rounded-xl shadow-sm hover:shadow-md transition-all">
         <CardContent className="py-4 px-4 flex flex-col justify-between h-full gap-6">
           <div className="space-y-1.5">
-            <p className="text-[11px] font-semibold tracking-[0.18em] uppercase text-emerald-50 leading-snug">
+            <p className="text-[11px] font-semibold tracking-[0.18em] uppercase text-primary-foreground leading-snug">
               {event.name}
             </p>
           </div>
 
-          <div className="flex items-center justify-between text-[11px] text-emerald-50/90">
+          <div className="flex items-center justify-between text-[11px] text-primary-foreground/90">
             <span>{dayjs(event.start_date).format("DD - DD MMMM")}</span>
-            <span className="inline-flex items-center justify-center px-2.5 h-5 rounded-full bg-slate-950/90 text-[10px] font-medium tracking-wide text-emerald-50 group-hover:bg-slate-900">
+            <span className="inline-flex items-center justify-center px-2.5 h-5 rounded-full bg-accent text-[10px] font-medium tracking-wide text-accent-foreground group-hover:bg-accent/90">
               {categoryLabel}
             </span>
           </div>

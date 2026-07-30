@@ -16,6 +16,7 @@ export default function DashboardLayout() {
 
   const navLinks = [
     { to: "/dashboard", label: "Accueil", icon: Home },
+    { to: "/dashboard/events", label: "Mes événements", icon: Calendar },
     { to: "/dashboard/profile", label: "Profil", icon: User },
     // Afficher le lien de gestion des événements seulement pour les admins
     ...(isAdmin
@@ -54,7 +55,7 @@ export default function DashboardLayout() {
         cn(
           "flex items-center gap-2 sm:gap-3 px-3 sm:px-4 py-2 rounded-lg transition-colors text-sm sm:text-base",
           isActive 
-            ? "bg-muted font-semibold text-foreground" 
+            ? "bg-primary text-primary-foreground font-semibold" 
             : "text-foreground hover:bg-muted"
         )
       }
@@ -119,7 +120,7 @@ export default function DashboardLayout() {
       </header>
 
       {/* Main Content */}
-      <main className="flex-1 p-4 sm:p-6 bg-slate-100 dark:bg-background">
+      <main className="flex-1 p-4 sm:p-6 bg-background">
         <Outlet />
       </main>
     </div>
