@@ -18,7 +18,17 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Loader2, Trophy, Calendar, MapPin, Award, ExternalLink, Info, LayoutList } from "lucide-react";
+import {
+  Loader2,
+  Trophy,
+  Calendar,
+  MapPin,
+  Award,
+  ExternalLink,
+  Info,
+  LayoutList,
+  FileSpreadsheet,
+} from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -27,7 +37,12 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Badge } from "@/components/ui/badge";
 import { Link } from "react-router-dom";
 import dayjs from "dayjs";
+<<<<<<< HEAD
 import { AdminPage } from "@/components/layout/AdminPage";
+=======
+import * as XLSX from "xlsx";
+import { useToast } from "@/hooks/use-toast";
+>>>>>>> 81c2a1ba9b3b510db3c74b0db704f2f031370376
 
 interface ClubRanking {
   id: string;
@@ -72,6 +87,51 @@ type EventTypeFilter = "indoor" | "mer" | "riviere";
 
 const hasClubCode = (clubCode: string | null | undefined): boolean =>
   Boolean((clubCode || "").trim());
+
+/** Normalisation pour reconnaissance du libellé « France MAIF » sur le nom d’événement. */
+function normalizeForMaifEventMatch(raw: string | undefined | null): string {
+  return String(raw ?? "")
+    .normalize("NFD")
+    .replace(/\p{M}/gu, "")
+    .toUpperCase()
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+/**
+ * Championnat France MAIF indoor d’après le nom d’événement (ex. « MAIF AVIRON INDOOR – … »).
+ * Tolérant : MAIF + AVIRON INDOOR, pour couvrir les cas où l’API n’étiquette pas encore la ligne en
+ * `championnat_france_indoor` (scope BDD / indoor_ranking_scope).
+ */
+function isMaifNationalIndoorEventName(eventName: string | undefined | null): boolean {
+  const n = normalizeForMaifEventMatch(eventName);
+  if (!n) return false;
+  return n.includes("MAIF") && n.includes("AVIRON INDOOR");
+}
+
+/** Points club sur le(s) événement(s) MAIF : même agrégat que l’onglet « par événement » (réponse brute `byEvent`). */
+type IndoorMaifByEventEntry = { points: number; eventName: string };
+
+function buildIndoorMaifByClubFromByEventPayload(byEventItems: any[] | undefined): Map<string, IndoorMaifByEventEntry> {
+  const map = new Map<string, IndoorMaifByEventEntry>();
+  if (!Array.isArray(byEventItems)) return map;
+  for (const item of byEventItems) {
+    const ev = item?.event ?? {};
+    const eventName = String(ev.name ?? "");
+    if (!isMaifNationalIndoorEventName(eventName)) continue;
+    const rankings = Array.isArray(item?.rankings) ? item.rankings : [];
+    for (const row of rankings) {
+      const code = String(row.club_code ?? "").trim();
+      if (!hasClubCode(code)) continue;
+      const pts = Number(row.total_points ?? 0);
+      const prev = map.get(code);
+      if (!prev || pts > prev.points) {
+        map.set(code, { points: pts, eventName: eventName.trim() || "MAIF AVIRON INDOOR" });
+      }
+    }
+  }
+  return map;
+}
 
 function currentCalendarYearString(): string {
   return String(new Date().getFullYear());
@@ -293,9 +353,36 @@ type GlobalRankingRow = {
   competitionLines: ClubCompetitionLine[];
 };
 
-function mapDashboardGlobal(globalPayload: any, eventType: EventTypeFilter): GlobalRankingRow[] {
+/** Total indoor affiché = meilleur régional + France MAIF (forçage numérique pour éviter toute concaténation de chaînes). */
+function indoorClubDisplayTotalPoints(club: Pick<GlobalRankingRow, "indoorDetail" | "best_points">): number {
+  if (club.indoorDetail) {
+    return Number(club.indoorDetail.regionalPoints) + Number(club.indoorDetail.maifPoints);
+  }
+  return Number(club.best_points ?? 0);
+}
+
+function sanitizeExcelSheetName(name: string, index: number): string {
+  const forbidden = new Set("[]:*?/\\".split(""));
+  const cleaned = String(name ?? "")
+    .split("")
+    .map((ch) => (forbidden.has(ch) ? " " : ch))
+    .join("")
+    .trim()
+    .slice(0, 24);
+  const suffix = `_${index + 1}`;
+  const base = cleaned || "Evenement";
+  return `${base}${suffix}`.slice(0, 31);
+}
+
+function mapDashboardGlobal(
+  globalPayload: any,
+  eventType: EventTypeFilter,
+  byEventItems?: any[]
+): GlobalRankingRow[] {
+  const maifByClubFromByEvent =
+    eventType === "indoor" ? buildIndoorMaifByClubFromByEventPayload(byEventItems) : new Map<string, IndoorMaifByEventEntry>();
   const rankings = Array.isArray(globalPayload?.rankings) ? globalPayload.rankings : [];
-  return rankings.map((row: any, index: number) => {
+  const rows: GlobalRankingRow[] = rankings.map((row: any, index: number) => {
     const clubCode = String(row.club_code ?? "").trim();
     const contributions = row.contributions;
 
@@ -319,19 +406,49 @@ function mapDashboardGlobal(globalPayload: any, eventType: EventTypeFilter): Glo
       const cf = contributions.filter((c: any) => c.kind === "championnat_france_indoor");
       const defis = contributions.filter((c: any) => c.kind === "defis_capitaux");
       const regionalPoints = Number(meeting?.points ?? 0);
-      const maifPoints =
-        cf.reduce((s, c) => s + Number(c.points ?? 0), 0) +
-        defis.reduce((s, c) => s + Number(c.points ?? 0), 0);
-      const labels = [cf.length ? "Championnat France indoor" : "", defis.length ? "Défis capitaux" : ""].filter(
-        Boolean
+      const maifKinds = new Set(["championnat_france_indoor", "defis_capitaux"]);
+      const maifNameContributions = contributions.filter(
+        (c: any) =>
+          c.kind !== "meeting_standard_max" &&
+          !maifKinds.has(String(c.kind ?? "")) &&
+          isMaifNationalIndoorEventName(c.event_name)
       );
+      const maifFromEventName = maifNameContributions.reduce((s, c) => s + Number(c.points ?? 0), 0);
+      const defisPts = defis.reduce((s, c) => s + Number(c.points ?? 0), 0);
+      const cfPts = cf.reduce((s, c) => s + Number(c.points ?? 0), 0);
+      const maifByEventInfo = clubCode ? maifByClubFromByEvent.get(clubCode) : undefined;
+      const maifFromByEventRow = maifByEventInfo?.points ?? 0;
+      const maifByEventTitle = maifByEventInfo?.eventName ?? "";
+      const coreFromContributions = cfPts + maifFromEventName;
+      const coreMaif = Math.max(coreFromContributions, maifFromByEventRow);
+      const maifPoints = defisPts + coreMaif;
+      const nameLabels = [
+        ...new Set(
+          maifNameContributions
+            .map((c: any) => String(c.event_name ?? "").trim())
+            .filter(Boolean)
+        ),
+      ];
+      const kindLabels = [
+        cf.length ? "Championnat France indoor" : "",
+        defis.length ? "Défis capitaux" : "",
+      ].filter(Boolean);
+      const byEventLabel =
+        maifFromByEventRow > 0 &&
+        maifByEventTitle &&
+        !nameLabels.some((n) => n === maifByEventTitle || maifByEventTitle.includes(n) || n.includes(maifByEventTitle))
+          ? [maifByEventTitle]
+          : [];
+      const maifEventName =
+        [...kindLabels, ...nameLabels, ...byEventLabel].join(" · ") ||
+        (maifPoints > 0 ? maifByEventTitle || "CF / défis / MAIF" : "");
       indoorDetail = {
         regionalPoints,
         regionalEventName: meeting?.event_name ?? "—",
         regionalEventDate: meeting?.start_date ?? "",
         regionalResultsCount: 0,
         maifPoints,
-        maifEventName: labels.join(" · ") || (maifPoints > 0 ? "CF / défis" : ""),
+        maifEventName,
       };
     }
 
@@ -342,12 +459,17 @@ function mapDashboardGlobal(globalPayload: any, eventType: EventTypeFilter): Glo
           ? buildIndoorClubCompetitionLines(contributions)
           : [];
 
+    let best_points = Number(row.total_points ?? 0);
+    if (eventType === "indoor" && indoorDetail) {
+      best_points = Number(indoorDetail.regionalPoints) + Number(indoorDetail.maifPoints);
+    }
+
     return {
       key: clubCode || `row-${index}`,
       club_name: row.club_name ?? "",
       club_code: clubCode,
       global_rank: typeof row.rank === "number" ? row.rank : index + 1,
-      best_points: Number(row.total_points ?? 0),
+      best_points,
       best_results_count: results_count,
       best_event_name,
       best_event_date,
@@ -359,6 +481,16 @@ function mapDashboardGlobal(globalPayload: any, eventType: EventTypeFilter): Glo
       competitionLines,
     };
   });
+
+  if (eventType !== "indoor") return rows;
+
+  const sorted = [...rows].sort((a, b) => {
+    const pa = indoorClubDisplayTotalPoints(a);
+    const pb = indoorClubDisplayTotalPoints(b);
+    if (pb !== pa) return pb - pa;
+    return a.club_name.localeCompare(b.club_name, "fr");
+  });
+  return sorted.map((r, i) => ({ ...r, global_rank: i + 1 }));
 }
 
 function formatMerBreakdownLine(b: MerBreakdown | undefined): string | null {
@@ -383,6 +515,7 @@ function formatMerBreakdownLine(b: MerBreakdown | undefined): string | null {
 export default function ClubRankingsPage() {
   const { user } = useAuth();
   const navigate = useNavigate();
+  const { toast } = useToast();
   const [eventType, setEventType] = useState<EventTypeFilter>("indoor");
   const [data, setData] = useState<EventRankings[]>([]);
   const [globalRanking, setGlobalRanking] = useState<GlobalRankingRow[]>([]);
@@ -466,8 +599,9 @@ export default function ClubRankingsPage() {
           ? payload.rules_summary
           : null
       );
-      setData(mapDashboardByEvent(payload?.byEvent, eventType));
-      setGlobalRanking(mapDashboardGlobal(payload?.global ?? {}, eventType));
+      const byEventRaw = payload?.byEvent;
+      setData(mapDashboardByEvent(byEventRaw, eventType));
+      setGlobalRanking(mapDashboardGlobal(payload?.global ?? {}, eventType, byEventRaw));
     } catch (err: any) {
       console.error("Erreur récupération classements:", err);
       setError(err?.response?.data?.message || "Impossible de charger les classements");
@@ -480,6 +614,131 @@ export default function ClubRankingsPage() {
       setLoading(false);
     }
   }, [eventType, calendarYear, includeTerritorialBonus]);
+
+  const exportClubRankingsExcel = useCallback(() => {
+    const stamp = dayjs().format("YYYY-MM-DD_HHmm");
+    const season = calendarYear.trim() || currentCalendarYearString();
+
+    if (activeTab === "global") {
+      if (globalRanking.length === 0) {
+        toast({ title: "Rien à exporter", description: "Aucune ligne de classement général.", variant: "destructive" });
+        return;
+      }
+      const wb = XLSX.utils.book_new();
+      if (eventType === "indoor") {
+        const sheetRows = globalRanking.map((c) => ({
+          Rang: c.global_rank,
+          Club: c.club_name,
+          "Code club": c.club_code,
+          "Total points": indoorClubDisplayTotalPoints(c),
+          "Meilleur régional": c.indoorDetail?.regionalPoints ?? "",
+          "France MAIF": c.indoorDetail?.maifPoints ?? "",
+          "Détail France MAIF": c.indoorDetail?.maifEventName ?? "",
+          "Meeting régional (max)": c.indoorDetail?.regionalEventName ?? "",
+        }));
+        XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(sheetRows), "Classement_general");
+      } else if (eventType === "mer") {
+        const sheetRows = globalRanking.map((c) => ({
+          Rang: c.global_rank,
+          Club: c.club_name,
+          "Code club": c.club_code,
+          "Total saison": c.best_points,
+          Détail: formatMerBreakdownLine(c.merBreakdown) ?? "",
+        }));
+        XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(sheetRows), "Classement_general");
+      } else {
+        const sheetRows = globalRanking.map((c) => ({
+          Rang: c.global_rank,
+          Club: c.club_name,
+          "Code club": c.club_code,
+          Total: c.best_points,
+        }));
+        XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(sheetRows), "Classement_general");
+      }
+      const fileName = `classement_clubs_${eventType}_global_${season}_${stamp}.xlsx`;
+      XLSX.writeFile(wb, fileName);
+      toast({ title: "Export Excel prêt", description: fileName });
+      return;
+    }
+
+    if (activeTab === "by-event") {
+      if (data.length === 0) {
+        toast({ title: "Rien à exporter", description: "Aucun événement dans le classement par événement.", variant: "destructive" });
+        return;
+      }
+      const wb = XLSX.utils.book_new();
+      data.forEach((er, idx) => {
+        const rows =
+          eventType === "mer"
+            ? er.rankings.map((r) => ({
+                Rang: r.rank ?? "",
+                Club: r.club_name,
+                "Code club": r.club_code ?? "",
+                "Total points": r.total_points,
+              }))
+            : er.rankings.map((r) => ({
+                Rang: r.rank ?? "",
+                Club: r.club_name,
+                "Code club": r.club_code ?? "",
+                "Total points": r.total_points,
+                "Nb points": r.points_count,
+                "Nb résultats": r.results_count,
+              }));
+        XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(rows), sanitizeExcelSheetName(er.event.name, idx));
+      });
+      const fileName = `classement_clubs_${eventType}_par_evenement_${season}_${stamp}.xlsx`;
+      XLSX.writeFile(wb, fileName);
+      toast({ title: "Export Excel prêt", description: fileName });
+      return;
+    }
+
+    if (globalRanking.length === 0) {
+      toast({ title: "Rien à exporter", description: "Aucun club à détailler.", variant: "destructive" });
+      return;
+    }
+    const flat: Record<string, string | number | undefined>[] = [];
+    for (const club of globalRanking) {
+      const totalSaison =
+        eventType === "indoor" ? indoorClubDisplayTotalPoints(club) : club.best_points;
+      if (club.competitionLines.length === 0) {
+        flat.push({
+          "Rang club": club.global_rank,
+          Club: club.club_name,
+          "Code club": club.club_code,
+          "Total saison": totalSaison,
+          Compétition: "",
+          Date: "",
+          Points: "",
+          Comptabilisation: "",
+          Motif: "",
+          "ID événement": "",
+        });
+      } else {
+        for (const line of club.competitionLines) {
+          flat.push({
+            "Rang club": club.global_rank,
+            Club: club.club_name,
+            "Code club": club.club_code,
+            "Total saison": totalSaison,
+            Compétition: line.eventName,
+            Date:
+              line.startDate && dayjs(line.startDate).isValid()
+                ? dayjs(line.startDate).format("DD/MM/YYYY")
+                : "",
+            Points: line.points,
+            Comptabilisation: line.counted ? "Compté" : "Non compté",
+            Motif: line.detail,
+            "ID événement": line.eventId ?? "",
+          });
+        }
+      }
+    }
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(flat), "Detail_par_club");
+    const fileName = `classement_clubs_${eventType}_detail_${season}_${stamp}.xlsx`;
+    XLSX.writeFile(wb, fileName);
+    toast({ title: "Export Excel prêt", description: fileName });
+  }, [activeTab, calendarYear, data, eventType, globalRanking, toast]);
 
   useEffect(() => {
     fetchRankings();
@@ -507,7 +766,7 @@ export default function ClubRankingsPage() {
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <Trophy className="w-5 h-5" />
-            Type d'événement
+            Type d'événement 
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -524,7 +783,7 @@ export default function ClubRankingsPage() {
             }}
           >
             <SelectTrigger className="w-full md:w-[300px]">
-              <SelectValue placeholder="Sélectionner un type d'événement" />
+              <SelectValue placeholder="Sélectionner un type d'événement luka" />
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="indoor">Indoor</SelectItem>
@@ -627,41 +886,63 @@ export default function ClubRankingsPage() {
       )}
 
       {/* Onglets */}
-      <div className="mb-6">
-        <div className="flex flex-wrap gap-2 border-b bg-muted/30">
-          <button
-            onClick={() => setActiveTab("global")}
-            className={`px-6 py-3 font-medium flex items-center gap-2 border-b-2 transition-all ${
-              activeTab === "global"
-                ? "border-primary text-primary bg-background"
-                : "border-transparent text-muted-foreground hover:text-foreground hover:bg-muted/50"
-            }`}
-          >
-            <Award className="w-4 h-4" />
-            Classement général
-          </button>
-          <button
-            onClick={() => setActiveTab("by-event")}
-            className={`px-6 py-3 font-medium flex items-center gap-2 border-b-2 transition-all ${
-              activeTab === "by-event"
-                ? "border-primary text-primary bg-background"
-                : "border-transparent text-muted-foreground hover:text-foreground hover:bg-muted/50"
-            }`}
-          >
-            <Trophy className="w-4 h-4" />
-            Classement par événement
-          </button>
-          <button
-            onClick={() => setActiveTab("club-detail")}
-            className={`px-6 py-3 font-medium flex items-center gap-2 border-b-2 transition-all ${
-              activeTab === "club-detail"
-                ? "border-primary text-primary bg-background"
-                : "border-transparent text-muted-foreground hover:text-foreground hover:bg-muted/50"
-            }`}
-          >
-            <LayoutList className="w-4 h-4" />
-            Détail par club
-          </button>
+      <div className="mb-6 border-b bg-muted/30">
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-stretch sm:justify-between">
+          <div className="flex flex-wrap gap-2">
+            <button
+              type="button"
+              onClick={() => setActiveTab("global")}
+              className={`px-6 py-3 font-medium flex items-center gap-2 border-b-2 transition-all ${
+                activeTab === "global"
+                  ? "border-primary text-primary bg-background"
+                  : "border-transparent text-muted-foreground hover:text-foreground hover:bg-muted/50"
+              }`}
+            >
+              <Award className="w-4 h-4" />
+              Classement général
+            </button>
+            <button
+              type="button"
+              onClick={() => setActiveTab("by-event")}
+              className={`px-6 py-3 font-medium flex items-center gap-2 border-b-2 transition-all ${
+                activeTab === "by-event"
+                  ? "border-primary text-primary bg-background"
+                  : "border-transparent text-muted-foreground hover:text-foreground hover:bg-muted/50"
+              }`}
+            >
+              <Trophy className="w-4 h-4" />
+              Classement par événement
+            </button>
+            <button
+              type="button"
+              onClick={() => setActiveTab("club-detail")}
+              className={`px-6 py-3 font-medium flex items-center gap-2 border-b-2 transition-all ${
+                activeTab === "club-detail"
+                  ? "border-primary text-primary bg-background"
+                  : "border-transparent text-muted-foreground hover:text-foreground hover:bg-muted/50"
+              }`}
+            >
+              <LayoutList className="w-4 h-4" />
+              Détail par club
+            </button>
+          </div>
+          <div className="flex items-center px-3 pb-2 sm:pb-3 sm:pt-2">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="gap-2 shrink-0"
+              disabled={
+                (activeTab === "global" && globalRanking.length === 0) ||
+                (activeTab === "by-event" && data.length === 0) ||
+                (activeTab === "club-detail" && globalRanking.length === 0)
+              }
+              onClick={exportClubRankingsExcel}
+            >
+              <FileSpreadsheet className="h-4 w-4" />
+              Exporter Excel
+            </Button>
+          </div>
         </div>
       </div>
 
@@ -682,9 +963,11 @@ export default function ClubRankingsPage() {
                 </ul>
               ) : eventType === "indoor" ? (
                 <p className="text-sm">
-                  Total = meilleur meeting standard (barème Points Indoor) + somme des points championnat de France indoor +
-                  somme des <em>N</em> meilleurs défis capitaux sur la saison (
-                  <code className="text-xs">GET /rankings/clubs/dashboard?type=indoor</code>).
+                  La colonne <strong>Total points</strong> est la somme <strong>Meilleur régional</strong> +{" "}
+                  <strong>France MAIF</strong> (même logique que le barème indoor : meeting standard max, CF indoor,
+                  défis capitaux ; points MAIF complétés depuis le classement par événement si besoin). Les rangs sont
+                  recalculés sur ce total. Source API :{" "}
+                  <code className="text-xs">GET /rankings/clubs/dashboard?type=indoor</code>.
                 </p>
               ) : eventType === "mer" ? (
                 <p className="text-sm">
@@ -756,7 +1039,10 @@ export default function ClubRankingsPage() {
                         </TableCell>
                         <TableCell className="text-center">
                           <span className="font-bold text-xl text-primary">
-                            {club.best_points.toFixed(1)}
+                            {(eventType === "indoor"
+                              ? indoorClubDisplayTotalPoints(club)
+                              : club.best_points
+                            ).toFixed(1)}
                           </span>
                         </TableCell>
                         {eventType === "indoor" ? (
@@ -845,7 +1131,7 @@ export default function ClubRankingsPage() {
                   <div className="text-right">
                     <p className="text-xs text-muted-foreground">Total saison</p>
                     <p className="text-xl font-bold text-primary tabular-nums">
-                      {club.best_points.toFixed(2)} pts
+                      {(eventType === "indoor" ? indoorClubDisplayTotalPoints(club) : club.best_points).toFixed(2)} pts
                     </p>
                   </div>
                 </div>
