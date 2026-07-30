@@ -329,61 +329,18 @@ export default function DistancesPage() {
 
   const fetchCategories = async () => {
     try {
-      // Utiliser un timestamp pour éviter le cache après sauvegarde
+      // Une seule requête : /with-crews inclut déjà distance_id (+ distance)
       const res = await api.get(`/categories/event/${eventId}/with-crews`, {
-        params: { _t: Date.now() }
+        params: { _t: Date.now() },
       });
       const categoriesData = res.data.data || [];
-      
-      // L'API retourne maintenant directement distance_id dans la réponse (corrigé côté backend)
-      // On utilise directement cette valeur, mais on peut toujours enrichir avec les détails complets
-      // si nécessaire pour avoir l'objet distance complet
-      const enrichedCategories = await Promise.all(
-        categoriesData.map(async (cat: any) => {
-          // Utiliser distance_id de la réponse si présent (c'est le cas maintenant)
-          const distanceIdFromResponse = cat.distance_id !== undefined ? (cat.distance_id || null) : null;
-          
-          // Si on a déjà distance_id, on peut l'utiliser directement
-          // Sinon, récupérer les détails complets (fallback pour compatibilité)
-          if (distanceIdFromResponse !== null || cat.distance_id === null) {
-            // distance_id est présent dans la réponse, utiliser directement
-            return {
-              ...cat,
-              distance_id: distanceIdFromResponse,
-              // distance peut ne pas être présent dans /with-crews, on peut le laisser null
-              distance: cat.distance || null,
-            };
-          } else {
-            // Fallback : récupérer les détails complets (au cas où le backend n'aurait pas encore été mis à jour)
-            try {
-              const categoryRes = await api.get(`/categories/${cat.id}`, {
-                params: { _t: Date.now() }
-              });
-              const categoryDetail = categoryRes.data.data || categoryRes.data;
-              
-              return {
-                ...cat,
-                distance_id: categoryDetail.distance_id !== undefined ? (categoryDetail.distance_id || null) : null,
-                distance: categoryDetail.distance || null,
-              };
-            } catch (err) {
-              console.error(`Erreur récupération distance pour catégorie ${cat.id}:`, err);
-              return {
-                ...cat,
-                distance_id: distanceIdFromResponse,
-              };
-            }
-          }
-        })
+      setCategories(
+        categoriesData.map((cat: any) => ({
+          ...cat,
+          distance_id: cat.distance_id ?? null,
+          distance: cat.distance || null,
+        }))
       );
-      
-      console.log("Catégories chargées avec distance_id:", enrichedCategories.map(c => ({ 
-        id: c.id, 
-        label: c.label, 
-        distance_id: c.distance_id 
-      })));
-      
-      setCategories(enrichedCategories);
     } catch (err) {
       console.error("Erreur chargement catégories", err);
       toast({

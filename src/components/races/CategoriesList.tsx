@@ -39,61 +39,23 @@ export default function CategoriesList({ categories, eventId }: { categories: Ca
         // Créer un map pour accéder rapidement aux distances
         const distanceMap = new Map(distances.map((d: any) => [d.id, d]));
 
-        // Récupérer les détails complets des catégories avec leurs distances
-        const enrichedCategories = await Promise.all(
-          categories.map(async (cat) => {
-            try {
-              // Si la catégorie a déjà une distance, l'utiliser
-              if (cat.distance) {
-                return cat;
-              }
-              
-              // Sinon, essayer de récupérer la catégorie complète
-              if (cat.distance_id) {
-                const distance = distanceMap.get(cat.distance_id) as any;
-                if (distance && distance.id) {
-                  return { 
-                    ...cat, 
-                    distance: {
-                      id: distance.id,
-                      meters: distance.meters,
-                      is_time_based: distance.is_time_based || false,
-                      duration_seconds: distance.duration_seconds || null,
-                      label: distance.label,
-                    }
-                  };
-                }
-              }
-
-              // Essayer de récupérer la catégorie complète via l'API
-              const categoryRes = await api.get(`/categories/${cat.id}`);
-              const categoryData = categoryRes.data.data || categoryRes.data;
-              
-              // Si la catégorie a une distance_id, récupérer la distance
-              if (categoryData.distance_id) {
-                const distance = distanceMap.get(categoryData.distance_id) as any;
-                if (distance && distance.id) {
-                  return { 
-                    ...cat, 
-                    distance_id: categoryData.distance_id,
-                    distance: {
-                      id: distance.id,
-                      meters: distance.meters,
-                      is_time_based: distance.is_time_based || false,
-                      duration_seconds: distance.duration_seconds || null,
-                      label: distance.label,
-                    }
-                  };
-                }
-              }
-
-              return cat;
-            } catch (err) {
-              console.error(`Erreur chargement distance pour catégorie ${cat.id}:`, err);
-              return cat;
-            }
-          })
-        );
+        // Enrichissement local uniquement (pas de N+1 GET /categories/:id)
+        const enrichedCategories = categories.map((cat) => {
+          if (cat.distance) return cat;
+          if (!cat.distance_id) return cat;
+          const distance = distanceMap.get(cat.distance_id) as any;
+          if (!distance?.id) return cat;
+          return {
+            ...cat,
+            distance: {
+              id: distance.id,
+              meters: distance.meters,
+              is_time_based: distance.is_time_based || false,
+              duration_seconds: distance.duration_seconds || null,
+              label: distance.label,
+            },
+          };
+        });
 
         setCategoriesWithDistances(enrichedCategories);
       } catch (err) {

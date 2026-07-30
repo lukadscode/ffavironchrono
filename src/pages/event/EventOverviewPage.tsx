@@ -83,31 +83,9 @@ export default function EventOverviewPage() {
       const distances = distancesRes.data.data || [];
       const distanceIds = new Set(distances.map((d: any) => d.id));
 
-      // Vérifier les catégories sans distance (même logique que la page distances)
+      // Vérifier les catégories sans distance (distance_id déjà fourni par /with-crews)
       const categoriesRes = await api.get(`/categories/event/${eventId}/with-crews`).catch(() => ({ data: { data: [] } }));
-      const categoriesData = categoriesRes.data.data || [];
-      
-      // Enrichir chaque catégorie avec son distance_id à jour (même méthode que DistancesManager)
-      const enrichedCategories = await Promise.all(
-        categoriesData.map(async (cat: any) => {
-          try {
-            const categoryRes = await api.get(`/categories/${cat.id}`);
-            const categoryDetail = categoryRes.data.data || categoryRes.data;
-            
-            return {
-              ...cat,
-              distance_id: categoryDetail.distance_id || null,
-              distance: categoryDetail.distance || null,
-            };
-          } catch (err) {
-            console.error(`Erreur récupération distance pour catégorie ${cat.id}:`, err);
-            return {
-              ...cat,
-              distance_id: cat.distance_id || null,
-            };
-          }
-        })
-      );
+      const enrichedCategories = categoriesRes.data.data || [];
 
       // Filtrer les catégories non affectées (même logique que DistancesManager)
       const categoriesWithoutDistance = enrichedCategories.filter((cat: any) => {
