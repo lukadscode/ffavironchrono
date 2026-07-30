@@ -37,12 +37,9 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Badge } from "@/components/ui/badge";
 import { Link } from "react-router-dom";
 import dayjs from "dayjs";
-<<<<<<< HEAD
 import { AdminPage } from "@/components/layout/AdminPage";
-=======
 import * as XLSX from "xlsx";
 import { useToast } from "@/hooks/use-toast";
->>>>>>> 81c2a1ba9b3b510db3c74b0db704f2f031370376
 
 interface ClubRanking {
   id: string;
