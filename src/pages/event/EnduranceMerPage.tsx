@@ -230,7 +230,7 @@ export default function EnduranceMerPage() {
 
   // Import state
   const [file, setFile] = useState<File | null>(null);
-  const [importSource, setImportSource] = useState<"time_team" | "base">("time_team");
+  const [importSource, setImportSource] = useState<"time_team" | "base">("base");
   const [eventFormat, setEventFormat] = useState<"enduro" | "brs">("enduro");
   const [eventLevel, setEventLevel] = useState<"territorial" | "championnat_france">("territorial");
   const [replacePrevious, setReplacePrevious] = useState(false);
@@ -366,8 +366,9 @@ export default function EnduranceMerPage() {
       let mixedRowsDetected = 0;
       let normalizedCodes = 0;
 
-      // Sanitize Time Team uniquement (feuilles par épreuve). Le format BASE est plat.
-      if (importSource === "time_team") {
+      // Sanitize uniquement le fichier BASE (feuilles par épreuve).
+      // Time Team = export plat cdfadm, sans sanitize multi-feuilles.
+      if (importSource === "base") {
         const sanitized = await sanitizeWorkbookBeforeImport(file);
         uploadFile = sanitized.sanitizedFile;
         removedRows = sanitized.removedRows;
@@ -472,9 +473,9 @@ export default function EnduranceMerPage() {
             Importer un fichier Excel
           </CardTitle>
           <p className="text-sm text-muted-foreground">
-            {importSource === "base"
-              ? "Export BASE / cdfadm (une ligne par équipage : event_code, position, club_ref)."
-              : "Fichier de remontée Time Team FFAviron (une feuille par épreuve : SF1X, SH1X, etc.)."}
+            {importSource === "time_team"
+              ? "Export Time Team / cdfadm (une ligne par équipage : event_code, position, club_ref)."
+              : "Fichier BASE FFAviron (une feuille par épreuve : SF1X, SH1X, etc.)."}
           </p>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -486,8 +487,8 @@ export default function EnduranceMerPage() {
                 onValueChange={(v) => {
                   const next = v as "time_team" | "base";
                   setImportSource(next);
-                  // BASE = typiquement Championnat de France
-                  if (next === "base") setEventLevel("championnat_france");
+                  // Time Team (plat) = souvent CF ; BASE (feuilles) = souvent territorial
+                  if (next === "time_team") setEventLevel("championnat_france");
                   else setEventLevel("territorial");
                 }}
               >
@@ -495,8 +496,8 @@ export default function EnduranceMerPage() {
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="time_team">Time Team (feuilles par épreuve)</SelectItem>
-                  <SelectItem value="base">BASE / cdfadm (fichier plat)</SelectItem>
+                  <SelectItem value="base">BASE (feuilles par épreuve)</SelectItem>
+                  <SelectItem value="time_team">Time Team / cdfadm (fichier plat)</SelectItem>
                 </SelectContent>
               </Select>
             </div>
