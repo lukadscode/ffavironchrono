@@ -68,6 +68,23 @@ function normalizeCellValue(value: unknown): string {
 }
 
 /**
+ * Certains fichiers FF (ex. ENDURO … CLAOUEY) ont un !ref Excel gonflé jusqu’à
+ * la colonne AMJ (1024) sans données → sheet_to_json / aoa_to_sheet saturent le navigateur.
+ */
+function clampSheetUsedRange(sheet: XLSX.WorkSheet, maxCol = 16): void {
+  if (!sheet["!ref"]) return;
+  try {
+    const range = XLSX.utils.decode_range(sheet["!ref"]);
+    if (range.e.c > maxCol) {
+      range.e.c = maxCol;
+      sheet["!ref"] = XLSX.utils.encode_range(range);
+    }
+  } catch {
+    /* ignore */
+  }
+}
+
+/**
  * Canonicalise un code club vers C + 6 chiffres.
  * Ex. 77002 → C077002, 077002 → C077002, C77002 → C077002, C077002 → C077002
  */
@@ -125,6 +142,7 @@ function sanitizeWorkbookBeforeImport(file: File): Promise<{
           if (sheetName.toLowerCase() === "organisateur") return;
 
           const sheet = workbook.Sheets[sheetName];
+          clampSheetUsedRange(sheet);
           const rows = XLSX.utils.sheet_to_json<(string | number | null)[]>(sheet, {
             header: 1,
             defval: "",
@@ -212,6 +230,7 @@ export default function EnduranceMerPage() {
 
   // Import state
   const [file, setFile] = useState<File | null>(null);
+  const [importSource, setImportSource] = useState<"time_team" | "base">("time_team");
   const [eventFormat, setEventFormat] = useState<"enduro" | "brs">("enduro");
   const [eventLevel, setEventLevel] = useState<"territorial" | "championnat_france">("territorial");
   const [replacePrevious, setReplacePrevious] = useState(false);
@@ -342,10 +361,23 @@ export default function EnduranceMerPage() {
     setImporting(true);
     setImportSuccess(null);
     try {
-      const { sanitizedFile, removedRows, mixedRowsDetected, normalizedCodes } =
-        await sanitizeWorkbookBeforeImport(file);
+      let uploadFile = file;
+      let removedRows = 0;
+      let mixedRowsDetected = 0;
+      let normalizedCodes = 0;
+
+      // Sanitize Time Team uniquement (feuilles par épreuve). Le format BASE est plat.
+      if (importSource === "time_team") {
+        const sanitized = await sanitizeWorkbookBeforeImport(file);
+        uploadFile = sanitized.sanitizedFile;
+        removedRows = sanitized.removedRows;
+        mixedRowsDetected = sanitized.mixedRowsDetected;
+        normalizedCodes = sanitized.normalizedCodes;
+      }
+
       const formData = new FormData();
-      formData.append("file", sanitizedFile);
+      formData.append("file", uploadFile);
+      formData.append("import_source", importSource);
       formData.append("event_format", eventFormat);
       formData.append("event_level", eventLevel);
       formData.append("replace_previous", String(replacePrevious));
@@ -440,11 +472,34 @@ export default function EnduranceMerPage() {
             Importer un fichier Excel
           </CardTitle>
           <p className="text-sm text-muted-foreground">
-            Fichier de remontée des résultats FFAviron (une feuille par épreuve : SF1X, SH1X, etc.)
+            {importSource === "base"
+              ? "Export BASE / cdfadm (une ligne par équipage : event_code, position, club_ref)."
+              : "Fichier de remontée Time Team FFAviron (une feuille par épreuve : SF1X, SH1X, etc.)."}
           </p>
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="grid gap-4 sm:grid-cols-2">
+            <div className="space-y-2">
+              <Label>Type de fichier</Label>
+              <Select
+                value={importSource}
+                onValueChange={(v) => {
+                  const next = v as "time_team" | "base";
+                  setImportSource(next);
+                  // BASE = typiquement Championnat de France
+                  if (next === "base") setEventLevel("championnat_france");
+                  else setEventLevel("territorial");
+                }}
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="time_team">Time Team (feuilles par épreuve)</SelectItem>
+                  <SelectItem value="base">BASE / cdfadm (fichier plat)</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
             <div className="space-y-2">
               <Label>Fichier (.xlsx)</Label>
               <Input
