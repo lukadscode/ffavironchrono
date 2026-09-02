@@ -68,17 +68,38 @@ function normalizeCellValue(value: unknown): string {
 }
 
 /**
- * Certains fichiers FF (ex. ENDURO … CLAOUEY) ont un !ref Excel gonflé jusqu’à
- * la colonne AMJ (1024) sans données → sheet_to_json / aoa_to_sheet saturent le navigateur.
+ * Certains fichiers FF (ex. CLAOUEY / PIRELONS) ont un !ref Excel gonflé
+ * (AMJ / Z1000) sans données → sheet_to_json / aoa_to_sheet saturent le navigateur.
  */
-function clampSheetUsedRange(sheet: XLSX.WorkSheet, maxCol = 16): void {
+function clampSheetUsedRange(sheet: XLSX.WorkSheet, maxCol = 16, maxRow = 300): void {
   if (!sheet["!ref"]) return;
   try {
-    const range = XLSX.utils.decode_range(sheet["!ref"]);
-    if (range.e.c > maxCol) {
-      range.e.c = maxCol;
-      sheet["!ref"] = XLSX.utils.encode_range(range);
+    let maxC = 0;
+    let maxR = 0;
+    let has = false;
+    for (const addr of Object.keys(sheet)) {
+      if (addr[0] === "!") continue;
+      const cell = sheet[addr];
+      if (cell == null || cell.v == null || cell.v === "") continue;
+      const m = XLSX.utils.decode_cell(addr);
+      has = true;
+      if (m.c > maxC) maxC = m.c;
+      if (m.r > maxR) maxR = m.r;
     }
+    if (has) {
+      sheet["!ref"] = XLSX.utils.encode_range({
+        s: { r: 0, c: 0 },
+        e: {
+          r: Math.min(maxR, maxRow),
+          c: Math.min(Math.max(maxC, 3), maxCol),
+        },
+      });
+      return;
+    }
+    const range = XLSX.utils.decode_range(sheet["!ref"]);
+    if (range.e.c > maxCol) range.e.c = maxCol;
+    if (range.e.r > maxRow) range.e.r = maxRow;
+    sheet["!ref"] = XLSX.utils.encode_range(range);
   } catch {
     /* ignore */
   }
@@ -117,11 +138,25 @@ function isValidCodeClubCell(codeClub: string): boolean {
   return segments.every((seg) => MIXED_CLUB_CODE_SEGMENT_REGEX.test(seg));
 }
 
-function sanitizeWorkbookBeforeImport(file: File): Promise<{
+function countInflatedSheetRef(ref: string | undefined, maxCol = 16, maxRow = 300): boolean {
+  if (!ref) return false;
+  try {
+    const range = XLSX.utils.decode_range(ref);
+    return range.e.c > maxCol || range.e.r > maxRow;
+  } catch {
+    return false;
+  }
+}
+
+function prepareWorkbookBeforeImport(
+  file: File,
+  importSource: "base" | "time_team",
+): Promise<{
   sanitizedFile: File;
   removedRows: number;
   mixedRowsDetected: number;
   normalizedCodes: number;
+  inflatedSheets: number;
 }> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
@@ -137,80 +172,93 @@ function sanitizeWorkbookBeforeImport(file: File): Promise<{
         let removedRows = 0;
         let mixedRowsDetected = 0;
         let normalizedCodes = 0;
+        let inflatedSheets = 0;
 
+        // 1) Recadrer les plages Excel gonflées (Z1000, AMJ…) sur toutes les feuilles
         workbook.SheetNames.forEach((sheetName) => {
-          if (sheetName.toLowerCase() === "organisateur") return;
-
           const sheet = workbook.Sheets[sheetName];
+          if (countInflatedSheetRef(sheet["!ref"])) inflatedSheets += 1;
           clampSheetUsedRange(sheet);
-          const rows = XLSX.utils.sheet_to_json<(string | number | null)[]>(sheet, {
-            header: 1,
-            defval: "",
-          });
+        });
 
-          const headerIndex = rows.findIndex((row) => {
-            const normalized = row.map((c) => normalizeCellValue(c).toLowerCase());
-            return (
-              normalized.some((c) => c.includes("classement")) &&
-              normalized.some((c) => c.includes("code club")) &&
-              normalized.some((c) => c.includes("nom club"))
-            );
-          });
+        // 2) Sanitize métier uniquement pour le format BASE (feuilles par épreuve)
+        if (importSource === "base") {
+          workbook.SheetNames.forEach((sheetName) => {
+            if (sheetName.toLowerCase() === "organisateur") return;
 
-          if (headerIndex < 0) return;
+            const sheet = workbook.Sheets[sheetName];
+            const rows = XLSX.utils.sheet_to_json<(string | number | null)[]>(sheet, {
+              header: 1,
+              defval: "",
+            });
 
-          const headers = rows[headerIndex].map((c) => normalizeCellValue(c).toLowerCase());
-          const placeIdx = headers.findIndex((h) => h.includes("classement"));
-          const codeClubIdx = headers.findIndex((h) => h.includes("code club"));
-          const nomClubIdx = headers.findIndex((h) => h.includes("nom club"));
+            const headerIndex = rows.findIndex((row) => {
+              const normalized = row.map((c) => normalizeCellValue(c).toLowerCase());
+              return (
+                normalized.some((c) => c.includes("classement")) &&
+                normalized.some((c) => c.includes("code club")) &&
+                normalized.some((c) => c.includes("nom club"))
+              );
+            });
 
-          if (placeIdx < 0 || codeClubIdx < 0 || nomClubIdx < 0) return;
+            if (headerIndex < 0) return;
 
-          for (let i = headerIndex + 1; i < rows.length; i += 1) {
-            const row = rows[i];
-            const place = normalizeCellValue(row[placeIdx]);
-            const codeClub = normalizeCellValue(row[codeClubIdx]);
-            const nomClub = normalizeCellValue(row[nomClubIdx]);
+            const headers = rows[headerIndex].map((c) => normalizeCellValue(c).toLowerCase());
+            const placeIdx = headers.findIndex((h) => h.includes("classement"));
+            const codeClubIdx = headers.findIndex((h) => h.includes("code club"));
+            const nomClubIdx = headers.findIndex((h) => h.includes("nom club"));
 
-            const hasSomeContent = row.some((cell) => normalizeCellValue(cell) !== "");
-            if (!hasSomeContent) continue;
+            if (placeIdx < 0 || codeClubIdx < 0 || nomClubIdx < 0) return;
 
-            const isValidCodeClub = isValidCodeClubCell(codeClub);
-            const isValidRow = isValidCodeClub && nomClub !== "";
+            for (let i = headerIndex + 1; i < rows.length; i += 1) {
+              const row = rows[i];
+              const codeClub = normalizeCellValue(row[codeClubIdx]);
+              const nomClub = normalizeCellValue(row[nomClubIdx]);
 
-            if (MIXTE_NOM_CLUB_REGEX.test(nomClub)) {
-              mixedRowsDetected += 1;
-            } else if (isValidRow && codeClub.includes("/")) {
-              // Mixte inline sur la colonne code club (ex. C029009(2)/C029028(3))
-              mixedRowsDetected += 1;
-            }
+              const hasSomeContent = row.some((cell) => normalizeCellValue(cell) !== "");
+              if (!hasSomeContent) continue;
 
-            if (!isValidRow) {
-              removedRows += 1;
-              row[placeIdx] = "";
-              row[codeClubIdx] = "";
-              row[nomClubIdx] = "";
-            } else if (!codeClub.includes("/")) {
-              // Normaliser 77002 / C77002 → C077002 avant envoi API
-              const canonical = canonicalizeClubCode(codeClub);
-              if (canonical && canonical !== codeClub.toUpperCase()) {
-                row[codeClubIdx] = canonical;
-                normalizedCodes += 1;
-              } else if (canonical) {
-                row[codeClubIdx] = canonical;
+              const isValidCodeClub = isValidCodeClubCell(codeClub);
+              const isValidRow = isValidCodeClub && nomClub !== "";
+
+              if (MIXTE_NOM_CLUB_REGEX.test(nomClub)) {
+                mixedRowsDetected += 1;
+              } else if (isValidRow && codeClub.includes("/")) {
+                mixedRowsDetected += 1;
+              }
+
+              if (!isValidRow) {
+                removedRows += 1;
+                row[placeIdx] = "";
+                row[codeClubIdx] = "";
+                row[nomClubIdx] = "";
+              } else if (!codeClub.includes("/")) {
+                const canonical = canonicalizeClubCode(codeClub);
+                if (canonical && canonical !== codeClub.toUpperCase()) {
+                  row[codeClubIdx] = canonical;
+                  normalizedCodes += 1;
+                } else if (canonical) {
+                  row[codeClubIdx] = canonical;
+                }
               }
             }
-          }
 
-          workbook.Sheets[sheetName] = XLSX.utils.aoa_to_sheet(rows);
-        });
+            workbook.Sheets[sheetName] = XLSX.utils.aoa_to_sheet(rows);
+          });
+        }
 
         const wbout = XLSX.write(workbook, { bookType: "xlsx", type: "array" });
         const sanitizedFile = new File([wbout], file.name.replace(/\.xls$/i, ".xlsx"), {
           type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         });
 
-        resolve({ sanitizedFile, removedRows, mixedRowsDetected, normalizedCodes });
+        resolve({
+          sanitizedFile,
+          removedRows,
+          mixedRowsDetected,
+          normalizedCodes,
+          inflatedSheets,
+        });
       } catch (error) {
         reject(error);
       }
@@ -365,16 +413,15 @@ export default function EnduranceMerPage() {
       let removedRows = 0;
       let mixedRowsDetected = 0;
       let normalizedCodes = 0;
+      let inflatedSheets = 0;
 
-      // Sanitize uniquement le fichier BASE (feuilles par épreuve).
-      // Time Team = export plat cdfadm, sans sanitize multi-feuilles.
-      if (importSource === "base") {
-        const sanitized = await sanitizeWorkbookBeforeImport(file);
-        uploadFile = sanitized.sanitizedFile;
-        removedRows = sanitized.removedRows;
-        mixedRowsDetected = sanitized.mixedRowsDetected;
-        normalizedCodes = sanitized.normalizedCodes;
-      }
+      // Nettoyage auto (plages Excel gonflées) + sanitize BASE si besoin
+      const prepared = await prepareWorkbookBeforeImport(file, importSource);
+      uploadFile = prepared.sanitizedFile;
+      removedRows = prepared.removedRows;
+      mixedRowsDetected = prepared.mixedRowsDetected;
+      normalizedCodes = prepared.normalizedCodes;
+      inflatedSheets = prepared.inflatedSheets;
 
       const formData = new FormData();
       formData.append("file", uploadFile);
@@ -399,6 +446,13 @@ export default function EnduranceMerPage() {
         title: "Import réussi",
         description: res.data?.message ?? `${data.inserted ?? 0} résultat(s) importé(s)`,
       });
+
+      if (inflatedSheets > 0) {
+        toast({
+          title: "Fichier optimisé",
+          description: `${inflatedSheets} feuille(s) avaient une zone Excel trop grande (lignes/colonnes vides) — recadrage automatique avant import.`,
+        });
+      }
 
       if (normalizedCodes > 0) {
         toast({
@@ -474,8 +528,8 @@ export default function EnduranceMerPage() {
           </CardTitle>
           <p className="text-sm text-muted-foreground">
             {importSource === "time_team"
-              ? "Export Time Team / cdfadm (une ligne par équipage : event_code, position, club_ref)."
-              : "Fichier BASE FFAviron (une feuille par épreuve : SF1X, SH1X, etc.)."}
+              ? "Export Time Team / cdfadm (une ligne par équipage). Recadrage automatique si la zone Excel est gonflée."
+              : "Fichier BASE FFAviron (une feuille par épreuve : SF1X, SH1X, etc.). Les plages Excel gonflées sont recadrées automatiquement à l’import."}
           </p>
         </CardHeader>
         <CardContent className="space-y-4">
