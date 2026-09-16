@@ -38,6 +38,10 @@ import { Badge } from "@/components/ui/badge";
 import { Link } from "react-router-dom";
 import dayjs from "dayjs";
 import { AdminPage } from "@/components/layout/AdminPage";
+import {
+  DefisCapitauxImportCard,
+  type DefisCapitauxImportMeta,
+} from "@/components/rankings/DefisCapitauxImportCard";
 import * as XLSX from "xlsx";
 import { useToast } from "@/hooks/use-toast";
 
@@ -292,11 +296,13 @@ function buildMerClubCompetitionLines(row: any): ClubCompetitionLine[] {
   return sortClubCompetitionLines(lines);
 }
 
-function indoorContributionDetail(kind: string | undefined): string {
+function indoorContributionDetail(kind: string | undefined, rule?: string): string {
   if (kind === "meeting_standard_max")
     return "Compté : meilleur meeting standard de la saison (barème Points Indoor)";
   if (kind === "championnat_france_indoor")
     return "Compté : points championnat de France indoor agrégés sur la saison";
+  if (kind === "defis_capitaux" && rule === "import_tableau_annuel")
+    return "Compté : classement annuel 7 défis capitaux (tableau importé, barème rang → points)";
   if (kind === "defis_capitaux")
     return "Compté : contribution « défis capitaux » (N meilleurs de la saison selon le barème API)";
   return "Compté dans le total général indoor";
@@ -305,7 +311,7 @@ function indoorContributionDetail(kind: string | undefined): string {
 function indoorKindTitle(kind: string | undefined): string {
   if (kind === "meeting_standard_max") return "Meeting standard (meilleur de la saison)";
   if (kind === "championnat_france_indoor") return "Championnat de France indoor";
-  if (kind === "defis_capitaux") return "Défis capitaux";
+  if (kind === "defis_capitaux") return "7 défis capitaux";
   return kind ? String(kind) : "Contribution";
 }
 
@@ -318,7 +324,7 @@ function buildIndoorClubCompetitionLines(contributions: any[] | undefined): Club
     startDate: c.start_date ? String(c.start_date) : undefined,
     points: Number(c.points ?? 0),
     counted: true,
-    detail: indoorContributionDetail(c.kind),
+    detail: indoorContributionDetail(c.kind, c.rule),
   }));
   return sortClubCompetitionLines(lines);
 }
@@ -341,6 +347,8 @@ type GlobalRankingRow = {
     regionalResultsCount: number;
     maifPoints: number;
     maifEventName: string;
+    defisPoints: number;
+    defisEventName: string;
   };
   merBreakdown?: MerBreakdown;
   contributions?: any[];
@@ -350,10 +358,14 @@ type GlobalRankingRow = {
   competitionLines: ClubCompetitionLine[];
 };
 
-/** Total indoor affiché = meilleur régional + France MAIF (forçage numérique pour éviter toute concaténation de chaînes). */
+/** Total indoor affiché = meilleur régional + France MAIF + 7 défis capitaux. */
 function indoorClubDisplayTotalPoints(club: Pick<GlobalRankingRow, "indoorDetail" | "best_points">): number {
   if (club.indoorDetail) {
-    return Number(club.indoorDetail.regionalPoints) + Number(club.indoorDetail.maifPoints);
+    return (
+      Number(club.indoorDetail.regionalPoints) +
+      Number(club.indoorDetail.maifPoints) +
+      Number(club.indoorDetail.defisPoints ?? 0)
+    );
   }
   return Number(club.best_points ?? 0);
 }
@@ -403,10 +415,11 @@ function mapDashboardGlobal(
       const cf = contributions.filter((c: any) => c.kind === "championnat_france_indoor");
       const defis = contributions.filter((c: any) => c.kind === "defis_capitaux");
       const regionalPoints = Number(meeting?.points ?? 0);
-      const maifKinds = new Set(["championnat_france_indoor", "defis_capitaux"]);
+      const maifKinds = new Set(["championnat_france_indoor"]);
       const maifNameContributions = contributions.filter(
         (c: any) =>
           c.kind !== "meeting_standard_max" &&
+          c.kind !== "defis_capitaux" &&
           !maifKinds.has(String(c.kind ?? "")) &&
           isMaifNationalIndoorEventName(c.event_name)
       );
@@ -417,8 +430,7 @@ function mapDashboardGlobal(
       const maifFromByEventRow = maifByEventInfo?.points ?? 0;
       const maifByEventTitle = maifByEventInfo?.eventName ?? "";
       const coreFromContributions = cfPts + maifFromEventName;
-      const coreMaif = Math.max(coreFromContributions, maifFromByEventRow);
-      const maifPoints = defisPts + coreMaif;
+      const maifPoints = Math.max(coreFromContributions, maifFromByEventRow);
       const nameLabels = [
         ...new Set(
           maifNameContributions
@@ -426,10 +438,7 @@ function mapDashboardGlobal(
             .filter(Boolean)
         ),
       ];
-      const kindLabels = [
-        cf.length ? "Championnat France indoor" : "",
-        defis.length ? "Défis capitaux" : "",
-      ].filter(Boolean);
+      const kindLabels = [cf.length ? "Championnat France indoor" : ""].filter(Boolean);
       const byEventLabel =
         maifFromByEventRow > 0 &&
         maifByEventTitle &&
@@ -438,7 +447,7 @@ function mapDashboardGlobal(
           : [];
       const maifEventName =
         [...kindLabels, ...nameLabels, ...byEventLabel].join(" · ") ||
-        (maifPoints > 0 ? maifByEventTitle || "CF / défis / MAIF" : "");
+        (maifPoints > 0 ? maifByEventTitle || "France MAIF" : "");
       indoorDetail = {
         regionalPoints,
         regionalEventName: meeting?.event_name ?? "—",
@@ -446,6 +455,8 @@ function mapDashboardGlobal(
         regionalResultsCount: 0,
         maifPoints,
         maifEventName,
+        defisPoints: defisPts,
+        defisEventName: defis.length ? "7 défis capitaux" : "",
       };
     }
 
@@ -458,7 +469,10 @@ function mapDashboardGlobal(
 
     let best_points = Number(row.total_points ?? 0);
     if (eventType === "indoor" && indoorDetail) {
-      best_points = Number(indoorDetail.regionalPoints) + Number(indoorDetail.maifPoints);
+      best_points =
+        Number(indoorDetail.regionalPoints) +
+        Number(indoorDetail.maifPoints) +
+        Number(indoorDetail.defisPoints);
     }
 
     return {
@@ -526,6 +540,7 @@ export default function ClubRankingsPage() {
   const [calendarYear, setCalendarYear] = useState(currentCalendarYearString);
   const [calendarYearDraft, setCalendarYearDraft] = useState(currentCalendarYearString);
   const [includeTerritorialBonus, setIncludeTerritorialBonus] = useState(true);
+  const [defisCapitauxImport, setDefisCapitauxImport] = useState<DefisCapitauxImportMeta>(null);
 
   const commitCalendarYearFromDraft = useCallback(() => {
     const next = parseCalendarYearOnCommit(calendarYearDraft);
@@ -573,6 +588,7 @@ export default function ClubRankingsPage() {
         setRulesSummary(null);
         setApiPayloadSeason(null);
         setSeasonFilterMeta(null);
+        setDefisCapitauxImport(null);
         return;
       }
 
@@ -599,6 +615,11 @@ export default function ClubRankingsPage() {
       const byEventRaw = payload?.byEvent;
       setData(mapDashboardByEvent(byEventRaw, eventType));
       setGlobalRanking(mapDashboardGlobal(payload?.global ?? {}, eventType, byEventRaw));
+      setDefisCapitauxImport(
+        eventType === "indoor" && payload?.defis_capitaux_import
+          ? payload.defis_capitaux_import
+          : null
+      );
     } catch (err: any) {
       console.error("Erreur récupération classements:", err);
       setError(err?.response?.data?.message || "Impossible de charger les classements");
@@ -607,6 +628,7 @@ export default function ClubRankingsPage() {
       setRulesSummary(null);
       setApiPayloadSeason(null);
       setSeasonFilterMeta(null);
+      setDefisCapitauxImport(null);
     } finally {
       setLoading(false);
     }
@@ -631,6 +653,7 @@ export default function ClubRankingsPage() {
           "Meilleur régional": c.indoorDetail?.regionalPoints ?? "",
           "France MAIF": c.indoorDetail?.maifPoints ?? "",
           "Détail France MAIF": c.indoorDetail?.maifEventName ?? "",
+          "7 défis capitaux": c.indoorDetail?.defisPoints ?? "",
           "Meeting régional (max)": c.indoorDetail?.regionalEventName ?? "",
         }));
         XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(sheetRows), "Classement_general");
@@ -854,6 +877,14 @@ export default function ClubRankingsPage() {
         </CardContent>
       </Card>
 
+      {eventType === "indoor" ? (
+        <DefisCapitauxImportCard
+          season={calendarYear.trim() || currentCalendarYearString()}
+          importMeta={defisCapitauxImport}
+          onImported={fetchRankings}
+        />
+      ) : null}
+
       {error && (
         <Alert variant="destructive">
           <AlertDescription>{error}</AlertDescription>
@@ -961,10 +992,8 @@ export default function ClubRankingsPage() {
               ) : eventType === "indoor" ? (
                 <p className="text-sm">
                   La colonne <strong>Total points</strong> est la somme <strong>Meilleur régional</strong> +{" "}
-                  <strong>France MAIF</strong> (même logique que le barème indoor : meeting standard max, CF indoor,
-                  défis capitaux ; points MAIF complétés depuis le classement par événement si besoin). Les rangs sont
-                  recalculés sur ce total. Source API :{" "}
-                  <code className="text-xs">GET /rankings/clubs/dashboard?type=indoor</code>.
+                  <strong>France MAIF</strong> + <strong>7 défis capitaux</strong> (tableau annuel importé). Les rangs
+                  sont recalculés sur ce total.
                 </p>
               ) : eventType === "mer" ? (
                 <p className="text-sm">
@@ -1000,6 +1029,9 @@ export default function ClubRankingsPage() {
                         </TableHead>
                         <TableHead className="min-w-[180px] text-center font-semibold">
                           France MAIF
+                        </TableHead>
+                        <TableHead className="min-w-[160px] text-center font-semibold">
+                          7 défis capitaux
                         </TableHead>
                       </>
                     ) : null}
@@ -1060,6 +1092,13 @@ export default function ClubRankingsPage() {
                                   {club.indoorDetail.maifEventName}
                                 </div>
                               ) : null}
+                            </TableCell>
+                            <TableCell className="text-center">
+                              <span className="font-semibold">
+                                {club.indoorDetail
+                                  ? Number(club.indoorDetail.defisPoints ?? 0).toFixed(1)
+                                  : "—"}
+                              </span>
                             </TableCell>
                           </>
                         ) : null}
