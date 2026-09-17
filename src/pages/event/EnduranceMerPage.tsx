@@ -60,7 +60,8 @@ const SHORT_CLUB_CODE_REGEX = /^(?:C)?\d{1,6}$/i;
  * Segment d’un code mixte inline dans une cellule (ex. C029009(2)/C029028(3)).
  * Voir FRONTEND_ENDURANCE_MER_IMPORT.md — ne pas vider ces lignes avant le POST.
  */
-const MIXED_CLUB_CODE_SEGMENT_REGEX = /^C\d{6}\(\d+\)$/i;
+/** Segment d’un code mixte inline (ex. C029009(2) ou C078018 (1)). */
+const MIXED_CLUB_CODE_SEGMENT_REGEX = /^C\d{6}\s*\(\s*\d+\s*\)$/i;
 const MIXTE_NOM_CLUB_REGEX = /\([^()]+\)\s*\/\s*.*\([^()]+\)/;
 
 function normalizeCellValue(value: unknown): string {
@@ -127,6 +128,7 @@ function canonicalizeClubCode(raw: string): string | null {
 function isValidCodeClubCell(codeClub: string): boolean {
   const code = normalizeCellValue(codeClub);
   if (!code) return false;
+  if (code.toUpperCase() === "MIXTE") return true;
   if (SINGLE_CLUB_CODE_REGEX.test(code)) return true;
   if (SHORT_CLUB_CODE_REGEX.test(code)) return true;
   if (!code.includes("/")) return false;
