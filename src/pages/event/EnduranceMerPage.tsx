@@ -64,6 +64,21 @@ const SHORT_CLUB_CODE_REGEX = /^(?:C)?\d{1,6}$/i;
 const MIXED_CLUB_CODE_SEGMENT_REGEX = /^C\d{6}\s*\(\s*\d+\s*\)$/i;
 const MIXTE_NOM_CLUB_REGEX = /\([^()]+\)\s*\/\s*.*\([^()]+\)/;
 
+function inferMerOptionsFromFileName(fileName: string): {
+  eventFormat?: "enduro" | "brs";
+  eventLevel?: "territorial" | "championnat_france";
+} {
+  const n = fileName.toLowerCase().replace(/[_-]+/g, " ");
+  const out: {
+    eventFormat?: "enduro" | "brs";
+    eventLevel?: "territorial" | "championnat_france";
+  } = {};
+  if (/\bbrs\b/.test(n)) out.eventFormat = "brs";
+  else if (/enduro/.test(n)) out.eventFormat = "enduro";
+  if (/champ(?:ionnat)?|\bcdf\b/.test(n)) out.eventLevel = "championnat_france";
+  return out;
+}
+
 function normalizeCellValue(value: unknown): string {
   return String(value ?? "").trim();
 }
@@ -471,10 +486,12 @@ export default function EnduranceMerPage() {
       }
 
       if (mixedRowsDetected > 0) {
+        const cf = eventLevel === "championnat_france";
         toast({
-          title: "Lignes mixtes détectées",
-          description:
-            "Lignes multi-clubs (nom ou code inline type C######(n)/…). Elles sont conservées dans le fichier envoyé ; la répartition des points est calculée côté API.",
+          title: `${mixedRowsDetected} équipage(s) mixte(s) détecté(s)`,
+          description: cf
+            ? "Les points seront répartis au prorata des rameurs entre les clubs du bateau."
+            : "Pour attribuer les points mixtes : Format BRS + Niveau Championnat de France, puis réimporter en cochant « remplacer ». ",
         });
       }
 
@@ -543,9 +560,13 @@ export default function EnduranceMerPage() {
                 onValueChange={(v) => {
                   const next = v as "time_team" | "base";
                   setImportSource(next);
-                  // Time Team (plat) = souvent CF ; BASE (feuilles) = souvent territorial
+                  // Time Team (plat) = souvent CF ; BASE (feuilles) = territorial sauf fichier CHAMP/BRS
                   if (next === "time_team") setEventLevel("championnat_france");
-                  else setEventLevel("territorial");
+                  else {
+                    const inferred = file ? inferMerOptionsFromFileName(file.name) : {};
+                    setEventLevel(inferred.eventLevel || "territorial");
+                    if (inferred.eventFormat) setEventFormat(inferred.eventFormat);
+                  }
                 }}
               >
                 <SelectTrigger>
@@ -562,7 +583,14 @@ export default function EnduranceMerPage() {
               <Input
                 type="file"
                 accept=".xlsx,.xls"
-                onChange={(e) => setFile(e.target.files?.[0] ?? null)}
+                onChange={(e) => {
+                  const nextFile = e.target.files?.[0] ?? null;
+                  setFile(nextFile);
+                  if (!nextFile) return;
+                  const inferred = inferMerOptionsFromFileName(nextFile.name);
+                  if (inferred.eventFormat) setEventFormat(inferred.eventFormat);
+                  if (inferred.eventLevel) setEventLevel(inferred.eventLevel);
+                }}
               />
             </div>
             <div className="space-y-2">
@@ -591,6 +619,15 @@ export default function EnduranceMerPage() {
                   <SelectItem value="championnat_france">Championnat de France</SelectItem>
                 </SelectContent>
               </Select>
+              {eventLevel === "championnat_france" ? (
+                <p className="text-xs text-muted-foreground">
+                  Mixtes de clubs : points au prorata des rameurs (toutes catégories).
+                </p>
+              ) : (
+                <p className="text-xs text-muted-foreground">
+                  Mixtes : seuls les U17 50/50 marquent. Pour un BRS Championnat de France, choisir ce niveau.
+                </p>
+              )}
             </div>
             <div className="flex items-center space-x-2 pt-8">
               <Checkbox
